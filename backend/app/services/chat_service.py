@@ -85,12 +85,18 @@ class ChatService:
                                 "category_id": metadata.get("category_id", ""),
                                 "category_name": metadata.get("category_name", ""),
                                 "content": result.get("text", "") or result.get("content", ""),
-                                "score": result.get("score", 1.0)
+                                "score": result.get("score", 1.0),
+                                "distance": result.get("distance", 1.0)
                             }
                             relevant_documents.append(doc)
                             
-                            if i < 3:  # 처음 3개만 로그
-                                print(f"변환된 문서 {i}: file_id={doc['file_id']}, filename='{doc['filename']}', score={doc['score']}")
+                            print(f"변환된 문서 {i+1}: file_id={doc['file_id']}, filename='{doc['filename']}', score={doc['score']:.3f}, distance={doc['distance']:.3f}")
+                        
+                        # 점수 순으로 정렬 (높은 점수가 먼저)
+                        relevant_documents.sort(key=lambda x: x['score'], reverse=True)
+                        print(f"점수순 정렬 후 첫 3개 문서:")
+                        for i, doc in enumerate(relevant_documents[:3]):
+                            print(f"  {i+1}위: {doc['filename']} (점수: {doc['score']:.3f})")
                         
                         # OpenAI를 사용하여 응답 생성
                         response_text = await self.generate_response(request.message, relevant_documents, final_system_message)
@@ -241,28 +247,45 @@ class ChatService:
             return "OpenAI API 키가 설정되지 않았습니다."
         
         try:
-            # 컨텍스트를 포함한 프롬프트 생성
-            context_text = "\n".join([doc.get("content", "") for doc in context])
-            
-            # 출처 정보를 포함한 프롬프트 생성
+            # 컨텍스트를 더 명확하게 구분하여 프롬프트 생성
+            context_sections = []
             sources_info = []
-            for i, doc in enumerate(context):
-                source_name = doc.get("filename", f"문서{i+1}")
-                sources_info.append(f"[{i+1}] {source_name}")
             
+            print(f"=== LLM 전달용 컨텍스트 구성 시작 ===")
+            print(f"전달받은 문서 수: {len(context)}")
+            
+            for i, doc in enumerate(context, 1):
+                source_name = doc.get("filename", f"문서{i}")
+                content = doc.get("content", "")
+                
+                # 각 문서를 명확히 구분
+                context_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                sources_info.append(f"[{i}] {source_name}")
+                
+                print(f"문서 {i}: {source_name} (길이: {len(content)} 글자)")
+            
+            # 모든 문서 내용을 하나의 컨텍스트로 결합
+            context_text = "\n".join(context_sections)
             sources_text = "\n".join(sources_info) if sources_info else "참고 문서 없음"
             
-            prompt = f"""다음 문서를 참고하여 질문에 답변해주세요. 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요.
+            print(f"=== 최종 컨텍스트 구성 완료 ===")
+            print(f"소스 정보: {sources_text}")
+            print(f"전체 컨텍스트 길이: {len(context_text)} 글자")
+            
+            prompt = f"""다음 문서들을 모두 참고하여 질문에 답변해주세요. 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요.
 
-참고 문서:
+참고할 수 있는 문서 목록:
 {sources_text}
 
-문서 내용:
+모든 문서 내용:
 {context_text}
 
 질문: {query}
 
-답변 형식: 답변 내용에 관련된 출처를 [1], [2] 형태로 표시하세요."""
+답변 규칙:
+1. 모든 관련 문서의 정보를 종합하여 답변하세요
+2. 답변 내용에 관련된 출처를 [1], [2] 형태로 표시하세요  
+3. 여러 문서에서 얻은 정보는 모두 활용하세요"""
             
             # OpenAI API 1.0+ 버전 사용
             from openai import OpenAI

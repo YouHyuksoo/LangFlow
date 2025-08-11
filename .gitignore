@@ -62,3 +62,10 @@ CLAUDE.md
 CLAUDE.local.md
 DEBUGGING_LESSONS.md
 activate_venv.bat
+
+# Custom ignores
+__pycache__/
+*.pyc
+backend/data/
+frontend/tsconfig.tsbuildinfo
+frontend/nul

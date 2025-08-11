@@ -53,12 +53,19 @@ import { useToast } from "@/hooks/use-toast";
 
 // --- 데이터 인터페이스 정의 ---
 interface ChromaDBStatus {
-  chromadb_available: boolean;
-  collection_count: number;
-  status: string;
-  message: string;
+  chromadb_available?: boolean;
+  collection_count?: number;
+  status?: string;
+  message?: string;
   error?: string;
   requires_migration?: boolean;
+}
+
+interface SQLiteStatus {
+  db_available: boolean;
+  table_found: boolean;
+  message: string;
+  error?: string;
 }
 
 interface DashboardData {
@@ -66,6 +73,7 @@ interface DashboardData {
     total_files: number;
     vectorized_files: number;
     total_categories: number;
+    sqlite_status: SQLiteStatus;
   };
   usage: {
     daily_questions: {
@@ -114,9 +122,22 @@ interface DashboardData {
 
 // --- 재사용 가능한 컴포넌트 ---
 
+interface StatCardProps {
+  icon: React.ElementType;
+  title: string;
+  value: string | number;
+  description: string;
+  colorClass?: string;
+}
+
 // StatCard: 주요 통계 정보를 보여주는 카드
-const StatCard = ({ icon, title, value, description, colorClass }) => {
-  const Icon = icon;
+const StatCard = ({
+  icon: Icon,
+  title,
+  value,
+  description,
+  colorClass,
+}: StatCardProps) => {
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -131,8 +152,12 @@ const StatCard = ({ icon, title, value, description, colorClass }) => {
   );
 };
 
+interface OverviewChartProps {
+  data: DashboardData | null;
+}
+
 // OverviewChart: 일일 질문 수를 보여주는 바 차트
-const OverviewChart = ({ data }) => {
+const OverviewChart = ({ data }: OverviewChartProps) => {
   const chartData = [
     { name: "지난 달", questions: data?.usage.daily_questions.last_month || 0 },
     { name: "이번 달", questions: data?.usage.daily_questions.this_month || 0 },
@@ -184,12 +209,13 @@ const OverviewChart = ({ data }) => {
   );
 };
 
+interface CategoryDistributionChartProps {
+  data: DashboardData | null;
+}
+
 // CategoryDistributionChart: 카테고리별 파일 분포를 보여주는 파이 차트
-const CategoryDistributionChart = ({ data }) => {
+const CategoryDistributionChart = ({ data }: CategoryDistributionChartProps) => {
   const chartData = useMemo(() => {
-    console.log("CategoryDistributionChart 데이터:", data);
-    console.log("Categories:", data?.categories?.categories);
-    
     if (!data?.categories?.categories) {
       return [];
     }
@@ -198,7 +224,6 @@ const CategoryDistributionChart = ({ data }) => {
       .filter(cat => cat.file_count > 0)
       .map(cat => ({ name: cat.name, value: cat.file_count }));
     
-    console.log("필터링된 차트 데이터:", filteredData);
     return filteredData;
   }, [data]);
 
@@ -225,7 +250,7 @@ const CategoryDistributionChart = ({ data }) => {
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }: { name: string; percent: number }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -255,8 +280,14 @@ const CategoryDistributionChart = ({ data }) => {
   );
 };
 
+interface SystemHealthWidgetProps {
+  chromaStatus: (ChromaDBStatus & { status: string }) | null;
+  sqliteStatus: SQLiteStatus | undefined;
+  onReset: () => void;
+}
+
 // SystemHealthWidget: 시스템 상태 정보를 보여주는 위젯
-const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }) => (
+const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }: SystemHealthWidgetProps) => (
   <Card className="shadow-sm">
     <CardHeader>
       <CardTitle className="flex items-center gap-2">
@@ -324,8 +355,12 @@ const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }) => (
   </Card>
 );
 
+interface ActivityFeedProps {
+  data: DashboardData | null;
+}
+
 // ActivityFeed: 최근 활동 내역을 보여주는 피드
-const ActivityFeed = ({ data }) => (
+const ActivityFeed = ({ data }: ActivityFeedProps) => (
   <Card className="shadow-sm">
     <CardHeader>
       <CardTitle className="flex items-center gap-2">

@@ -249,6 +249,12 @@ export const fileAPI = {
     return response.data;
   },
 
+  // ChromaDB 리셋
+  resetChromaDB: async () => {
+    const response = await api.post("/api/v1/files/chromadb/reset");
+    return response.data;
+  },
+
   // ChromaDB 초기화
   initializeChromaDB: async () => {
     const response = await api.post("/api/v1/files/chromadb/initialize");

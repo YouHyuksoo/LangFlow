@@ -326,12 +326,21 @@ class VectorService:
             search_results = []
             if results['documents'] and results['documents'][0]:
                 for i, doc in enumerate(results['documents'][0]):
+                    # ChromaDB distance를 유사도 점수로 변환 (낮을수록 유사함 -> 높을수록 유사함)
+                    distance = results['distances'][0][i] if 'distances' in results else 0.5
+                    # 거리를 유사도 점수로 변환: 1 - (distance / max_distance)
+                    # 일반적으로 0.0~2.0 사이 값이므로 2.0으로 정규화
+                    similarity_score = max(0.0, 1.0 - (distance / 2.0))
+                    
                     search_results.append({
                         "chunk_id": results['ids'][0][i],
                         "text": doc,
                         "metadata": results['metadatas'][0][i],
-                        "score": results['distances'][0][i] if 'distances' in results else 1.0
+                        "score": similarity_score,
+                        "distance": distance  # 원본 거리도 보관
                     })
+                    
+                    print(f"검색 결과 {i+1}: 거리={distance:.3f}, 점수={similarity_score:.3f}, 파일={results['metadatas'][0][i].get('filename', 'unknown')}")
             
             print(f"✅ ChromaDB 검색 완료: {len(search_results)}개 결과")
             return search_results

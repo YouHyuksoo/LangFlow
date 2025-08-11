@@ -26,42 +26,48 @@ export function ContentPreview({
   // 콘텐츠 타입 자동 감지
   const detectionResult: ContentDetectionResult = detectContentType(content);
 
-  // 신뢰도가 낮으면 간단한 표 형태인지 확인
-  if (detectionResult.confidence < 0.4) {
-    // 간단한 표 형태 감지 시도
-    return <SimpleTablePreview content={content} className={className} />;
-  }
-
   // 콘텐츠 타입에 따라 적절한 미리보기 컴포넌트 렌더링
   switch (detectionResult.contentType) {
     case "html":
-      return <HtmlPreview content={content} className={className} />;
+      if (detectionResult.confidence > 0.7) {
+        return <HtmlPreview content={content} className={className} />;
+      }
+      break;
 
     case "code":
     case "json":
     case "xml":
-      return (
-        <CodePreview
-          code={content}
-          language={detectionResult.language || detectionResult.contentType}
-          confidence={detectionResult.confidence}
-          className={className}
-        />
-      );
+      if (detectionResult.confidence > 0.7) {
+        return (
+          <CodePreview
+            code={content}
+            language={detectionResult.language || detectionResult.contentType}
+            confidence={detectionResult.confidence}
+            className={className}
+          />
+        );
+      }
+      break;
 
     case "markdown":
-      return (
-        <MarkdownPreview
-          markdown={content}
-          confidence={detectionResult.confidence}
-          className={className}
-        />
-      );
+      if (detectionResult.confidence > 0.5) {
+        return (
+          <MarkdownPreview
+            markdown={content}
+            confidence={detectionResult.confidence}
+            className={className}
+          />
+        );
+      }
+      break;
 
+    case "text":
     default:
-      // 일반 텍스트는 미리보기를 표시하지 않음
-      return null;
+      // 기본적으로 SimpleTablePreview를 사용 (내부적으로 표 또는 일반 텍스트 처리)
+      return <SimpleTablePreview content={content} className={className} />;
   }
+  // confidence가 기준 미달일 경우 기본 렌더러 사용
+  return <SimpleTablePreview content={content} className={className} />;
 }
 
 /**

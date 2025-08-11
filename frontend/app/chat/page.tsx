@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { chatAPI, categoryAPI, personaAPI } from "@/lib/api";
 import { CategorySelector } from "@/components/category-selector";
 import { ContentPreview } from "@/components/content-preview";
+import { FloatingNavigation } from "@/components/floating-navigation";
 import { useAuthContext } from "@/context/auth-context";
 
 // --- 데이터 인터페이스 ---
@@ -130,7 +131,7 @@ const ChatMessage = memo(
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
-            <div className="whitespace-pre-wrap">{message.content}</div>
+            <ContentPreview content={message.content} />
           )}
 
           {!isUser && (
@@ -319,6 +320,7 @@ export default function ChatPage() {
   }, [user]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // 인증 체크
   useEffect(() => {
@@ -678,7 +680,10 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 relative">
-          <ScrollArea className="absolute inset-0">
+          <div 
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+            ref={scrollAreaRef}
+          >
             <div className="p-6 space-y-6">
               {messages.map((msg) => (
                 <ChatMessage
@@ -712,7 +717,10 @@ export default function ChatPage() {
               )}
               <div ref={messagesEndRef} />
             </div>
-          </ScrollArea>
+          </div>
+          
+          {/* 플로팅 네비게이션 */}
+          <FloatingNavigation scrollContainerRef={scrollAreaRef} />
         </div>
 
         <div className="flex-shrink-0 border-t p-4 bg-background">

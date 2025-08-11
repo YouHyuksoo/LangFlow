@@ -35,7 +35,7 @@ interface UploadedFile {
   name: string;
   size: number;
   progress: number;
-  status: "uploading" | "processing" | "success" | "error";
+  status: "uploading" | "processing" | "success" | "error" | "pending";
   category: string;
   uploadTime: Date;
   fileId?: string;

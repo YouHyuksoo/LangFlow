@@ -77,7 +77,7 @@ export default function VectorizationPage() {
       // 통계 계산 (벡터화 상태를 더 정확히 분류)
       const vectorizedFiles = filesResponse.filter((f: VectorizationFile) => f.vectorized === true);
       const vectorizedCount = vectorizedFiles.length;
-      console.log('✅ 벡터화 완료된 파일들:', vectorizedFiles.map(f => f.filename));
+      console.log('✅ 벡터화 완료된 파일들:', vectorizedFiles.map((f: VectorizationFile) => f.filename));
       
       const failedFiles = filesResponse.filter(
         (f: VectorizationFile) =>
@@ -86,7 +86,7 @@ export default function VectorizationPage() {
           (f.vectorization_status === "error")
       );
       const failedCount = failedFiles.length;
-      console.log('❌ 벡터화 실패한 파일들:', failedFiles.map(f => f.filename));
+      console.log('❌ 벡터화 실패한 파일들:', failedFiles.map((f: VectorizationFile) => f.filename));
       
       const processingFiles = filesResponse.filter(
         (f: VectorizationFile) => 
@@ -95,7 +95,7 @@ export default function VectorizationPage() {
           processing.has(f.file_id)
       );
       const processingCount = processingFiles.length;
-      console.log('🔄 벡터화 진행중인 파일들:', processingFiles.map(f => f.filename));
+      console.log('🔄 벡터화 진행중인 파일들:', processingFiles.map((f: VectorizationFile) => f.filename));
       
       const pendingCount = filesResponse.length - vectorizedCount - failedCount - processingCount;
       console.log(`📊 통계 계산: 총 ${filesResponse.length}개 파일 중 완료=${vectorizedCount}, 실패=${failedCount}, 진행중=${processingCount}, 대기=${pendingCount}`);

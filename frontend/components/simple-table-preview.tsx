@@ -74,7 +74,14 @@ export function SimpleTablePreview({
 
   const tableData = detectSimpleTable(content);
 
-  if (!tableData) return null;
+  // 표 형태가 아니면 일반 텍스트로 렌더링
+  if (!tableData) {
+    return (
+      <div className={`whitespace-pre-wrap ${className}`}>
+        {content}
+      </div>
+    );
+  }
 
   const copyTable = async () => {
     try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, Suspense } from "react";
 import {
   Card,
   CardContent,
@@ -16,7 +16,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { userAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-export default function LoginPage() {
+// useSearchParams를 사용하는 컴포넌트를 분리
+function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -80,125 +81,135 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        {/* 헤더 */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <Bot className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold">SmartKnowBot</h1>
-          </div>
-          <p className="text-muted-foreground">
-            사내 지식관리 AI 도우미 시스템
-          </p>
+    <>
+      {/* 헤더 */}
+      <div className="text-center space-y-2">
+        <div className="flex items-center justify-center space-x-2 mb-4">
+          <Bot className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold">SmartKnowBot</h1>
         </div>
+        <p className="text-muted-foreground">
+          사내 지식관리 AI 도우미 시스템
+        </p>
+      </div>
 
-        {/* 로그인 카드 */}
-        <Card>
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">로그인</CardTitle>
-            <CardDescription className="text-center">
-              {redirectUrl !== "/"
-                ? "채팅을 시작하려면 로그인이 필요합니다"
-                : "계정 정보를 입력하여 로그인하세요"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <div className="flex items-center space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <span>{error}</span>
-              </div>
-            )}
+      {/* 로그인 카드 */}
+      <Card>
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl text-center">로그인</CardTitle>
+          <CardDescription className="text-center">
+            {redirectUrl !== "/"
+              ? "채팅을 시작하려면 로그인이 필요합니다"
+              : "계정 정보를 입력하여 로그인하세요"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <span>{error}</span>
+            </div>
+          )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="username" className="text-sm font-medium">
-                  사용자명
-                </label>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium">
+                사용자명
+              </label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="사용자명을 입력하세요"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                비밀번호
+              </label>
+              <div className="relative">
                 <Input
-                  id="username"
-                  type="text"
-                  placeholder="사용자명을 입력하세요"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="비밀번호를 입력하세요"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
-
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">
-                  비밀번호
-                </label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="비밀번호를 입력하세요"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "로그인 중..." : "로그인"}
-              </Button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                계정이 없으신가요?{" "}
-                <a href="#" className="text-primary hover:underline">
-                  관리자에게 문의
-                </a>
-              </p>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* 테마 토글 */}
-        <div className="flex justify-center">
-          <ThemeToggle />
-        </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "로그인 중..." : "로그인"}
+            </Button>
+          </form>
 
-        {/* 기본 계정 정보 */}
-        <Card className="bg-muted/50">
-          <CardHeader>
-            <CardTitle className="text-sm">기본 계정 정보</CardTitle>
-            <CardDescription className="text-xs">
-              시스템 기본 관리자 계정
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div className="p-2 bg-background rounded border">
-              <p>
-                <strong>관리자:</strong> admin / admin123
-              </p>
-              <p className="text-muted-foreground mt-1">
-                * 보안을 위해 기본 비밀번호를 변경하세요
-              </p>
-            </div>
-            <p className="text-muted-foreground">
-              관리자는 <code>/admin</code> 페이지에서 사용자를 관리할 수
-              있습니다.
+          <div className="mt-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              계정이 없으신가요?{" "}
+              <a href="#" className="text-primary hover:underline">
+                관리자에게 문의
+              </a>
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 테마 토글 */}
+      <div className="flex justify-center">
+        <ThemeToggle />
+      </div>
+
+      {/* 기본 계정 정보 */}
+      <Card className="bg-muted/50">
+        <CardHeader>
+          <CardTitle className="text-sm">기본 계정 정보</CardTitle>
+          <CardDescription className="text-xs">
+            시스템 기본 관리자 계정
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs">
+          <div className="p-2 bg-background rounded border">
+            <p>
+              <strong>관리자:</strong> admin / admin123
+            </p>
+            <p className="text-muted-foreground mt-1">
+              * 보안을 위해 기본 비밀번호를 변경하세요
+            </p>
+          </div>
+          <p className="text-muted-foreground">
+            관리자는 <code>/admin</code> 페이지에서 사용자를 관리할 수
+            있습니다.
+          </p>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-6">
+        <Suspense fallback={<div>로딩 중...</div>}>
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   );
