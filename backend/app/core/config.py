@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # AI Provider API Keys
     ANTHROPIC_API_KEY: Optional[str] = None
     PERPLEXITY_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = "AIzaSyCVuqNTQ3DWYXFoZXlKejowQYdaMwuud3w"
     MISTRAL_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     AZURE_OPENAI_API_KEY: Optional[str] = None
     OLLAMA_API_KEY: Optional[str] = None
     GITHUB_API_KEY: Optional[str] = None
-    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = "AIzaSyCVuqNTQ3DWYXFoZXlKejowQYdaMwuud3w"
     
     # Supabase 설정
     SUPABASE_URL: Optional[str] = None

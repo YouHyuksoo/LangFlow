@@ -98,8 +98,13 @@ class ChatService:
                         for i, doc in enumerate(relevant_documents[:3]):
                             print(f"  {i+1}위: {doc['filename']} (점수: {doc['score']:.3f})")
                         
-                        # OpenAI를 사용하여 응답 생성
-                        response_text = await self.generate_response(request.message, relevant_documents, final_system_message)
+                        # LangFlow를 통해 응답 생성 (Flow 기반 모델 사용)
+                        response_text = await self.generate_response_with_flow(
+                            request.message, 
+                            relevant_documents, 
+                            final_system_message,
+                            search_flow_id
+                        )
                     else:
                         print("검색 결과가 없습니다.")
                         response_text = "죄송합니다, 관련 문서를 찾을 수 없습니다."
@@ -112,7 +117,12 @@ class ChatService:
                         request.category_ids,
                         request.categories
                     )
-                    response_text = await self.generate_response(request.message, relevant_documents, final_system_message)
+                    response_text = await self.generate_response_with_flow(
+                        request.message, 
+                        relevant_documents, 
+                        final_system_message,
+                        None  # fallback일 때는 기본 flow 사용
+                    )
             else:
                 print("검색 Flow가 설정되지 않았습니다. 기본 검색을 사용합니다.")
                 # 기본 검색 (fallback)
@@ -121,7 +131,12 @@ class ChatService:
                     request.category_ids,
                     request.categories
                 )
-                response_text = await self.generate_response(request.message, relevant_documents, final_system_message)
+                response_text = await self.generate_response_with_flow(
+                    request.message, 
+                    relevant_documents, 
+                    final_system_message,
+                    None  # 기본 flow 사용
+                )
             
             processing_time = time.time() - start_time
             print(f"처리 시간: {processing_time:.2f}초")
@@ -241,6 +256,94 @@ class ChatService:
             print(f"문서 검색 중 오류: {str(e)}")
             return []
     
+    async def generate_response_with_flow(self, query: str, context: List[Dict[str, Any]], system_message: str = None, flow_id: str = None) -> str:
+        """LangFlow를 통해 동적으로 선택된 LLM 모델로 응답을 생성합니다."""
+        try:
+            # 컨텍스트를 더 명확하게 구분하여 프롬프트 생성
+            context_sections = []
+            sources_info = []
+            
+            print(f"=== LangFlow 기반 LLM 응답 생성 시작 ===")
+            print(f"사용 Flow ID: {flow_id}")
+            print(f"전달받은 문서 수: {len(context)}")
+            
+            for i, doc in enumerate(context, 1):
+                source_name = doc.get("filename", f"문서{i}")
+                content = doc.get("content", "")
+                
+                # 각 문서를 명확히 구분
+                context_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                sources_info.append(f"[{i}] {source_name}")
+                
+                print(f"문서 {i}: {source_name} (길이: {len(content)} 글자)")
+            
+            # 모든 문서 내용을 하나의 컨텍스트로 결합
+            context_text = "\n".join(context_sections)
+            sources_text = "\n".join(sources_info) if sources_info else "참고 문서 없음"
+            
+            print(f"=== 최종 컨텍스트 구성 완료 ===")
+            print(f"소스 정보: {sources_text}")
+            print(f"전체 컨텍스트 길이: {len(context_text)} 글자")
+            
+            # 컨텍스트 길이 확인 및 축소
+            if len(context_text) > 8000:  # 8000자 제한
+                print(f"컨텍스트 길이 {len(context_text)}자, 축소 필요")
+                # 각 문서를 500자로 제한
+                shortened_sections = []
+                for i, doc in enumerate(context, 1):
+                    source_name = doc.get("filename", f"문서{i}")
+                    content = doc.get("content", "")[:500] + ("..." if len(doc.get("content", "")) > 500 else "")
+                    shortened_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                context_text = "\n".join(shortened_sections)
+                print(f"축소 후 길이: {len(context_text)}자")
+
+            # 간소화된 프롬프트 구성
+            prompt = f"""문서를 참고하여 질문에 답변하세요. 출처를 [1], [2] 형태로 표시하세요.
+
+참고 문서:
+{sources_text}
+
+내용:
+{context_text}
+
+질문: {query}
+
+답변:"""
+
+            # LangFlow를 통해 LLM 실행
+            flow_id_to_use = flow_id or await self._get_default_search_flow()
+            if flow_id_to_use:
+                print(f"LangFlow 실행: {flow_id_to_use}")
+                langflow_result = await self.langflow_service.execute_flow_with_llm(
+                    flow_id_to_use,
+                    prompt,
+                    system_message
+                )
+                
+                if langflow_result.get("status") == "success":
+                    response_text = langflow_result.get("response", "LangFlow에서 응답을 받지 못했습니다.")
+                    print(f"LangFlow 응답 성공: {len(response_text)} 글자")
+                    return response_text
+                else:
+                    print(f"LangFlow 실행 실패: {langflow_result.get('error', '알 수 없는 오류')}")
+                    # Fallback to original method
+                    return await self.generate_response_fallback(query, context, system_message)
+            else:
+                print("Flow ID가 없습니다. Fallback 사용")
+                return await self.generate_response_fallback(query, context, system_message)
+                
+        except Exception as e:
+            print(f"LangFlow 기반 응답 생성 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to original method
+            return await self.generate_response_fallback(query, context, system_message)
+
+    async def generate_response_fallback(self, query: str, context: List[Dict[str, Any]], system_message: str = None) -> str:
+        """Fallback: 기존 OpenAI 직접 호출 방식"""
+        print("=== Fallback: OpenAI 직접 호출 사용 ===")
+        return await self.generate_response(query, context, system_message)
+
     async def generate_response(self, query: str, context: List[Dict[str, Any]], system_message: str = None) -> str:
         """OpenAI를 사용하여 응답을 생성합니다."""
         if not self.openai_client:

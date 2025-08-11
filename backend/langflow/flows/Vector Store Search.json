@@ -1653,7 +1653,7 @@
               "api_key": {
                 "_input_type": "SecretStrInput",
                 "advanced": false,
-                "display_name": "OpenAI API Key",
+                "display_name": "Google API Key",
                 "dynamic": false,
                 "info": "Model Provider API key",
                 "input_types": [],
@@ -1717,16 +1717,9 @@
                 "info": "Select the model to use",
                 "name": "model_name",
                 "options": [
-                  "gpt-4o-mini",
-                  "gpt-4o",
-                  "gpt-4.1",
-                  "gpt-4.1-mini",
-                  "gpt-4.1-nano",
-                  "gpt-4.5-preview",
-                  "gpt-4-turbo",
-                  "gpt-4-turbo-preview",
-                  "gpt-4",
-                  "gpt-3.5-turbo"
+                  "gemini-1.5-pro",
+                  "gemini-1.5-flash",
+                  "gemini-1.0-pro"
                 ],
                 "options_metadata": [],
                 "placeholder": "",
@@ -1737,7 +1730,7 @@
                 "tool_mode": false,
                 "trace_as_metadata": true,
                 "type": "str",
-                "value": "gpt-4o-mini"
+                "value": "gemini-2.5-pro"
               },
               "provider": {
                 "_input_type": "DropdownInput",
@@ -1769,7 +1762,7 @@
                 "tool_mode": false,
                 "trace_as_metadata": true,
                 "type": "str",
-                "value": "OpenAI"
+                "value": "Google"
               },
               "stream": {
                 "_input_type": "BoolInput",
