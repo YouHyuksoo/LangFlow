@@ -1,0 +1,47 @@
+{
+  "52572f77-9139-4299-a70a-54b30d2edf57": {
+    "file_id": "52572f77-9139-4299-a70a-54b30d2edf57",
+    "filename": "I-C100-03_[ISO9001, IATF16949]제조공정관리 지침서.pdf",
+    "saved_filename": "52572f77-9139-4299-a70a-54b30d2edf57.pdf",
+    "file_path": "./uploads\\52572f77-9139-4299-a70a-54b30d2edf57.pdf",
+    "file_size": 571593,
+    "file_hash": "cc966466a486d6ab8d7c1313ae3bd8cf",
+    "category_id": "88571c87-8ebe-4275-89ee-a221ab4e36d6",
+    "category_name": "품질",
+    "status": "vectorized",
+    "upload_time": "2025-08-07 18:23:16.651741",
+    "vectorized": true,
+    "vectorized_at": "2025-08-10T14:18:03.244978",
+    "vectorization_status": "completed"
+  },
+  "3a3b1b9f-ebb6-437b-a976-f19d44d64ec3": {
+    "file_id": "3a3b1b9f-ebb6-437b-a976-f19d44d64ec3",
+    "filename": "SMD PQR_2020.pdf",
+    "saved_filename": "3a3b1b9f-ebb6-437b-a976-f19d44d64ec3.pdf",
+    "file_path": "./uploads\\3a3b1b9f-ebb6-437b-a976-f19d44d64ec3.pdf",
+    "file_size": 18414670,
+    "file_hash": "bae64d6002fbcf7e813bcf61990574f2",
+    "category_id": "9dc2f8e9-b2e9-45ed-a380-7d0f0bb63d55",
+    "category_name": "제조",
+    "status": "deleted",
+    "upload_time": "2025-08-10 16:44:07.340288",
+    "vectorized": false,
+    "deleted_at": "2025-08-10 16:45:58.336102",
+    "deletion_errors": null
+  },
+  "359e8231-0430-4e84-b679-e25f41295551": {
+    "file_id": "359e8231-0430-4e84-b679-e25f41295551",
+    "filename": "SMD PQR_2020.pdf",
+    "saved_filename": "359e8231-0430-4e84-b679-e25f41295551.pdf",
+    "file_path": "./uploads\\359e8231-0430-4e84-b679-e25f41295551.pdf",
+    "file_size": 18414670,
+    "file_hash": "bae64d6002fbcf7e813bcf61990574f2",
+    "category_id": "9dc2f8e9-b2e9-45ed-a380-7d0f0bb63d55",
+    "category_name": "제조",
+    "status": "vectorized",
+    "upload_time": "2025-08-10 16:45:58.358798",
+    "vectorized": true,
+    "vectorized_at": "2025-08-10T16:54:47.320794",
+    "vectorization_status": "completed"
+  }
+}

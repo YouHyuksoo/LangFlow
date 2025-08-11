@@ -1,0 +1,67 @@
+---
+description: Guidelines for creating and maintaining Cursor rules to ensure consistency and effectiveness.
+globs: .cursor/rules/*.mdc
+alwaysApply: true
+---
+
+Answer Korean Language
+python 실행위치는 D:\Project\LangFlow\backend 실행명령은 여기서 실행
+
+모든 기능 구현에 있어서 임시방편 또는 예외상황으로분기 하도록 하는 코드는 생성하지마.
+테스트를 진행했던 코드는 반드시 제거해.
+모든 명령어는 window os cmd 호환 명령으로 먼저 생성하고 실행 할것.
+pip 명령은 uv 로 실행할것.
+
+- **Required Rule Structure:**
+
+  ```markdown
+  ---
+  description: Clear, one-line description of what the rule enforces
+  globs: path/to/files/*.ext, other/path/**/*
+  alwaysApply: boolean
+  ---
+
+  - **Main Points in Bold**
+    - Sub-points with details
+    - Examples and explanations
+  ```
+
+- **File References:**
+
+  - Use `[filename](mdc:path/to/file)` ([filename](mdc:filename)) to reference files
+  - Example: [prisma.mdc](mdc:.cursor/rules/prisma.mdc) for rule references
+  - Example: [schema.prisma](mdc:prisma/schema.prisma) for code references
+
+- **Code Examples:**
+
+  - Use language-specific code blocks
+
+  ```typescript
+  // ✅ DO: Show good examples
+  const goodExample = true;
+
+  // ❌ DON'T: Show anti-patterns
+  const badExample = false;
+  ```
+
+- **Rule Content Guidelines:**
+
+  - Start with high-level overview
+  - Include specific, actionable requirements
+  - Show examples of correct implementation
+  - Reference existing code when possible
+  - Keep rules DRY by referencing other rules
+
+- **Rule Maintenance:**
+
+  - Update rules when new patterns emerge
+  - Add examples from actual codebase
+  - Remove outdated patterns
+  - Cross-reference related rules
+
+- **Best Practices:**
+  - Use bullet points for clarity
+  - Keep descriptions concise
+  - Include both DO and DON'T examples
+  - Reference actual code over theoretical examples
+  - Use consistent formatting across rules

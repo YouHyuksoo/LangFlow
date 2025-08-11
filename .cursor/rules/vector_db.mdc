@@ -1,0 +1,166 @@
+# 벡터 데이터베이스 규칙
+
+## **핵심 원칙**
+
+- **ChromaDB만 사용**: 벡터 데이터베이스는 ChromaDB만 사용
+- **OpenAI Embedding만 사용**: 임베딩은 OpenAI Embedding API만 사용
+- **다른 방식 금지**: FAISS, Pinecone, Weaviate 등 다른 벡터 DB 사용 금지
+- **Fallback 방식 금지**: JSON, SQLite 등 임시 fallback 방식 구현 금지
+
+## **허용되는 기술 스택**
+
+### ✅ **벡터 데이터베이스**
+
+- ChromaDB (PersistentClient)
+- ChromaDB 컬렉션 관리
+- ChromaDB 검색 및 쿼리
+
+### ✅ **임베딩 모델**
+
+- OpenAI Embedding API
+- text-embedding-ada-002 모델
+- OpenAIEmbeddingFunction 사용
+
+### ✅ **설정 및 관리**
+
+- ChromaDB 설정 (Settings)
+- 컬렉션 메타데이터 관리
+- 벡터 인덱싱 및 검색
+
+## **금지되는 기술 스택**
+
+### ❌ **벡터 데이터베이스**
+
+- FAISS
+- Pinecone
+- Weaviate
+- Qdrant
+- Milvus
+- 기타 벡터 DB
+
+### ❌ **임베딩 모델**
+
+- Sentence Transformers
+- Hugging Face 임베딩
+- 로컬 임베딩 모델
+- 기타 임베딩 서비스
+
+### ❌ **Fallback 방식**
+
+- JSON 파일 저장
+- SQLite 벡터 저장
+- 로컬 파일 기반 검색
+- 임시 대체 구현
+
+## **코드 구현 가이드**
+
+### **ChromaDB 초기화**
+
+```python
+# ✅ 올바른 방식
+from chromadb import PersistentClient
+from chromadb.config import Settings
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+
+client = PersistentClient(
+    path="./data/vectors",
+    settings=Settings(anonymized_telemetry=False)
+)
+
+embedding_function = OpenAIEmbeddingFunction(
+    api_key=settings.OPENAI_API_KEY,
+    model_name="text-embedding-ada-002"
+)
+
+collection = client.create_collection(
+    name="langflow",
+    embedding_function=embedding_function
+)
+```
+
+### **벡터 저장**
+
+```python
+# ✅ 올바른 방식
+collection.add(
+    ids=chunk_ids,
+    documents=chunk_texts,
+    metadatas=chunk_metadatas
+)
+```
+
+### **벡터 검색**
+
+```python
+# ✅ 올바른 방식
+results = collection.query(
+    query_texts=[query],
+    n_results=top_k,
+    where=where_filter
+)
+```
+
+## **오류 처리**
+
+### **ChromaDB 오류 시**
+
+- ChromaDB 재초기화 시도
+- 데이터베이스 리셋 및 재생성
+- 다른 벡터 DB로 전환하지 않음
+
+### **OpenAI API 오류 시**
+
+- API 키 확인
+- 요청 제한 확인
+- 다른 임베딩 모델로 전환하지 않음
+
+## **성능 최적화**
+
+### **메모리 관리**
+
+- 배치 처리로 메모리 사용량 제어
+- 청크 크기 최적화
+- 불필요한 데이터 정리
+
+### **검색 성능**
+
+- 적절한 인덱스 설정
+- 쿼리 최적화
+- 결과 캐싱
+
+## **테스트 및 검증**
+
+### **벡터화 테스트**
+
+- ChromaDB 연결 테스트
+- OpenAI Embedding API 테스트
+- 벡터 저장 및 검색 테스트
+
+### **성능 테스트**
+
+- 대용량 문서 처리 테스트
+- 동시 검색 테스트
+- 메모리 사용량 모니터링
+
+## **모니터링**
+
+### **로그 관리**
+
+- ChromaDB 초기화 로그
+- 벡터 저장 성공/실패 로그
+- 검색 성능 로그
+
+### **메트릭 수집**
+
+- 벡터 저장 시간
+- 검색 응답 시간
+- 오류 발생 빈도
+
+---
+
+**중요**: 이 프로젝트에서는 ChromaDB와 OpenAI Embedding만 사용하며, 다른 벡터 DB나 임베딩 방식을 제안하거나 구현하지 마세요.
+description:
+globs:
+alwaysApply: false
+
+---

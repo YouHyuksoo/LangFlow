@@ -1,0 +1,41 @@
+{
+  "7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa": [
+    {
+      "id": "7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa_1754882274243",
+      "user_id": "7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa",
+      "message": "라인정지 조건을 리스트 형태로 만들어 JSON 으로 보여줘",
+      "role": "user",
+      "timestamp": "2025-08-11T12:17:54.243105",
+      "category_ids": [
+        "88571c87-8ebe-4275-89ee-a221ab4e36d6",
+        "9dc2f8e9-b2e9-45ed-a380-7d0f0bb63d55"
+      ],
+      "sources": []
+    },
+    {
+      "id": "7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa_1754882281777",
+      "user_id": "7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa",
+      "message": "{\n  \"라인정지 조건\": {\n    \"1\": \"절연 저항 기준 미달 (100MΩ 미만)\",\n    \"2\": \"산소 농도 관리 기준 미달\",\n    \"3\": \"동박 노출로 솔더 젖음성 미흡\",\n    \"4\": \"질소 리플로우 젖음성 미흡 (젖음성 불량 발생)\",\n    \"5\": \"베큠로더 성능 미달\",\n    \"6\": \"점도 측정값 관리 기준 벗어남\"\n  }\n}\n[2]",
+      "role": "assistant",
+      "timestamp": "2025-08-11T12:18:01.777000",
+      "category_ids": [
+        "88571c87-8ebe-4275-89ee-a221ab4e36d6",
+        "9dc2f8e9-b2e9-45ed-a380-7d0f0bb63d55"
+      ],
+      "sources": [
+        {
+          "file_id": "52572f77-9139-4299-a70a-54b30d2edf57",
+          "filename": "I-C100-03_[ISO9001, IATF16949]제조공정관리 지침서.pdf",
+          "category_id": "88571c87-8ebe-4275-89ee-a221ab4e36d6",
+          "category_name": "품질"
+        },
+        {
+          "file_id": "359e8231-0430-4e84-b679-e25f41295551",
+          "filename": "SMD PQR_2020.pdf",
+          "category_id": "9dc2f8e9-b2e9-45ed-a380-7d0f0bb63d55",
+          "category_name": "제조"
+        }
+      ]
+    }
+  ]
+}

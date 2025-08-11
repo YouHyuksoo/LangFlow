@@ -1,0 +1,5 @@
+{
+  "default_vectorization_flow_id": "vector_store_rag",
+  "updated_at": "2025-08-04T22:59:51.355246",
+  "default_search_flow_id": "vector_store_search"
+}

@@ -1,0 +1,64 @@
+# Python virtual environments
+venv/
+venv
+env/
+env
+.venv/
+.venv
+ENV/
+ENV
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Database files
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# MCP and Claude related directories
+.claude-flow/
+.claude/
+.swarm/
+.taskmaster/
+.windsurf/ 
+
+# Task files
+# tasks.json
+# tasks/ 
+frontend/node_modules/
+frontend/.next/
+frontend/node_modules/
+venv_langflow/
+
+CLAUDE.md
+CLAUDE.local.md
+DEBUGGING_LESSONS.md
+activate_venv.bat

@@ -1,0 +1,68 @@
+---
+description: Enforce using uv for all Python/pip commands with Windows cmd compatibility and backend as default working directory
+globs: backend/**/*, scripts/**/*, **/*.py
+alwaysApply: true
+---
+
+- **`uv` 기반 파이썬/패키지 명령만 사용**
+
+  - 모든 `pip` 명령은 `uv pip`로 대체한다
+  - 파이썬 실행은 가상환경 활성화 없이 `uv run`으로 실행한다
+  - 예: `pip install` → `uv pip install`, `python main.py` → `uv run python main.py`
+
+- **Windows cmd 호환 명령만 제시**
+
+  - 쉘 스크립트/유닉스 전용 문법 사용 금지 (PowerShell 전용 문법 지양)
+  - 기본 셸은 `cmd.exe` 기준. `&&` 사용 시 Windows cmd 문맥 기준으로만 안내
+
+- **기본 작업 디렉터리 고정**
+
+  - 파이썬 실행 위치는 항상 `D:\Project\LangFlow\backend` 기준으로 안내한다
+  - 경로 명시가 필요한 경우 백엔드 상대 경로를 우선 사용한다
+
+- **파일 참조**
+
+  - [requirements.txt](mdc:backend/requirements.txt)
+  - [main.py](mdc:backend/main.py)
+
+- **DO 예시 (올바른 사용)**
+
+  ```bat
+  REM 패키지 설치
+  uv pip install -r backend\requirements.txt
+
+  REM 단일 패키지 설치
+  uv pip install fastapi==0.111.0
+
+  REM 애플리케이션 실행 (백엔드 디렉터리에서)
+  cd /d D:\Project\LangFlow\backend
+  uv run python main.py
+
+  REM 테스트 실행
+  cd /d D:\Project\LangFlow\backend
+  uv run python -m pytest -q
+  ```
+
+- **DON'T 예시 (금지 패턴)**
+
+  ```bat
+  REM 가상환경 직접 활성화/비활성화 금지
+  venv\Scripts\activate && pip install -r requirements.txt
+
+  REM pip 직접 호출 금지
+  pip install -r backend\requirements.txt
+
+  REM 파이썬 직접 실행 금지 (uv 없이)
+  python backend\main.py
+  ```
+
+- **규칙 적용 지침**
+
+  - 문서/코드/터미널 안내에 `pip`가 등장하면 반드시 `uv pip`로 치환해 제시한다
+  - 파이썬 모듈/스크립트 실행은 `uv run python ...` 형식으로 안내한다
+  - Windows cmd 기준 절대/상대 경로와 `cd /d` 사용을 준수한다
+  - 상호작용이 필요한 명령은 비대화식 플래그를 우선 검토한다 (가능한 경우)
+
+- **유지관리**
+  - `uv` 사용 패턴 변화가 3개 이상의 파일/문서에서 반복되면 본 규칙 예시를 갱신한다
+  - Windows cmd 호환성에 영향이 있는 변경이 발견되면 예시 명령을 교체한다
