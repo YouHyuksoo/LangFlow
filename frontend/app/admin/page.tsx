@@ -499,7 +499,7 @@ export default function AdminDashboard() {
     : "healthy";
 
   return (
-    <div className="space-y-6 p-4 md:p-6 bg-muted/40 min-h-screen">
+    <div className="space-y-6 p-4 md:p-6 min-h-screen">
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

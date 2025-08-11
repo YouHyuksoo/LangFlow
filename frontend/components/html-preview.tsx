@@ -60,7 +60,10 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
     if (!doc) return;
 
     try {
-      // 기본 CSS 스타일 추가
+      // 다크테마 감지
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      
+      // 다크테마에 맞는 CSS 스타일 추가
       const htmlWithStyles = `
         <!DOCTYPE html>
         <html>
@@ -71,12 +74,12 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
               line-height: 1.6;
-              color: #333;
+              color: ${isDarkMode ? '#e2e8f0' : '#333'};
               margin: 16px;
-              background: white;
+              background: ${isDarkMode ? '#1e293b' : 'white'};
             }
             h1, h2, h3, h4, h5, h6 {
-              color: #2563eb;
+              color: ${isDarkMode ? '#60a5fa' : '#2563eb'};
               margin-top: 1.5em;
               margin-bottom: 0.5em;
             }
@@ -84,7 +87,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
               margin-bottom: 1em;
             }
             a {
-              color: #2563eb;
+              color: ${isDarkMode ? '#60a5fa' : '#2563eb'};
               text-decoration: none;
             }
             a:hover {
@@ -94,23 +97,27 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
               border-collapse: collapse;
               width: 100%;
               margin: 1em 0;
+              background: ${isDarkMode ? '#334155' : 'white'};
             }
             th, td {
-              border: 1px solid #ddd;
+              border: 1px solid ${isDarkMode ? '#475569' : '#ddd'};
               padding: 8px;
               text-align: left;
             }
             th {
-              background-color: #f5f5f5;
+              background-color: ${isDarkMode ? '#475569' : '#f5f5f5'};
+              color: ${isDarkMode ? '#f1f5f9' : '#333'};
             }
             code {
-              background-color: #f1f5f9;
+              background-color: ${isDarkMode ? '#475569' : '#f1f5f9'};
+              color: ${isDarkMode ? '#e2e8f0' : '#333'};
               padding: 2px 4px;
               border-radius: 3px;
               font-family: 'Courier New', monospace;
             }
             pre {
-              background-color: #f1f5f9;
+              background-color: ${isDarkMode ? '#475569' : '#f1f5f9'};
+              color: ${isDarkMode ? '#e2e8f0' : '#333'};
               padding: 12px;
               border-radius: 6px;
               overflow-x: auto;
@@ -118,6 +125,29 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
             img {
               max-width: 100%;
               height: auto;
+            }
+            /* 리스트 스타일 */
+            ul, ol {
+              color: ${isDarkMode ? '#e2e8f0' : '#333'};
+            }
+            li {
+              margin-bottom: 0.5em;
+            }
+            /* 인용구 스타일 */
+            blockquote {
+              border-left: 4px solid ${isDarkMode ? '#60a5fa' : '#2563eb'};
+              margin-left: 0;
+              padding-left: 16px;
+              background-color: ${isDarkMode ? '#374151' : '#f8fafc'};
+              padding: 12px 16px;
+              border-radius: 4px;
+            }
+            /* HR 스타일 */
+            hr {
+              border: none;
+              height: 1px;
+              background-color: ${isDarkMode ? '#475569' : '#ddd'};
+              margin: 2em 0;
             }
           </style>
         </head>
@@ -145,6 +175,27 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
       // iframe 로드 후 HTML 콘텐츠 삽입
       const timer = setTimeout(loadHtmlInIframe, 100);
       return () => clearTimeout(timer);
+    }
+  }, [showPreview, detectionResult?.sanitizedHtml]);
+
+  // 다크테마 변경 감지를 위한 useEffect
+  useEffect(() => {
+    if (showPreview && detectionResult?.sanitizedHtml) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            // 테마가 변경되면 iframe을 다시 로드
+            setTimeout(loadHtmlInIframe, 50);
+          }
+        });
+      });
+
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+
+      return () => observer.disconnect();
     }
   }, [showPreview, detectionResult?.sanitizedHtml]);
 
@@ -339,11 +390,11 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
           <CardContent className="p-0">
             <div
               className={`border-t ${
-                isFullscreen ? "fixed inset-0 z-50 bg-white" : "relative"
+                isFullscreen ? "fixed inset-0 z-50 bg-white dark:bg-slate-900" : "relative"
               }`}
             >
               {isFullscreen && (
-                <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+                <div className="flex items-center justify-between p-4 border-b bg-gray-50 dark:bg-slate-800 dark:border-slate-600">
                   <span className="text-sm font-medium">
                     HTML 미리보기 - 전체화면
                   </span>
@@ -361,7 +412,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
               {renderMode === "iframe" ? (
                 <iframe
                   ref={iframeRef}
-                  className={`w-full border-0 bg-white ${
+                  className={`w-full border-0 bg-white dark:bg-slate-900 ${
                     isFullscreen ? "h-[calc(100vh-80px)]" : "h-64 md:h-80"
                   }`}
                   title="HTML 미리보기"
@@ -406,7 +457,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <pre className="text-xs bg-gray-50 p-4 rounded-lg overflow-x-auto max-h-64">
+            <pre className="text-xs bg-gray-50 dark:bg-slate-800 dark:text-slate-200 p-4 rounded-lg overflow-x-auto max-h-64">
               <code>{detectionResult.sanitizedHtml}</code>
             </pre>
           </CardContent>

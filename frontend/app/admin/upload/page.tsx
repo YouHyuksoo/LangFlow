@@ -316,7 +316,7 @@ export default function UploadPage() {
       case "pending":
         return <Badge className="bg-orange-100 text-orange-800">벡터화 대기</Badge>;
       default:
-        return <Badge className="bg-gray-100 text-gray-800">알 수 없음</Badge>;
+        return <Badge variant="secondary">알 수 없음</Badge>;
     }
   };
 
@@ -520,7 +520,7 @@ export default function UploadPage() {
                                 <span>업로드 진행률</span>
                                 <span>{file.progress}%</span>
                               </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div className="w-full bg-muted rounded-full h-2">
                                 <div
                                   className="bg-blue-600 h-2 rounded-full transition-all"
                                   style={{ width: `${file.progress}%` }}

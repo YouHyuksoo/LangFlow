@@ -19,6 +19,11 @@ import {
   TrendingUp,
   Mic,
   MicOff,
+  Paperclip,
+  Image,
+  X,
+  Menu,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +52,7 @@ interface Message {
   }>;
   processingTime?: number;
   confidence?: number;
+  images?: string[]; // 첨부된 이미지 URL 배열
 }
 
 interface ChatSession {
@@ -69,7 +75,7 @@ const ChatHistory = memo(
     onNewChat: () => void;
     onSelectSession: (id: string) => void;
   }) => (
-    <aside className="w-64 flex-col border-r bg-muted/40 p-4 hidden md:flex">
+    <aside className="w-64 flex-col border-r bg-muted/40 p-4 flex">
       <Button onClick={onNewChat} className="mb-4">
         <Plus className="mr-2 h-4 w-4" /> 새 대화
       </Button>
@@ -115,7 +121,7 @@ const ChatMessage = memo(
     };
 
     return (
-      <div className={`flex items-start gap-4 ${isUser ? "justify-end" : ""}`}>
+      <div className={`flex items-start gap-4 w-full ${isUser ? "justify-end" : ""}`}>
         {!isUser && (
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary">
@@ -124,10 +130,27 @@ const ChatMessage = memo(
           </Avatar>
         )}
         <div
-          className={`group relative max-w-xl rounded-lg px-4 py-3 ${
-            isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+          className={`group relative rounded-lg px-4 py-3 ${
+            isUser 
+              ? "max-w-2xl bg-primary text-primary-foreground" 
+              : "max-w-4xl bg-muted dark:bg-slate-800 dark:text-slate-100 border dark:border-slate-600"
           }`}
         >
+          {/* 이미지 미리보기 (사용자 메시지만) */}
+          {isUser && message.images && message.images.length > 0 && (
+            <div className="mb-3 grid grid-cols-2 gap-2 max-w-xs">
+              {message.images.map((imageUrl, index) => (
+                <div key={index} className="relative">
+                  <img
+                    src={imageUrl}
+                    alt={`첨부 이미지 ${index + 1}`}
+                    className="rounded-lg object-cover w-full h-24 border"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
@@ -135,8 +158,8 @@ const ChatMessage = memo(
           )}
 
           {!isUser && (
-            <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="mt-3 pt-3 border-t border-border/50 dark:border-slate-600 space-y-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground dark:text-slate-400">
                 {message.processingTime && (
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />{" "}
@@ -164,7 +187,7 @@ const ChatMessage = memo(
                     {message.sourceDetails.map((source, index) => (
                       <div
                         key={index}
-                        className="p-2 bg-background/50 rounded-md border text-xs w-full"
+                        className="p-2 bg-background/50 dark:bg-slate-700/50 rounded-md border dark:border-slate-600 text-xs w-full"
                       >
                         <p className="font-medium truncate">
                           {source.filename}
@@ -178,7 +201,7 @@ const ChatMessage = memo(
           )}
 
           {!isUser && (
-            <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+            <div className="mt-3 pt-3 border-t border-border/50 dark:border-slate-600 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -216,6 +239,7 @@ const STORAGE_KEYS = {
   IS_EDITING_CATEGORIES: "chat_is_editing_categories",
   TOP_K: "chat_top_k",
   INPUT_VALUE: "chat_input_value",
+  SIDEBAR_VISIBLE: "chat_sidebar_visible",
 };
 
 const initialMessage: Message = {
@@ -306,9 +330,19 @@ export default function ChatPage() {
   const [topK, setTopK] = useState(() =>
     loadFromStorage(STORAGE_KEYS.TOP_K, 5)
   );
+  // 이미지 업로드 관련 상태
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   // 사용자 정보 상태 추가
   const [userName, setUserName] = useState(() =>
     loadFromStorage("chat_user_name", "사용자")
+  );
+  
+  // 사이드바 표시/숨김 상태 추가
+  const [sidebarVisible, setSidebarVisible] = useState(() =>
+    loadFromStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, true)
   );
 
   // 로그인된 사용자 정보로 userName 업데이트
@@ -372,6 +406,7 @@ export default function ChatPage() {
       saveToStorage(STORAGE_KEYS.IS_EDITING_CATEGORIES, isEditingCategories);
       saveToStorage(STORAGE_KEYS.TOP_K, topK);
       saveToStorage("chat_user_name", userName);
+      saveToStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, sidebarVisible);
     }, 100); // 100ms 디바운스
 
     return () => clearTimeout(timeoutId);
@@ -383,7 +418,52 @@ export default function ChatPage() {
     isEditingCategories,
     topK,
     userName,
+    sidebarVisible,
   ]);
+
+  // 이미지 처리 함수들
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+
+    const newImages = Array.from(files).filter(file => 
+      file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024 // 5MB 제한
+    );
+
+    if (newImages.length === 0) {
+      toast({
+        title: "파일 오류",
+        description: "이미지 파일만 업로드 가능하며, 크기는 5MB 이하여야 합니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // 기존 이미지와 합쳐서 최대 3개까지만
+    const totalImages = [...selectedImages, ...newImages].slice(0, 3);
+    setSelectedImages(totalImages);
+
+    // 미리보기 URL 생성
+    const previewUrls = totalImages.map(file => URL.createObjectURL(file));
+    setImagePreviewUrls(previewUrls);
+  };
+
+  const removeImage = (index: number) => {
+    const newImages = selectedImages.filter((_, i) => i !== index);
+    const newPreviewUrls = imagePreviewUrls.filter((_, i) => i !== index);
+    
+    // 제거된 URL 해제
+    URL.revokeObjectURL(imagePreviewUrls[index]);
+    
+    setSelectedImages(newImages);
+    setImagePreviewUrls(newPreviewUrls);
+  };
+
+  const clearImages = () => {
+    imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    setSelectedImages([]);
+    setImagePreviewUrls([]);
+  };
 
   const handleNewChat = useCallback(() => {
     // localStorage 클리어
@@ -393,6 +473,8 @@ export default function ChatPage() {
     setSelectedCategories([]);
     setIsEditingCategories(true);
     setInputValue("");
+    // 이미지 상태도 초기화
+    clearImages();
     setIsLoading(false);
     setSelectedPersonaId(undefined);
     setTopK(5);
@@ -436,10 +518,10 @@ export default function ChatPage() {
   }, [toast]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || selectedCategories.length === 0) {
+    if ((!inputValue.trim() && selectedImages.length === 0) || selectedCategories.length === 0) {
       toast({
         title: "알림",
-        description: "카테고리를 선택하고 질문을 입력해주세요.",
+        description: "카테고리를 선택하고 텍스트나 이미지를 입력해주세요.",
         variant: "destructive",
       });
       return;
@@ -450,14 +532,56 @@ export default function ChatPage() {
       content: inputValue,
       role: "user",
       timestamp: new Date(),
+      images: imagePreviewUrls.length > 0 ? [...imagePreviewUrls] : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInputValue = inputValue;
+    const currentImages = [...selectedImages];
     setInputValue("");
     setIsLoading(true);
     setIsEditingCategories(false);
 
     try {
+      // Base64로 이미지 인코딩
+      let base64Images: string[] = [];
+      
+      if (currentImages.length > 0) {
+        console.log(`이미지 ${currentImages.length}개를 Base64로 변환 중...`);
+        
+        const imagePromises = currentImages.map((file, index) => {
+          return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (reader.result && typeof reader.result === 'string') {
+                console.log(`이미지 ${index + 1} 변환 완료: ${file.name}`);
+                resolve(reader.result);
+              } else {
+                reject(new Error(`이미지 ${index + 1} 변환 실패: ${file.name}`));
+              }
+            };
+            reader.onerror = () => reject(new Error(`이미지 읽기 실패: ${file.name}`));
+            reader.readAsDataURL(file);
+          });
+        });
+
+        try {
+          base64Images = await Promise.all(imagePromises);
+          console.log(`${base64Images.length}개 이미지 Base64 변환 완료`);
+        } catch (imageError) {
+          console.error("이미지 변환 중 오류:", imageError);
+          toast({
+            title: "이미지 처리 오류",
+            description: "이미지를 처리하는 중 오류가 발생했습니다. 텍스트만 전송합니다.",
+            variant: "destructive",
+          });
+          base64Images = [];
+        }
+      }
+
+      // 이미지 상태 정리 (API 호출 전에)
+      clearImages();
+
       const response = await chatAPI.sendMessage(
         userMessage.content,
         selectedCategories,
@@ -465,7 +589,8 @@ export default function ChatPage() {
         undefined,
         topK,
         undefined,
-        selectedPersonaId
+        selectedPersonaId,
+        base64Images.length > 0 ? base64Images : undefined // Base64 이미지 데이터 전송
       );
 
       // 디버그: 백엔드 응답 확인
@@ -569,13 +694,29 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen bg-background">
-      <ChatHistory
-        sessions={[]}
-        onNewChat={handleNewChat}
-        onSelectSession={() => {}}
-      />
+      {/* 사이드바 - 조건부 렌더링 */}
+      {sidebarVisible && (
+        <ChatHistory
+          sessions={[]}
+          onNewChat={handleNewChat}
+          onSelectSession={() => {}}
+        />
+      )}
       <main className="flex flex-1 flex-col h-full">
         <header className="flex-shrink-0 flex items-center border-b p-4">
+          {/* 사이드바 토글 버튼 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mr-3"
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+          >
+            {sidebarVisible ? (
+              <ChevronLeft className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
           <h1 className="text-xl font-semibold">AI 챗봇</h1>
         </header>
 
@@ -700,7 +841,7 @@ export default function ChatPage() {
                       <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="max-w-xl rounded-lg px-4 py-3 bg-muted">
+                  <div className="max-w-4xl rounded-lg px-4 py-3 bg-muted dark:bg-slate-800 border dark:border-slate-600">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
                       <div
@@ -724,23 +865,73 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-shrink-0 border-t p-4 bg-background">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative">
+          <div className="max-w-4xl mx-auto">
+            {/* 이미지 미리보기 영역 */}
+            {imagePreviewUrls.length > 0 && (
+              <div className="mb-3 p-3 bg-muted rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium flex items-center gap-2">
+                    <Image className="h-4 w-4" />
+                    첨부된 이미지 ({imagePreviewUrls.length}/3)
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearImages}
+                    className="h-6 w-6 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  {imagePreviewUrls.map((url, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={url}
+                        alt={`미리보기 ${index + 1}`}
+                        className="w-16 h-16 rounded-lg object-cover border"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removeImage(index)}
+                        className="absolute -top-1 -right-1 h-5 w-5 p-0 rounded-full"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="relative rainbow-focus rounded-2xl">
               <Textarea
                 ref={inputRef}
                 placeholder={
                   selectedCategories.length > 0
-                    ? "메시지를 입력하세요..."
+                    ? "메시지를 입력하거나 이미지를 첨부하세요..."
                     : "먼저 대화 주제를 선택해주세요."
                 }
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 rows={1}
-                className="min-h-[48px] rounded-2xl resize-none p-4 pr-24"
+                className="min-h-[48px] rounded-2xl resize-none p-4 pr-28 border-2 border-transparent"
                 disabled={isLoading || selectedCategories.length === 0}
               />
-              <div className="absolute top-1/2 right-3 transform -translate-y-1/2 flex items-center gap-2">
+              <div className="absolute top-1/2 right-3 transform -translate-y-1/2 flex items-center gap-2 z-10">
+                {/* 이미지 업로드 버튼 */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={selectedCategories.length === 0 || selectedImages.length >= 3}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                
                 <Button
                   variant="ghost"
                   size="icon"
@@ -749,11 +940,12 @@ export default function ChatPage() {
                 >
                   <Mic className="h-4 w-4" />
                 </Button>
+                
                 <Button
                   onClick={handleSendMessage}
                   disabled={
                     isLoading ||
-                    !inputValue.trim() ||
+                    (!inputValue.trim() && selectedImages.length === 0) ||
                     selectedCategories.length === 0
                   }
                   size="icon"
@@ -762,6 +954,16 @@ export default function ChatPage() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
+              
+              {/* 숨겨진 파일 입력 */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageSelect}
+                className="hidden"
+              />
             </div>
           </div>
         </div>

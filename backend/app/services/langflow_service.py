@@ -209,13 +209,8 @@ class LangflowService:
                     # 파일에서 텍스트 추출
                     file_path = await self.file_service.get_file_path(file_id)
                     if file_path and os.path.exists(file_path):
-                        # PDF 파일인 경우 텍스트 추출
-                        if file_path.lower().endswith('.pdf'):
-                            text = await self.file_service.extract_text_from_pdf(file_path)
-                        else:
-                            # 다른 파일 형식은 간단히 읽기
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                text = f.read()
+                        # 파일 확장자에 따라 적절한 텍스트 추출
+                        text = await self.file_service.extract_text_from_file(file_path)
                         
                         # 텍스트를 청크로 분할
                         chunks = await self.file_service.chunk_text(text)
@@ -1073,3 +1068,411 @@ class LangflowService:
                 "vectorization_rate": 0,
                 "category_stats": {}
             }
+    
+    async def execute_multimodal_flow_with_llm(self, flow_id: str, prompt: str, images: List[str], system_message: str = None) -> Dict[str, Any]:
+        """멀티모달 LangFlow를 통해 이미지 + 텍스트를 함께 처리하여 LLM 모델을 실행합니다."""
+        try:
+            print(f"=== 멀티모달 LangFlow LLM 실행 시작 ===")
+            print(f"Flow ID: {flow_id}")
+            print(f"프롬프트 길이: {len(prompt)} 글자")
+            print(f"이미지 수: {len(images)}")
+            print(f"시스템 메시지: {system_message[:100] if system_message else 'None'}...")
+            
+            # Flow JSON 파일 로드
+            flow_file_path = os.path.join(settings.BASE_DIR, "langflow", "flows", f"{flow_id.replace('_', ' ').title()}.json")
+            
+            # 파일명 변환 (예: vector_store_search -> Vector Store Search.json)
+            if not os.path.exists(flow_file_path):
+                flow_file_path = os.path.join(settings.BASE_DIR, "langflow", "flows", "Vector Store Search.json")
+            
+            if not os.path.exists(flow_file_path):
+                print(f"Flow 파일을 찾을 수 없습니다: {flow_file_path}")
+                return {
+                    "status": "error",
+                    "error": f"Flow 파일을 찾을 수 없습니다: {flow_id}",
+                    "response": "Flow 설정 파일이 없습니다."
+                }
+            
+            print(f"Flow 파일 로드: {flow_file_path}")
+            
+            # Flow JSON에서 LLM 설정 추출
+            with open(flow_file_path, 'r', encoding='utf-8') as f:
+                flow_data = json.load(f)
+            
+            # LanguageModelComponent 노드 찾기
+            llm_node = None
+            nodes = flow_data.get("data", {}).get("nodes", [])
+            
+            for node in nodes:
+                if "LanguageModelComponent" in node.get("id", ""):
+                    llm_node = node
+                    break
+            
+            if not llm_node:
+                print("LanguageModelComponent 노드를 찾을 수 없습니다")
+                return {
+                    "status": "error", 
+                    "error": "LanguageModelComponent 노드를 찾을 수 없습니다",
+                    "response": "LLM 설정을 찾을 수 없습니다."
+                }
+            
+            # LLM 설정 추출
+            llm_data = llm_node.get("data", {})
+            node_data = llm_data.get("node", {})
+            template_data = node_data.get("template", {})
+            
+            if template_data:
+                provider_data = template_data.get("provider", {})
+                provider = provider_data.get("value", "OpenAI")
+                
+                model_name_data = template_data.get("model_name", {})
+                model_name = model_name_data.get("value", "gpt-3.5-turbo")
+                
+                temperature_data = template_data.get("temperature", {})
+                temperature = temperature_data.get("value", 0.1)
+            else:
+                provider = "OpenAI"
+                model_name = "gpt-3.5-turbo"
+                temperature = 0.1
+            
+            print(f"=== 멀티모달 LLM 설정 ===")
+            print(f"Provider: {provider}")
+            print(f"Model: {model_name}")
+            print(f"Temperature: {temperature}")
+            
+            # Provider별 멀티모달 LLM 실행
+            if provider == "Google":
+                response_text = await self._execute_google_multimodal_llm(model_name, prompt, images, system_message, temperature)
+            elif provider == "OpenAI":
+                response_text = await self._execute_openai_multimodal_llm(model_name, prompt, images, system_message, temperature)
+            elif provider == "Anthropic":
+                response_text = await self._execute_anthropic_multimodal_llm(model_name, prompt, images, system_message, temperature)
+            else:
+                print(f"멀티모달을 지원하지 않는 Provider: {provider}")
+                # Fallback: 텍스트 전용 처리
+                return await self.execute_flow_with_llm(flow_id, prompt, system_message)
+            
+            print(f"=== 멀티모달 LLM 실행 완료 ===")
+            print(f"응답 길이: {len(response_text)} 글자")
+            
+            return {
+                "status": "success",
+                "response": response_text,
+                "provider": provider,
+                "model": model_name,
+                "flow_id": flow_id,
+                "multimodal": True
+            }
+            
+        except Exception as e:
+            print(f"멀티모달 LangFlow LLM 실행 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "error": str(e),
+                "response": f"멀티모달 LLM 실행 중 오류가 발생했습니다: {str(e)}"
+            }
+    
+    async def _execute_google_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+        """Google Gemini 멀티모달 모델을 실행합니다."""
+        try:
+            print(f"=== Google Gemini 멀티모달 실행 ===")
+            print(f"모델: {model_name}")
+            print(f"이미지 수: {len(images)}")
+            
+            # langchain_google_genai 사용
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_core.messages import HumanMessage
+            from ..core.config import settings
+            import base64
+            
+            # Google API 키 확인
+            api_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
+            if not api_key:
+                raise ValueError("Google API 키가 설정되지 않았습니다. GOOGLE_API_KEY 또는 GEMINI_API_KEY를 설정해주세요.")
+            
+            print(f"Google API 키 확인됨: {api_key[:10]}...")
+            
+            # ChatGoogleGenerativeAI 인스턴스 생성
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=temperature,
+                google_api_key=api_key
+            )
+            
+            # 멀티모달 메시지 구성
+            message_content = []
+            
+            # 시스템 메시지가 있으면 텍스트에 포함
+            if system_message:
+                combined_text = f"다음은 시스템 지침입니다:\n{system_message}\n\n사용자 질문:\n{prompt}"
+            else:
+                combined_text = prompt
+            
+            # 텍스트 추가
+            message_content.append({
+                "type": "text",
+                "text": combined_text
+            })
+            
+            # 이미지들 추가
+            for i, image_data in enumerate(images):
+                try:
+                    # Base64 데이터에서 MIME 타입과 데이터 분리
+                    if image_data.startswith('data:'):
+                        # data:image/jpeg;base64,/9j/4AAQ... 형태
+                        mime_type = image_data.split(';')[0].split(':')[1]
+                        base64_data = image_data.split(',')[1]
+                    else:
+                        # 순수 base64 데이터인 경우
+                        mime_type = "image/jpeg"  # 기본값
+                        base64_data = image_data
+                    
+                    print(f"이미지 {i+1}: {mime_type}, 데이터 길이: {len(base64_data)}")
+                    
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{base64_data}"
+                        }
+                    })
+                    
+                except Exception as img_error:
+                    print(f"이미지 {i+1} 처리 중 오류: {str(img_error)}")
+                    continue
+            
+            # HumanMessage 생성
+            message = HumanMessage(content=message_content)
+            
+            print(f"Gemini 멀티모달 API 호출 시작...")
+            print(f"메시지 컨텐츠 항목 수: {len(message_content)}")
+            start_time = time.time()
+            
+            # LLM 실행
+            response = llm.invoke([message])
+            
+            api_time = time.time() - start_time
+            print(f"Gemini 멀티모달 API 호출 완료: {api_time:.2f}초")
+            
+            # 응답 내용 디버깅
+            print(f"=== Gemini 멀티모달 응답 디버깅 ===")
+            print(f"응답 타입: {type(response)}")
+            print(f"응답 content: '{response.content}'")
+            print(f"응답 content 길이: {len(response.content) if hasattr(response, 'content') else 'N/A'}")
+            
+            # 빈 응답 처리
+            content = response.content if hasattr(response, 'content') else str(response)
+            
+            if not content or content.strip() == "":
+                return "죄송합니다. Gemini에서 이미지와 텍스트를 함께 분석한 응답을 생성하지 못했습니다. 다시 시도해 주세요."
+            
+            print(f"최종 멀티모달 응답: '{content[:100]}...' ({len(content)} 글자)")
+            return content
+            
+        except Exception as e:
+            print(f"Google Gemini 멀티모달 실행 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 멀티모달 실패 시 텍스트 전용으로 폴백
+            print("멀티모달 실패, 텍스트 전용으로 폴백 시도...")
+            try:
+                return await self._execute_google_llm(model_name, f"{prompt}\n\n(참고: 이미지 {len(images)}개가 포함되었으나 처리할 수 없어 텍스트만 분석했습니다.)", system_message, temperature)
+            except:
+                raise e
+    
+    async def _execute_openai_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+        """OpenAI 멀티모달 모델을 실행합니다."""
+        try:
+            print(f"=== OpenAI 멀티모달 실행 ===")
+            print(f"모델: {model_name}")
+            print(f"이미지 수: {len(images)}")
+            
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from ..core.config import settings
+            
+            if not settings.OPENAI_API_KEY:
+                raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
+            
+            # OpenAI 비전 모델 확인 (gpt-4o, gpt-4-turbo, gpt-4-vision-preview 등)
+            if "gpt-4" not in model_name.lower() and "vision" not in model_name.lower():
+                print(f"경고: {model_name}은 비전 기능을 지원하지 않을 수 있습니다.")
+                # gpt-4o로 강제 변경
+                model_name = "gpt-4o"
+                print(f"모델을 {model_name}로 변경했습니다.")
+            
+            llm = ChatOpenAI(
+                model=model_name,
+                temperature=temperature,
+                openai_api_key=settings.OPENAI_API_KEY
+            )
+            
+            messages = []
+            
+            # 시스템 메시지 추가
+            if system_message:
+                messages.append(SystemMessage(content=system_message))
+            
+            # 멀티모달 메시지 구성
+            message_content = []
+            
+            # 텍스트 추가
+            message_content.append({
+                "type": "text",
+                "text": prompt
+            })
+            
+            # 이미지들 추가
+            for i, image_data in enumerate(images):
+                try:
+                    # Base64 데이터 처리
+                    if image_data.startswith('data:'):
+                        # data:image/jpeg;base64,/9j/4AAQ... 형태 그대로 사용
+                        image_url = image_data
+                    else:
+                        # 순수 base64 데이터인 경우 data URL 형태로 변경
+                        image_url = f"data:image/jpeg;base64,{image_data}"
+                    
+                    print(f"이미지 {i+1}: 데이터 길이: {len(image_data)}")
+                    
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url,
+                            "detail": "auto"  # OpenAI 특유의 detail 파라미터
+                        }
+                    })
+                    
+                except Exception as img_error:
+                    print(f"이미지 {i+1} 처리 중 오류: {str(img_error)}")
+                    continue
+            
+            # HumanMessage 생성
+            messages.append(HumanMessage(content=message_content))
+            
+            print(f"OpenAI 멀티모달 API 호출 시작...")
+            print(f"메시지 컨텐츠 항목 수: {len(message_content)}")
+            start_time = time.time()
+            
+            # LLM 실행
+            response = llm.invoke(messages)
+            
+            api_time = time.time() - start_time
+            print(f"OpenAI 멀티모달 API 호출 완료: {api_time:.2f}초")
+            
+            print(f"OpenAI 멀티모달 응답 길이: {len(response.content)} 글자")
+            return response.content
+            
+        except Exception as e:
+            print(f"OpenAI 멀티모달 실행 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 멀티모달 실패 시 텍스트 전용으로 폴백
+            print("멀티모달 실패, 텍스트 전용으로 폴백 시도...")
+            try:
+                return await self._execute_openai_llm(model_name, f"{prompt}\n\n(참고: 이미지 {len(images)}개가 포함되었으나 처리할 수 없어 텍스트만 분석했습니다.)", system_message, temperature)
+            except:
+                raise e
+    
+    async def _execute_anthropic_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+        """Anthropic Claude 멀티모달 모델을 실행합니다."""
+        try:
+            print(f"=== Anthropic Claude 멀티모달 실행 ===")
+            print(f"모델: {model_name}")
+            print(f"이미지 수: {len(images)}")
+            
+            from langchain_anthropic import ChatAnthropic
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from ..core.config import settings
+            import base64
+            
+            if not settings.ANTHROPIC_API_KEY:
+                raise ValueError("Anthropic API 키가 설정되지 않았습니다.")
+            
+            # Claude 모델에서 비전 지원하는지 확인
+            vision_models = ["claude-3", "claude-3.5"]
+            supports_vision = any(vm in model_name.lower() for vm in vision_models)
+            
+            if not supports_vision:
+                print(f"경고: {model_name}은 비전 기능을 지원하지 않을 수 있습니다.")
+                # Claude 3.5 Sonnet으로 강제 변경
+                model_name = "claude-3-5-sonnet-20241022"
+                print(f"모델을 {model_name}로 변경했습니다.")
+            
+            llm = ChatAnthropic(
+                model=model_name,
+                temperature=temperature,
+                anthropic_api_key=settings.ANTHROPIC_API_KEY
+            )
+            
+            messages = []
+            
+            # 시스템 메시지 추가
+            if system_message:
+                messages.append(SystemMessage(content=system_message))
+            
+            # 멀티모달 메시지 구성
+            message_content = []
+            
+            # 텍스트 추가
+            message_content.append({
+                "type": "text",
+                "text": prompt
+            })
+            
+            # 이미지들 추가
+            for i, image_data in enumerate(images):
+                try:
+                    # Base64 데이터에서 MIME 타입과 데이터 분리
+                    if image_data.startswith('data:'):
+                        # data:image/jpeg;base64,/9j/4AAQ... 형태
+                        mime_type = image_data.split(';')[0].split(':')[1]
+                        base64_data = image_data.split(',')[1]
+                    else:
+                        # 순수 base64 데이터인 경우
+                        mime_type = "image/jpeg"  # 기본값
+                        base64_data = image_data
+                    
+                    print(f"이미지 {i+1}: {mime_type}, 데이터 길이: {len(base64_data)}")
+                    
+                    # Anthropic API 형식에 맞게 이미지 데이터 구성
+                    message_content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": base64_data
+                        }
+                    })
+                    
+                except Exception as img_error:
+                    print(f"이미지 {i+1} 처리 중 오류: {str(img_error)}")
+                    continue
+            
+            # HumanMessage 생성
+            messages.append(HumanMessage(content=message_content))
+            
+            print(f"Anthropic 멀티모달 API 호출 시작...")
+            print(f"메시지 컨텐츠 항목 수: {len(message_content)}")
+            start_time = time.time()
+            
+            # LLM 실행
+            response = llm.invoke(messages)
+            
+            api_time = time.time() - start_time
+            print(f"Anthropic 멀티모달 API 호출 완료: {api_time:.2f}초")
+            
+            print(f"Anthropic 멀티모달 응답 길이: {len(response.content)} 글자")
+            return response.content
+            
+        except Exception as e:
+            print(f"Anthropic Claude 멀티모달 실행 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 멀티모달 실패 시 텍스트 전용으로 폴백
+            print("멀티모달 실패, 텍스트 전용으로 폴백 시도...")
+            try:
+                return await self._execute_anthropic_llm(model_name, f"{prompt}\n\n(참고: 이미지 {len(images)}개가 포함되었으나 처리할 수 없어 텍스트만 분석했습니다.)", system_message, temperature)
+            except:
+                raise e

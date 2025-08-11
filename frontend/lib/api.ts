@@ -700,7 +700,7 @@ export const personaAPI = {
 
 // 채팅 API
 export const chatAPI = {
-  // 새로운 채팅 API (RAG 기반) - 통합된 메시지 전송
+  // 새로운 채팅 API (RAG 기반) - 통합된 메시지 전송 (멀티모달 지원)
   sendMessage: async (
     message: string,
     categoryIds: string[] = [],
@@ -708,9 +708,10 @@ export const chatAPI = {
     userId?: string,
     topK: number = 10,
     systemMessage?: string,
-    personaId?: string
+    personaId?: string,
+    images?: string[] // Base64 인코딩된 이미지 데이터 배열 추가
   ) => {
-    const response = await api.post("/api/v1/chat/", {
+    const payload: any = {
       message,
       category_ids: categoryIds,
       categories: [], // 카테고리 이름은 빈 배열로 (ID 사용)
@@ -719,7 +720,15 @@ export const chatAPI = {
       top_k: topK,
       system_message: systemMessage || null,
       persona_id: personaId || null,
-    });
+    };
+    
+    // 이미지가 있는 경우에만 추가
+    if (images && images.length > 0) {
+      payload.images = images;
+      console.log(`멀티모달 채팅 요청: ${images.length}개 이미지 포함`);
+    }
+    
+    const response = await api.post("/api/v1/chat/", payload);
     return response.data;
   },
 

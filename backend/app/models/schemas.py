@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     categories: Optional[List[str]] = Field(None, description="카테고리 이름 목록 (품질, 인사, 제조 등)")
     flow_id: Optional[str] = Field(None, description="사용할 Langflow Flow ID")
     top_k: int = 10  # 검색 결과 수 (기본값: 10개)
+    images: Optional[List[str]] = Field(None, description="첨부된 이미지 Base64 데이터 목록")
 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="AI 응답")

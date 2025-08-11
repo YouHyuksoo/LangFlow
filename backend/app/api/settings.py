@@ -11,7 +11,7 @@ _clog = get_console_logger()
 # 기본 설정값
 DEFAULT_SETTINGS = {
     "maxFileSize": 10,  # MB
-    "allowedFileTypes": ["pdf"],
+    "allowedFileTypes": ["pdf", "docx", "pptx", "xlsx"],
     "uploadDirectory": "uploads/",
     "vectorDimension": 1536,
     "chunkSize": 1000,

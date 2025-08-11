@@ -34,6 +34,7 @@ class ChatService:
             print(f"Flow ID: {request.flow_id}")
             print(f"페르소나 ID: {request.persona_id}")
             print(f"시스템 메시지: {request.system_message}")
+            print(f"첨부된 이미지 수: {len(request.images) if request.images else 0}")
             
             # 최종 시스템 메시지 구성 (페르소나 + 설정 조합)
             final_system_message = await self._build_system_message(request.system_message, request.persona_id)
@@ -99,12 +100,24 @@ class ChatService:
                             print(f"  {i+1}위: {doc['filename']} (점수: {doc['score']:.3f})")
                         
                         # LangFlow를 통해 응답 생성 (Flow 기반 모델 사용)
-                        response_text = await self.generate_response_with_flow(
-                            request.message, 
-                            relevant_documents, 
-                            final_system_message,
-                            search_flow_id
-                        )
+                        if request.images and len(request.images) > 0:
+                            # 멀티모달 처리: 이미지 + 텍스트
+                            print(f"멀티모달 모드: 이미지 {len(request.images)}개와 텍스트 처리")
+                            response_text = await self.generate_multimodal_response_with_flow(
+                                request.message, 
+                                request.images,
+                                relevant_documents, 
+                                final_system_message,
+                                search_flow_id
+                            )
+                        else:
+                            # 기존 텍스트 전용 처리
+                            response_text = await self.generate_response_with_flow(
+                                request.message, 
+                                relevant_documents, 
+                                final_system_message,
+                                search_flow_id
+                            )
                     else:
                         print("검색 결과가 없습니다.")
                         response_text = "죄송합니다, 관련 문서를 찾을 수 없습니다."
@@ -390,33 +403,65 @@ class ChatService:
 2. 답변 내용에 관련된 출처를 [1], [2] 형태로 표시하세요  
 3. 여러 문서에서 얻은 정보는 모두 활용하세요"""
             
-            # OpenAI API 1.0+ 버전 사용
-            from openai import OpenAI
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            # LangFlow를 통해 멀티모달 응답 생성
+            if flow_id:
+                print(f"LangFlow 멀티모달 처리 시작: {flow_id}")
+                try:
+                    langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
+                        flow_id, 
+                        prompt, 
+                        images,
+                        system_message
+                    )
+                    
+                    if langflow_result.get("status") == "success":
+                        print(f"LangFlow 멀티모달 처리 성공")
+                        return langflow_result.get("response", "응답을 생성하지 못했습니다.")
+                    else:
+                        print(f"LangFlow 멀티모달 처리 실패: {langflow_result.get('error')}")
+                        # 폴백: OpenAI API 직접 사용
+                        
+                except Exception as e:
+                    print(f"LangFlow 멀티모달 처리 중 예외: {str(e)}")
+                    # 폴백: OpenAI API 직접 사용
             
-            # 전달받은 시스템 메시지 사용 (이미 _build_system_message에서 처리됨)
-            final_system_message = system_message
-            
-            print(f"사용된 시스템 메시지: {final_system_message}")
-            
-            # OpenAI API 호출 시작 시간 기록
-            openai_start_time = time.time()
-            print(f"OpenAI API 호출 시작: gpt-4, max_tokens=1500")
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",  # 빠른 응답을 위해 gpt-3.5-turbo 사용
-                messages=[
-                    {"role": "system", "content": final_system_message},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1500,
-                temperature=0.7
-            )
-            
-            openai_time = time.time() - openai_start_time
-            print(f"OpenAI API 호출 완료: {openai_time:.2f}초")
-            
-            return response.choices[0].message.content
+            # 폴백 또는 flow_id가 없는 경우: OpenAI API 직접 사용 (텍스트 전용)
+            print("텍스트 전용 폴백 처리")
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=settings.OPENAI_API_KEY)
+                
+                # 전달받은 시스템 메시지 사용 (이미 _build_system_message에서 처리됨)
+                final_system_message = system_message
+                
+                print(f"사용된 시스템 메시지: {final_system_message}")
+                
+                # OpenAI API 호출 시작 시간 기록
+                openai_start_time = time.time()
+                print(f"OpenAI API 호출 시작: gpt-3.5-turbo, max_tokens=1500")
+                
+                # 이미지가 있다는 것을 텍스트에 명시
+                image_note = f"\n\n참고: 사용자가 {len(images)}개의 이미지를 첨부했으나, 현재 텍스트 전용 모드로 처리되고 있습니다."
+                final_prompt = prompt + image_note
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",  # 빠른 응답을 위해 gpt-3.5-turbo 사용
+                    messages=[
+                        {"role": "system", "content": final_system_message},
+                        {"role": "user", "content": final_prompt}
+                    ],
+                    max_tokens=1500,
+                    temperature=0.7
+                )
+                
+                openai_time = time.time() - openai_start_time
+                print(f"OpenAI API 호출 완료: {openai_time:.2f}초")
+                
+                return response.choices[0].message.content
+                
+            except Exception as openai_error:
+                print(f"OpenAI API 폴백 실패: {str(openai_error)}")
+                return f"죄송합니다. 이미지 분석 및 응답 생성에 실패했습니다. 오류: {str(openai_error)}"
             
         except Exception as e:
             return f"응답 생성 중 오류가 발생했습니다: {str(e)}"
@@ -707,3 +752,85 @@ class ChatService:
             print(f"시스템 메시지 구성 중 오류: {str(e)}")
             # 최종 폴백: 하드코딩된 기본값
             return "당신은 도움이 되는 AI 어시스턴트입니다. 정확하고 유용한 정보를 제공하며, 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요."
+    
+    async def generate_multimodal_response_with_flow(self, query: str, images: List[str], context: List[Dict[str, Any]], system_message: str = None, flow_id: str = None) -> str:
+        """멀티모달 응답 생성: 이미지 + 텍스트를 함께 처리합니다."""
+        try:
+            print(f"=== 멀티모달 응답 생성 시작 ===")
+            print(f"텍스트: {query[:100]}...")
+            print(f"이미지 수: {len(images)}")
+            print(f"컨텍스트 문서 수: {len(context)}")
+            
+            # 컨텍스트 구성 (기존 텍스트 처리와 동일)
+            context_sections = []
+            sources_info = []
+            
+            for i, doc in enumerate(context, 1):
+                source_name = doc.get("filename", f"문서{i}")
+                content = doc.get("content", "")
+                
+                context_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                sources_info.append(f"[{i}] {source_name}")
+            
+            context_text = "\n".join(context_sections)
+            sources_text = "\n".join(sources_info) if sources_info else "참고 문서 없음"
+            
+            # 컨텍스트 길이 제한 (멀티모달에서는 더 짧게)
+            if len(context_text) > 5000:  # 이미지 때문에 컨텍스트를 더 줄임
+                print(f"컨텍스트 길이 {len(context_text)}자, 축소 필요")
+                shortened_sections = []
+                for i, doc in enumerate(context, 1):
+                    source_name = doc.get("filename", f"문서{i}")
+                    content = doc.get("content", "")[:300] + ("..." if len(doc.get("content", "")) > 300 else "")
+                    shortened_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                context_text = "\n".join(shortened_sections)
+                print(f"축소 후 길이: {len(context_text)}자")
+
+            # 멀티모달 프롬프트 구성 (이미지 분석 + 문서 참고)
+            prompt = f"""이미지를 분석하고 참고 문서를 함께 활용하여 질문에 답변하세요.
+
+참고 문서:
+{sources_text}
+
+문서 내용:
+{context_text}
+
+질문: {query}
+
+답변 시 다음을 포함하세요:
+1. 이미지에서 관찰되는 내용 분석
+2. 참고 문서의 관련 정보 활용
+3. 이미지와 문서 정보를 종합한 최종 답변
+4. 출처는 [1], [2] 형태로 표시
+
+답변:"""
+
+            # LangFlow를 통해 멀티모달 LLM 실행
+            flow_id_to_use = flow_id or await self._get_default_search_flow()
+            if flow_id_to_use:
+                print(f"멀티모달 LangFlow 실행: {flow_id_to_use}")
+                langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
+                    flow_id_to_use,
+                    prompt,
+                    images,
+                    system_message
+                )
+                
+                if langflow_result.get("status") == "success":
+                    response_text = langflow_result.get("response", "멀티모달 응답을 받지 못했습니다.")
+                    print(f"멀티모달 응답 성공: {len(response_text)} 글자")
+                    return response_text
+                else:
+                    print(f"멀티모달 실행 실패: {langflow_result.get('error', '알 수 없는 오류')}")
+                    # Fallback: 이미지 없이 텍스트만 처리
+                    return await self.generate_response_with_flow(query, context, system_message, flow_id)
+            else:
+                print("Flow ID가 없습니다. 텍스트 전용 Fallback 사용")
+                return await self.generate_response_with_flow(query, context, system_message, None)
+                
+        except Exception as e:
+            print(f"멀티모달 응답 생성 중 오류: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: 텍스트 전용 처리
+            return await self.generate_response_with_flow(query, context, system_message, flow_id)

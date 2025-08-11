@@ -51,10 +51,10 @@ export default function AdminLayout({
   // 로딩 중이거나 인증되지 않은 경우
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">인증 확인 중...</p>
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">인증 확인 중...</p>
         </div>
       </div>
     )
@@ -62,11 +62,11 @@ export default function AdminLayout({
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md">
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center p-8 bg-card rounded-lg shadow-md border">
           <AlertTriangleIcon className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">로그인이 필요합니다</h2>
-          <p className="text-gray-600 mb-4">관리자 페이지에 접근하려면 로그인해주세요.</p>
+          <h2 className="text-xl font-semibold mb-2 text-foreground">로그인이 필요합니다</h2>
+          <p className="text-muted-foreground mb-4">관리자 페이지에 접근하려면 로그인해주세요.</p>
           <Link href="/login">
             <Button>로그인하기</Button>
           </Link>
@@ -77,11 +77,11 @@ export default function AdminLayout({
 
   if (!isAdminUser) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md">
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center p-8 bg-card rounded-lg shadow-md border">
           <ShieldIcon className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">접근 권한이 없습니다</h2>
-          <p className="text-gray-600 mb-4">관리자 권한이 필요한 페이지입니다.</p>
+          <h2 className="text-xl font-semibold mb-2 text-foreground">접근 권한이 없습니다</h2>
+          <p className="text-muted-foreground mb-4">관리자 권한이 필요한 페이지입니다.</p>
           <div className="space-x-2">
             <Link href="/">
               <Button variant="outline">홈으로 이동</Button>
@@ -94,18 +94,18 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background">
       {/* 사이드바 */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* 사이드바 헤더 */}
-        <div className="h-16 px-6 border-b">
+        <div className="h-16 px-6 border-b border-border">
           <div className="flex items-center justify-between h-full">
             <div className="flex items-center space-x-3">
-              <ShieldIcon className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-bold text-gray-900">관리자</h1>
+              <ShieldIcon className="h-6 w-6 text-primary" />
+              <h1 className="text-xl font-bold text-foreground">관리자</h1>
             </div>
             <Button
               variant="ghost"
@@ -130,15 +130,15 @@ export default function AdminLayout({
                     className={cn(
                       "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
                       isActive
-                        ? "bg-blue-50 text-blue-700 border-r-2 border-blue-700"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                        ? "bg-primary/10 text-primary border-r-2 border-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                     onClick={() => setSidebarOpen(false)}
                   >
                     <item.icon
                       className={cn(
                         "mr-3 h-5 w-5 transition-colors",
-                        isActive ? "text-blue-500" : "text-gray-400 group-hover:text-gray-500"
+                        isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                       )}
                     />
                     {item.name}
@@ -171,7 +171,7 @@ export default function AdminLayout({
       {/* 메인 컨텐츠 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 상단 헤더 (모바일) */}
-        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-white border-b">
+        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-card border-b border-border">
           <Button
             variant="ghost"
             size="sm"
@@ -179,12 +179,12 @@ export default function AdminLayout({
           >
             <MenuIcon className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold">관리자 대시보드</h1>
+          <h1 className="text-lg font-semibold text-foreground">관리자 대시보드</h1>
           <div /> {/* 스페이서 */}
         </div>
 
         {/* 메인 컨텐츠 영역 */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-6 bg-background">
           {children}
         </main>
       </div>

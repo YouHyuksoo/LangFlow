@@ -16,7 +16,12 @@ class FileService:
     def __init__(self):
         self.upload_dir = settings.UPLOAD_DIR
         self.max_file_size = settings.MAX_FILE_SIZE
-        self.allowed_extensions = settings.ALLOWED_EXTENSIONS
+        # 동적으로 설정에서 허용 확장자 로드
+        from ..api.settings import load_settings
+        current_settings = load_settings()
+        # 설정에서 허용된 파일 형식을 가져와서 확장자로 변환 (.pdf -> .pdf)
+        allowed_file_types = current_settings.get("allowedFileTypes", ["pdf"])
+        self.allowed_extensions = {f".{ext}" if not ext.startswith('.') else ext for ext in allowed_file_types}
         self.category_service = CategoryService()
         # 벡터 서비스는 지연 로딩으로 처리 - 벡터화 관련 작업에서만 초기화
         self._vector_service = None
@@ -229,6 +234,9 @@ class FileService:
             self.files_metadata[file_id] = file_info
             self._save_files_metadata()
             
+            # 모든 지원 파일에 대해 동일한 벡터화 안내 메시지 (PDF, Office 파일 모두 지원)
+            message = "파일이 성공적으로 업로드되었습니다. 벡터화는 별도 관리 페이지에서 실행해주세요."
+            
             return FileUploadResponse(
                 file_id=file_id,
                 filename=file.filename,
@@ -236,7 +244,7 @@ class FileService:
                 file_size=file_size,
                 category_id=category_id,
                 category_name=category_name,
-                message="파일이 성공적으로 업로드되었습니다. 벡터화는 별도 관리 페이지에서 실행해주세요."
+                message=message
             )
             
         except HTTPException:
@@ -520,8 +528,12 @@ class FileService:
                             "error_message": file_data.get("error_message")
                         }
                         
-                        # 디버그: 벡터화 상태 정보 출력
-                        print(f"🔍 파일 {file_data.get('filename', 'Unknown')}: vectorized={vectorized} (raw: {file_data.get('vectorized')}), status={file_data.get('status')}, vectorization_status={file_data.get('vectorization_status')}")
+                        # 벡터화 상태가 변경된 경우만 로그 출력
+                        if file_data.get('vectorized') != vectorized:
+                            print(f"🔄 벡터화 상태 변경 - {file_data.get('filename', 'Unknown')}: {file_data.get('vectorized')} → {vectorized}")
+                        
+                        # 디버그: 벡터화 상태 정보 출력 (필요시 활성화)
+                        # print(f"🔍 파일 {file_data.get('filename', 'Unknown')}: vectorized={vectorized} (raw: {file_data.get('vectorized')}), status={file_data.get('status')}, vectorization_status={file_data.get('vectorization_status')}")
                         
                         # 생성 시도 로그 제거
                         
@@ -786,6 +798,96 @@ class FileService:
         except Exception as e:
             print(f"PDF 텍스트 추출 중 오류: {str(e)}")
             return ""
+
+    async def extract_text_from_office(self, file_path: str) -> str:
+        """Office 파일(DOC, PPT, XLS)에서 텍스트를 추출합니다."""
+        try:
+            file_extension = os.path.splitext(file_path)[1].lower()
+            text = ""
+            
+            if file_extension in ['.doc', '.docx']:
+                # Word 문서 처리
+                try:
+                    from docx import Document
+                    if file_extension == '.docx':
+                        doc = Document(file_path)
+                        for paragraph in doc.paragraphs:
+                            if paragraph.text.strip():
+                                text += paragraph.text + "\n"
+                    else:
+                        # .doc 파일은 python-docx로 직접 처리 불가, 에러 메시지 추가
+                        text = f"⚠️ .doc 파일은 현재 지원되지 않습니다. .docx 파일로 변환 후 업로드해주세요."
+                except ImportError:
+                    text = f"⚠️ Word 파일 처리에 필요한 라이브러리가 설치되지 않았습니다. (python-docx)"
+                except Exception as e:
+                    text = f"⚠️ Word 파일 텍스트 추출 실패: {str(e)}"
+                    
+            elif file_extension in ['.ppt', '.pptx']:
+                # PowerPoint 파일 처리
+                try:
+                    from pptx import Presentation
+                    if file_extension == '.pptx':
+                        prs = Presentation(file_path)
+                        for slide_num, slide in enumerate(prs.slides):
+                            text += f"[슬라이드 {slide_num + 1}]\n"
+                            for shape in slide.shapes:
+                                if hasattr(shape, 'text') and shape.text.strip():
+                                    text += shape.text + "\n"
+                            text += "\n"
+                    else:
+                        # .ppt 파일은 python-pptx로 직접 처리 불가
+                        text = f"⚠️ .ppt 파일은 현재 지원되지 않습니다. .pptx 파일로 변환 후 업로드해주세요."
+                except ImportError:
+                    text = f"⚠️ PowerPoint 파일 처리에 필요한 라이브러리가 설치되지 않았습니다. (python-pptx)"
+                except Exception as e:
+                    text = f"⚠️ PowerPoint 파일 텍스트 추출 실패: {str(e)}"
+                    
+            elif file_extension in ['.xls', '.xlsx']:
+                # Excel 파일 처리
+                try:
+                    import openpyxl
+                    if file_extension == '.xlsx':
+                        wb = openpyxl.load_workbook(file_path, data_only=True)
+                        for sheet_name in wb.sheetnames:
+                            text += f"[시트: {sheet_name}]\n"
+                            sheet = wb[sheet_name]
+                            for row in sheet.iter_rows(values_only=True):
+                                row_text = []
+                                for cell_value in row:
+                                    if cell_value is not None:
+                                        row_text.append(str(cell_value))
+                                if row_text:
+                                    text += " | ".join(row_text) + "\n"
+                            text += "\n"
+                    else:
+                        # .xls 파일은 xlrd 등이 필요하지만 복잡하므로 경고 메시지
+                        text = f"⚠️ .xls 파일은 현재 지원되지 않습니다. .xlsx 파일로 변환 후 업로드해주세요."
+                except ImportError:
+                    text = f"⚠️ Excel 파일 처리에 필요한 라이브러리가 설치되지 않았습니다. (openpyxl)"
+                except Exception as e:
+                    text = f"⚠️ Excel 파일 텍스트 추출 실패: {str(e)}"
+            
+            return text.strip() if text else "⚠️ 텍스트를 추출할 수 없습니다."
+            
+        except Exception as e:
+            print(f"Office 파일 텍스트 추출 중 오류: {str(e)}")
+            return f"⚠️ 파일 처리 중 오류가 발생했습니다: {str(e)}"
+
+    async def extract_text_from_file(self, file_path: str) -> str:
+        """파일 확장자에 따라 적절한 텍스트 추출 방법을 선택합니다."""
+        try:
+            file_extension = os.path.splitext(file_path)[1].lower()
+            
+            if file_extension == '.pdf':
+                return await self.extract_text_from_pdf(file_path)
+            elif file_extension in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']:
+                return await self.extract_text_from_office(file_path)
+            else:
+                return f"⚠️ 지원되지 않는 파일 형식입니다: {file_extension}"
+                
+        except Exception as e:
+            print(f"파일 텍스트 추출 중 오류: {str(e)}")
+            return f"⚠️ 파일 처리 중 오류가 발생했습니다: {str(e)}"
     
     async def chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
         """텍스트를 청크로 분할합니다."""

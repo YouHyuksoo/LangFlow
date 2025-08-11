@@ -35,12 +35,21 @@ async def upload_file(
                 detail="카테고리를 지정해야 합니다. category_id 또는 category를 제공해주세요."
             )
         
-        # 파일 형식 검증
-        if not file.filename.lower().endswith('.pdf'):
+        # 파일 형식 검증 - 동적 설정 사용
+        from .settings import load_settings
+        current_settings = load_settings()
+        allowed_file_types = current_settings.get("allowedFileTypes", ["pdf"])
+        allowed_extensions = [f".{ext}" if not ext.startswith('.') else ext for ext in allowed_file_types]
+        
+        file_extension = None
+        if file.filename:
+            file_extension = '.' + file.filename.lower().split('.')[-1]
+        
+        if not file_extension or file_extension not in allowed_extensions:
             _clog.error(f"잘못된 파일 형식: {file.filename}")
             raise HTTPException(
                 status_code=400,
-                detail="PDF 파일만 업로드할 수 있습니다."
+                detail=f"지원되지 않는 파일 형식입니다. 지원 형식: {', '.join(allowed_extensions)}"
             )
         
         # 파일 크기 로깅 (검증은 FileService에서 처리)
@@ -323,13 +332,17 @@ async def execute_vectorization(
                 if file_info and file_info.status in ["pending_vectorization", "vectorization_failed"]:
                     target_files.append(file_info)
         elif category_id:
-            # 특정 카테고리의 모든 파일 벡터화
+            # 특정 카테고리의 모든 파일 벡터화 (최근 업로드된 것만)
+            from datetime import datetime, timedelta
+            recent_cutoff = datetime.now() - timedelta(hours=1)
             files = await get_file_service_instance().list_files(category_id)
-            target_files = [f for f in files if f.status in ["pending_vectorization", "vectorization_failed"]]
+            target_files = [f for f in files if f.status in ["uploaded", "pending_vectorization", "vectorization_failed"] and f.upload_time >= recent_cutoff]
         else:
-            # 모든 대기 중인 파일 벡터화
+            # 모든 대기 중인 파일 벡터화 (최근 업로드된 것만)
+            from datetime import datetime, timedelta
+            recent_cutoff = datetime.now() - timedelta(hours=1)
             all_files = await get_file_service_instance().list_files()
-            target_files = [f for f in all_files if f.status in ["pending_vectorization", "vectorization_failed"]]
+            target_files = [f for f in all_files if f.status in ["uploaded", "pending_vectorization", "vectorization_failed"] and f.upload_time >= recent_cutoff]
         
         if not target_files:
             _clog.debug("벡터화 대상 없음")

@@ -1083,7 +1083,7 @@ function PendingUsersSection() {
       <div className="flex items-center justify-center h-40">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">승인 대기 사용자 목록을 불러오는 중...</p>
+          <p className="text-muted-foreground">승인 대기 사용자 목록을 불러오는 중...</p>
         </div>
       </div>
     );
@@ -1092,9 +1092,9 @@ function PendingUsersSection() {
   if (pendingUsers.length === 0) {
     return (
       <div className="text-center py-8">
-        <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">승인 대기 중인 사용자가 없습니다</h3>
-        <p className="text-gray-500">새로운 회원가입 신청이 있으면 여기에 표시됩니다.</p>
+        <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-foreground mb-2">승인 대기 중인 사용자가 없습니다</h3>
+        <p className="text-muted-foreground">새로운 회원가입 신청이 있으면 여기에 표시됩니다.</p>
       </div>
     );
   }
@@ -1113,8 +1113,8 @@ function PendingUsersSection() {
                 </Avatar>
                 <div>
                   <h3 className="text-lg font-semibold">{user.full_name || user.username}</h3>
-                  <p className="text-sm text-gray-500">{user.username}</p>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">{user.username}</p>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Mail className="h-3 w-3" />
                       {user.email}

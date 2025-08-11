@@ -139,14 +139,14 @@ export function SimpleTablePreview({
 
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse border border-gray-300 bg-white">
+            <table className="min-w-full border-collapse border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800">
               {/* 헤더 */}
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-slate-700">
                 <tr>
                   {tableData.headers.map((header, index) => (
                     <th
                       key={index}
-                      className="border border-gray-300 px-4 py-3 font-semibold text-gray-900 text-left"
+                      className="border border-gray-300 dark:border-slate-600 px-4 py-3 font-semibold text-gray-900 dark:text-slate-100 text-left"
                     >
                       {header}
                     </th>
@@ -160,13 +160,13 @@ export function SimpleTablePreview({
                   <tr
                     key={rowIndex}
                     className={`${
-                      rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"
-                    } hover:bg-gray-100 transition-colors`}
+                      rowIndex % 2 === 0 ? "bg-white dark:bg-slate-800" : "bg-gray-50 dark:bg-slate-700"
+                    } hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors`}
                   >
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
-                        className="border border-gray-300 px-4 py-3 text-gray-700"
+                        className="border border-gray-300 dark:border-slate-600 px-4 py-3 text-gray-700 dark:text-slate-200"
                       >
                         {cell}
                       </td>

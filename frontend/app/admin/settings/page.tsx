@@ -57,7 +57,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<SystemSettings>({
     maxFileSize: 10,
-    allowedFileTypes: ["pdf"],
+    allowedFileTypes: ["pdf", "docx", "pptx", "xlsx"],
     uploadDirectory: "uploads/",
     vectorDimension: 1536,
     chunkSize: 1000,

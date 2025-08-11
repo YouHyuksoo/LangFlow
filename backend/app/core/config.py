@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     # 파일 업로드 설정
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 10485760  # 10MB
+    # 기본 허용 확장자 (실제로는 system_settings.json에서 동적 로드)
     ALLOWED_EXTENSIONS: set = {".pdf"}
     
     # 데이터 저장 설정

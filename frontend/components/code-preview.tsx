@@ -130,10 +130,10 @@ export function CodePreview({
       cpp: "bg-purple-100 text-purple-800",
       css: "bg-pink-100 text-pink-800",
       html: "bg-red-100 text-red-800",
-      json: "bg-gray-100 text-gray-800",
+      json: "bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200",
       sql: "bg-indigo-100 text-indigo-800",
     };
-    return colors[lang.toLowerCase()] || "bg-gray-100 text-gray-800";
+    return colors[lang.toLowerCase()] || "bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200";
   };
 
   // 기본 신택스 하이라이팅 (간단한 버전)
@@ -231,7 +231,7 @@ export function CodePreview({
   if (!showPreview) {
     return (
       <div
-        className={`flex items-center justify-between p-3 border rounded-lg bg-gray-50 ${className}`}
+        className={`flex items-center justify-between p-3 border rounded-lg bg-gray-50 dark:bg-slate-800 dark:border-slate-600 ${className}`}
       >
         <div className="flex items-center space-x-2">
           <Code2 className="h-4 w-4 text-blue-600" />
@@ -348,11 +348,11 @@ export function CodePreview({
         <CardContent className="p-0">
           <div
             className={`${
-              isFullscreen ? "fixed inset-0 z-50 bg-white" : "relative"
+              isFullscreen ? "fixed inset-0 z-50 bg-white dark:bg-slate-900" : "relative"
             }`}
           >
             {isFullscreen && (
-              <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+              <div className="flex items-center justify-between p-4 border-b bg-gray-50 dark:bg-slate-800 dark:border-slate-600">
                 <span className="text-sm font-medium">
                   코드 미리보기 - 전체화면
                 </span>
@@ -366,11 +366,11 @@ export function CodePreview({
               </div>
             )}
 
-            <div className="bg-gray-900 text-gray-100 overflow-auto">
+            <div className="bg-gray-900 dark:bg-slate-900 text-gray-100 dark:text-slate-100 overflow-auto">
               <div className="flex">
                 {/* 라인 번호 */}
                 {showLineNumbers && (
-                  <div className="bg-gray-800 px-4 py-4 text-xs text-gray-400 select-none border-r border-gray-700">
+                  <div className="bg-gray-800 dark:bg-slate-800 px-4 py-4 text-xs text-gray-400 dark:text-slate-400 select-none border-r border-gray-700 dark:border-slate-600">
                     {generateLineNumbers(lineCount).map((num, index) => (
                       <div key={index} className="leading-6">
                         {num}

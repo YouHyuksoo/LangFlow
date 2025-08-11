@@ -118,10 +118,14 @@ export function FileUpload({
         }
 
         // 파일 형식 검증
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
+        const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'];
+        const fileName = file.name.toLowerCase();
+        const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+        
+        if (!hasValidExtension) {
           toast({
             title: "잘못된 파일 형식",
-            description: `"${file.name}"은 PDF 파일이 아닙니다. PDF 파일만 업로드할 수 있습니다.`,
+            description: `"${file.name}"은 지원되지 않는 파일 형식입니다. PDF, DOC, PPT, XLS 파일만 업로드할 수 있습니다.`,
             variant: "destructive",
           });
           return;
@@ -151,6 +155,12 @@ export function FileUpload({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
+      "application/msword": [".doc"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "application/vnd.ms-powerpoint": [".ppt"],
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+      "application/vnd.ms-excel": [".xls"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
     },
     multiple: true,
   });
@@ -221,7 +231,7 @@ export function FileUpload({
           <CardTitle>문서 업로드</CardTitle>
           <CardDescription>
             {selectedCategories.length > 0
-              ? "PDF 파일을 드래그하거나 클릭하여 업로드하세요"
+              ? "PDF, DOC, PPT, XLS 파일을 드래그하거나 클릭하여 업로드하세요"
               : "카테고리를 선택한 후 파일을 업로드할 수 있습니다"}
           </CardDescription>
         </CardHeader>
@@ -261,7 +271,7 @@ export function FileUpload({
                     : "파일을 드래그하거나 클릭하여 업로드"}
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  PDF 파일만 지원됩니다 (최대 {maxFileSize}MB)
+                  PDF, DOC, PPT, XLS 파일만 지원됩니다 (최대 {maxFileSize}MB)
                 </p>
                 <Button
                   disabled={selectedCategories.length === 0}

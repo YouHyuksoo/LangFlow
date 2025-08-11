@@ -114,7 +114,7 @@ export function MarkdownPreview({
   if (!showPreview) {
     return (
       <div
-        className={`flex items-center justify-between p-3 border rounded-lg bg-gray-50 ${className}`}
+        className={`flex items-center justify-between p-3 border rounded-lg bg-gray-50 dark:bg-slate-800 dark:border-slate-600 ${className}`}
       >
         <div className="flex items-center space-x-2">
           <FileText className="h-4 w-4 text-green-600" />
@@ -173,7 +173,7 @@ export function MarkdownPreview({
       </div>
 
       {/* 마크다운 미리보기 */}
-      <Card className="border">
+      <Card className="border dark:border-slate-600 dark:bg-slate-800">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -244,12 +244,12 @@ export function MarkdownPreview({
 
         <CardContent className="p-0">
           <div
-            className={`border-t ${
-              isFullscreen ? "fixed inset-0 z-50 bg-white" : "relative"
+            className={`border-t dark:border-slate-600 ${
+              isFullscreen ? "fixed inset-0 z-50 bg-white dark:bg-slate-900" : "relative"
             }`}
           >
             {isFullscreen && (
-              <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+              <div className="flex items-center justify-between p-4 border-b bg-gray-50 dark:bg-slate-800 dark:border-slate-600">
                 <span className="text-sm font-medium">
                   마크다운 미리보기 - 전체화면
                 </span>
@@ -270,11 +270,11 @@ export function MarkdownPreview({
             >
               {renderMode === "rendered" ? (
                 <div
-                  className="prose prose-sm max-w-none p-6"
+                  className="prose prose-sm max-w-none p-6 dark:prose-invert"
                   dangerouslySetInnerHTML={{ __html: renderedHtml }}
                 />
               ) : (
-                <pre className="p-6 text-xs bg-gray-50 whitespace-pre-wrap font-mono">
+                <pre className="p-6 text-xs bg-gray-50 dark:bg-slate-800 dark:text-slate-200 whitespace-pre-wrap font-mono">
                   {markdown}
                 </pre>
               )}
@@ -330,14 +330,18 @@ export function MarkdownPreview({
 function parseMarkdownToHtml(markdown: string): string {
   let html = markdown;
 
+  // 구분선 (제일 먼저 처리)
+  html = html.replace(/^(\s*---+\s*)$/gm, '<hr class="my-6 border-gray-300 dark:border-slate-600" />');
+  html = html.replace(/\n(\s*---+\s*)\n/g, '\n<hr class="my-6 border-gray-300 dark:border-slate-600" />\n');
+
   // 코드 블록 (먼저 처리하여 다른 변환에서 제외)
   const codeBlocks: string[] = [];
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
     const index = codeBlocks.length;
     codeBlocks.push(
-      `<pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto"><code class="language-${
+      `<pre class="bg-gray-100 dark:bg-slate-800 p-4 rounded-lg overflow-x-auto"><code class="language-${
         lang || "text"
-      }">${escapeHtml(code.trim())}</code></pre>`
+      } dark:text-slate-200">${escapeHtml(code.trim())}</code></pre>`
     );
     return `__CODE_BLOCK_${index}__`;
   });
@@ -345,10 +349,22 @@ function parseMarkdownToHtml(markdown: string): string {
   // 인라인 코드
   html = html.replace(
     /`([^`]+)`/g,
-    '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>'
+    '<code class="bg-gray-100 dark:bg-slate-700 dark:text-slate-200 px-1 py-0.5 rounded text-sm">$1</code>'
   );
 
-  // 헤더
+  // 헤더 (큰 것부터 작은 것 순으로 처리)
+  html = html.replace(
+    /^###### (.*$)/gm,
+    '<h6 class="text-xs font-medium mt-3 mb-2 text-gray-600 dark:text-gray-400">$1</h6>'
+  );
+  html = html.replace(
+    /^##### (.*$)/gm,
+    '<h5 class="text-sm font-medium mt-4 mb-2 text-gray-700 dark:text-gray-300">$1</h5>'
+  );
+  html = html.replace(
+    /^#### (.*$)/gm,
+    '<h4 class="text-base font-semibold mt-5 mb-3 text-gray-800 dark:text-gray-200">$1</h4>'
+  );
   html = html.replace(
     /^### (.*$)/gm,
     '<h3 class="text-lg font-semibold mt-6 mb-3">$1</h3>'
@@ -370,7 +386,7 @@ function parseMarkdownToHtml(markdown: string): string {
   // 링크
   html = html.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" class="text-blue-600 hover:underline">$1</a>'
+    '<a href="$2" class="text-blue-600 dark:text-blue-400 hover:underline">$1</a>'
   );
 
   // 이미지
@@ -396,15 +412,15 @@ function parseMarkdownToHtml(markdown: string): string {
   // 인용문
   html = html.replace(
     /^> (.+$)/gm,
-    '<blockquote class="border-l-4 border-gray-300 pl-4 py-2 bg-gray-50 italic">$1</blockquote>'
+    '<blockquote class="border-l-4 border-gray-300 dark:border-slate-600 pl-4 py-2 bg-gray-50 dark:bg-slate-800 dark:text-slate-200 italic">$1</blockquote>'
   );
-
-  // 구분선
-  html = html.replace(/^---+$/gm, '<hr class="my-6 border-gray-300" />');
 
   // 단락
   html = html.replace(/\n\n/g, '</p><p class="mb-4">');
   html = '<p class="mb-4">' + html + "</p>";
+
+  // HR 태그가 p 태그로 감싸진 경우 수정
+  html = html.replace(/<p class="mb-4">(<hr[^>]*>)<\/p>/g, '$1');
 
   // 빈 단락 제거
   html = html.replace(/<p class="mb-4"><\/p>/g, "");
@@ -462,10 +478,10 @@ function parseMarkdownTables(html: string): string {
       // HTML 테이블 생성
       let tableHtml = '<div class="overflow-x-auto my-6">';
       tableHtml +=
-        '<table class="min-w-full border-collapse border border-gray-300 bg-white shadow-sm rounded-lg">';
+        '<table class="min-w-full border-collapse border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm rounded-lg">';
 
       // 헤더 생성
-      tableHtml += '<thead class="bg-gray-50">';
+      tableHtml += '<thead class="bg-gray-50 dark:bg-slate-700">';
       tableHtml += "<tr>";
       headers.forEach((header: string, index: number) => {
         const alignment = alignments[index] || "left";
@@ -475,7 +491,7 @@ function parseMarkdownTables(html: string): string {
             : alignment === "right"
             ? "text-right"
             : "text-left";
-        tableHtml += `<th class="border border-gray-300 px-4 py-3 font-semibold text-gray-900 ${alignClass}">${header}</th>`;
+        tableHtml += `<th class="border border-gray-300 dark:border-slate-600 px-4 py-3 font-semibold text-gray-900 dark:text-slate-100 ${alignClass}">${header}</th>`;
       });
       tableHtml += "</tr>";
       tableHtml += "</thead>";
@@ -483,8 +499,8 @@ function parseMarkdownTables(html: string): string {
       // 바디 생성
       tableHtml += "<tbody>";
       rows.forEach((row: string[], rowIndex: number) => {
-        const rowClass = rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50";
-        tableHtml += `<tr class="${rowClass} hover:bg-gray-100 transition-colors">`;
+        const rowClass = rowIndex % 2 === 0 ? "bg-white dark:bg-slate-800" : "bg-gray-50 dark:bg-slate-700";
+        tableHtml += `<tr class="${rowClass} hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">`;
         row.forEach((cell: string, cellIndex: number) => {
           const alignment = alignments[cellIndex] || "left";
           const alignClass =
@@ -493,7 +509,7 @@ function parseMarkdownTables(html: string): string {
               : alignment === "right"
               ? "text-right"
               : "text-left";
-          tableHtml += `<td class="border border-gray-300 px-4 py-3 text-gray-700 ${alignClass}">${cell}</td>`;
+          tableHtml += `<td class="border border-gray-300 dark:border-slate-600 px-4 py-3 text-gray-700 dark:text-slate-200 ${alignClass}">${cell}</td>`;
         });
         tableHtml += "</tr>";
       });

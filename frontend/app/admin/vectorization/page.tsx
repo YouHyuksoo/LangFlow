@@ -357,7 +357,7 @@ export default function VectorizationPage() {
     if (file.error_message || file.vectorization_status === "failed") {
       return <AlertTriangle className="h-4 w-4 text-red-500" />;
     }
-    return <Clock className="h-4 w-4 text-gray-400" />;
+    return <Clock className="h-4 w-4 text-muted-foreground" />;
   };
 
   const getStatusBadge = (file: VectorizationFile) => {
@@ -406,7 +406,7 @@ export default function VectorizationPage() {
     
     // 기본 대기 상태
     return (
-      <Badge className="bg-gray-100 text-gray-800 border-gray-200">
+      <Badge variant="secondary">
         <Clock className="h-3 w-3 mr-1" />
         대기중
       </Badge>
@@ -534,7 +534,7 @@ export default function VectorizationPage() {
                   %
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-muted rounded-full h-3">
                 <div
                   className="bg-green-500 h-3 rounded-full transition-all duration-300"
                   style={{
