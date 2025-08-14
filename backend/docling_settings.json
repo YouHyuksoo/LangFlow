@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "default_extract_tables": true,
+  "default_extract_images": true,
+  "default_ocr_enabled": false,
+  "default_output_format": "markdown",
+  "max_file_size_mb": 50,
+  "supported_formats": [
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".html"
+  ]
+}

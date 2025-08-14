@@ -2,9 +2,10 @@ import os
 import uuid
 import aiofiles
 import json
+import time
 from typing import List, Optional, Dict, Any
 from fastapi import UploadFile, HTTPException
-from ..models.schemas import FileUploadResponse, FileInfo
+from ..models.schemas import FileUploadResponse, FileInfo, FileProcessingOptions, DoclingResult
 from ..core.config import settings
 from datetime import datetime
 from .category_service import CategoryService
@@ -25,6 +26,8 @@ class FileService:
         self.category_service = CategoryService()
         # 벡터 서비스는 지연 로딩으로 처리 - 벡터화 관련 작업에서만 초기화
         self._vector_service = None
+        # Docling 서비스는 지연 로딩으로 처리
+        self._docling_service = None
         
         # 업로드 디렉토리 생성
         os.makedirs(self.upload_dir, exist_ok=True)
@@ -48,6 +51,19 @@ class FileService:
                 # 대신 None을 반환하여 상위에서 처리
                 self._vector_service = None
         return self._vector_service
+    
+    @property
+    def docling_service(self):
+        """Docling 서비스를 지연 로딩으로 가져옵니다."""
+        if self._docling_service is None:
+            print("DoclingService 지연 로딩 초기화 중...")
+            try:
+                from .docling_service import DoclingService
+                self._docling_service = DoclingService()
+            except Exception as e:
+                print(f"DoclingService 초기화 실패: {str(e)}")
+                self._docling_service = None
+        return self._docling_service
     
     def _ensure_data_dir(self):
         """데이터 디렉토리 생성"""
@@ -84,7 +100,7 @@ class FileService:
         except Exception as e:
             print(f"파일 메타데이터 저장 중 오류: {str(e)}")
     
-    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False) -> FileUploadResponse:
+    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False, processing_options: Optional[FileProcessingOptions] = None) -> FileUploadResponse:
         """파일을 업로드하고 벡터화 준비를 합니다."""
         try:
             # 파일 확장자 검증
@@ -215,6 +231,33 @@ class FileService:
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
+            # Docling 전처리 실행 (설정된 경우)
+            docling_result = None
+            if processing_options and processing_options.use_docling and processing_options.docling_options:
+                print(f"🔄 Docling 전처리 시작: {file.filename}")
+                try:
+                    if self.docling_service and self.docling_service.is_available:
+                        # Docling 지원 파일 형식 확인
+                        if await self.docling_service.is_supported_format(file_path):
+                            docling_result = await self.docling_service.process_document(
+                                file_path, processing_options.docling_options
+                            )
+                            if docling_result.success:
+                                print(f"✅ Docling 전처리 완료: {file.filename}")
+                            else:
+                                print(f"❌ Docling 전처리 실패: {docling_result.error}")
+                        else:
+                            print(f"⚠️ Docling 미지원 파일 형식: {file_extension}")
+                    else:
+                        print("⚠️ Docling 서비스를 사용할 수 없습니다.")
+                except Exception as e:
+                    print(f"❌ Docling 전처리 중 오류: {str(e)}")
+                    docling_result = DoclingResult(
+                        success=False,
+                        error=str(e),
+                        content={}
+                    )
+
             # 파일 정보 저장
             file_info = {
                 "file_id": file_id,
@@ -227,15 +270,25 @@ class FileService:
                 "category_name": category_name,
                 "status": "uploaded",  # 단순 업로드 상태로 변경
                 "upload_time": datetime.now(),
-                "vectorized": False
+                "vectorized": False,
+                # Docling 관련 정보 추가
+                "docling_processed": docling_result is not None,
+                "docling_success": docling_result.success if docling_result else False,
+                "docling_result": docling_result.dict() if docling_result else None
             }
             
             # 메타데이터 저장
             self.files_metadata[file_id] = file_info
             self._save_files_metadata()
             
-            # 모든 지원 파일에 대해 동일한 벡터화 안내 메시지 (PDF, Office 파일 모두 지원)
-            message = "파일이 성공적으로 업로드되었습니다. 벡터화는 별도 관리 페이지에서 실행해주세요."
+            # 응답 메시지 생성 (Docling 처리 결과 포함)
+            if docling_result:
+                if docling_result.success:
+                    message = f"파일이 성공적으로 업로드되고 Docling으로 전처리되었습니다. 처리 시간: {docling_result.processing_time:.2f}초"
+                else:
+                    message = f"파일이 업로드되었지만 Docling 전처리에 실패했습니다: {docling_result.error}"
+            else:
+                message = "파일이 성공적으로 업로드되었습니다. 벡터화는 별도 관리 페이지에서 실행해주세요."
             
             return FileUploadResponse(
                 file_id=file_id,
@@ -258,16 +311,25 @@ class FileService:
     
     async def _start_vectorization(self, file_id: str):
         """백그라운드에서 파일 벡터화를 시작합니다."""
+        vectorization_start_time = time.time()
         try:
             print(f"=== 벡터화 시작: {file_id} ===")
+            print(f"🕰️ 벡터화 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
             # 파일 정보 조회
+            print("🔍 파일 정보 조회 중...")
             file_info = await self.get_file_info(file_id)
             if not file_info:
-                print(f"파일 정보를 찾을 수 없습니다: {file_id}")
+                print(f"❌ 파일 정보를 찾을 수 없습니다: {file_id}")
                 return
             
-            print(f"파일 정보: {file_info.filename}, 카테고리: {file_info.category_name}")
+            file_size = file_info.file_size or 0
+            print(f"✅ 파일 정보 확인: {file_info.filename} ({file_size / 1024 / 1024:.2f} MB)")
+            print(f"📊 파일 세부사항:")
+            print(f"   - 파일명: {file_info.filename}")
+            print(f"   - 카테고리: {file_info.category_name}")
+            print(f"   - 파일 사이즈: {file_size / 1024 / 1024:.2f} MB")
+            print(f"   - 업로드 경로: {file_info.file_path}")
             
             # 파일 상태를 벡터화 대기 중으로 업데이트
             if file_id in self.files_metadata:
@@ -295,44 +357,164 @@ class FileService:
                 self.files_metadata[file_id]["status"] = "vectorizing"
                 self._save_files_metadata()
                 print(f"상태 업데이트: vectorizing")
+                
+                # SSE 벡터화 시작 이벤트 발송
+                print("📡 SSE 이벤트 전송 시도 중...")
+                try:
+                    from ..api.sse import get_sse_manager
+                    sse_manager = get_sse_manager()
+                    await sse_manager.broadcast("vectorization_started", {
+                        "file_id": file_id,
+                        "filename": file_info.filename if file_info else "Unknown",
+                        "status": "started",
+                        "message": "벡터화가 시작되었습니다."
+                    })
+                    print(f"✅ SSE 벡터화 시작 이벤트 전송 성공: {file_id}")
+                    print("📢 클라이언트에 벡터화 시작 알림 전송")
+                except Exception as sse_error:
+                    print(f"❌ SSE 이벤트 전송 실패: {sse_error}")
             
-            # LangFlow를 통한 벡터화 실행
-            print("LangFlow 벡터화 실행 시작...")
+            # Docling 통합 벡터화 파이프라인 실행
+            print("Docling 통합 벡터화 파이프라인 실행 시작...")
+            result = {"status": "failed", "error": "벡터화 실패"}
+            
             try:
-                from .langflow_service import LangflowService
-                langflow_service = LangflowService()
-                result = await langflow_service.process_file_with_flow(file_id, vectorization_flow_id, file_info)
-                print(f"LangFlow 벡터화 결과: {result}")
+                # VectorService의 새로운 통합 파이프라인 사용
+                if self.vector_service:
+                    # 파일 메타데이터 준비
+                    vector_metadata = {
+                        "filename": file_info.filename,
+                        "category_id": file_info.category_id,
+                        "category_name": file_info.category_name,
+                        "upload_time": file_info.upload_time.isoformat() if file_info.upload_time else None,
+                        "file_size": file_info.file_size
+                    }
+                    
+                    # Docling 옵션 확인 (벡터화 시점에서 Docling 재시도)
+                    docling_options = None
+                    file_metadata = self.files_metadata.get(file_id, {})
+                    
+                    # 벡터화 시점에서 Docling을 시도 (업로드 시점 설정과 무관하게)
+                    enable_docling = True  # 항상 Docling 시도
+                    
+                    # 기본 Docling 옵션 설정
+                    from ..models.schemas import DoclingOptions
+                    docling_options = DoclingOptions(
+                        enabled=True,
+                        extract_tables=True,
+                        extract_images=True,
+                        ocr_enabled=False,
+                        output_format="markdown"
+                    )
+                    
+                    print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
+                    
+                    # 통합 벡터화 파이프라인 실행
+                    vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
+                        file_path=file_info.file_path,
+                        file_id=file_id,
+                        metadata=vector_metadata,
+                        enable_docling=enable_docling,
+                        docling_options=docling_options
+                    )
+                    
+                    if vectorization_result["success"]:
+                        result = {
+                            "status": "completed",
+                            "chunks_count": vectorization_result["chunks_count"],
+                            "processing_method": vectorization_result.get("processing_method", "unknown"),
+                            "processing_time": vectorization_result.get("processing_time", 0)
+                        }
+                        print(f"✅ 통합 벡터화 완료: {vectorization_result['chunks_count']}개 청크, 방법: {vectorization_result.get('processing_method')}")
+                    else:
+                        result = {
+                            "status": "failed", 
+                            "error": vectorization_result.get("error", "벡터화 실패")
+                        }
+                        print(f"❌ 통합 벡터화 실패: {vectorization_result.get('error')}")
+                else:
+                    print("❌ VectorService를 사용할 수 없습니다.")
+                    result = {"status": "failed", "error": "VectorService 초기화 실패"}
+                    
             except Exception as e:
-                print(f"LangflowService 초기화 실패: {str(e)}")
+                print(f"❌ 통합 벡터화 파이프라인 실행 중 오류: {str(e)}")
                 result = {"status": "failed", "error": str(e)}
             
             # 벡터화 완료 후 상태 업데이트
+            print("📋 벡터화 결과 상태 업데이트 중...")
+            total_elapsed = time.time() - vectorization_start_time
+            
             if file_id in self.files_metadata:
                 if result.get("status") == "completed":
                     self.files_metadata[file_id]["status"] = "vectorized"
                     self.files_metadata[file_id]["vectorized"] = True
                     self.files_metadata[file_id]["vectorized_at"] = datetime.now()
                     self.files_metadata[file_id]["used_flow_id"] = vectorization_flow_id
-                    print(f"벡터화 완료: {file_id} (Flow: {vectorization_flow_id})")
+                    print(f"🎉 벡터화 성공 완료: {file_id} (Flow: {vectorization_flow_id})")
+                    print(f"⏱️ 전체 벡터화 시간: {total_elapsed:.2f}초")
+                    
+                    # SSE 벡터화 완료 이벤트 발송
+                    try:
+                        from ..api.sse import get_sse_manager
+                        sse_manager = get_sse_manager()
+                        await sse_manager.broadcast("vectorization_completed", {
+                            "file_id": file_id,
+                            "filename": file_info.filename if file_info else "Unknown",
+                            "status": "completed",
+                            "vectorized": True
+                        })
+                        print(f"✅ SSE 벡터화 완료 이벤트 전송: {file_id}")
+                    except Exception as sse_error:
+                        print(f"❌ SSE 이벤트 전송 실패: {sse_error}")
                 else:
                     self.files_metadata[file_id]["status"] = "vectorization_failed"
                     self.files_metadata[file_id]["error"] = result.get("error", "알 수 없는 오류")
-                    print(f"벡터화 실패: {file_id}")
-                    print(f"오류 내용: {result.get('error')}")
+                    print(f"❌ 벡터화 실패: {file_id} (소요 시간: {total_elapsed:.2f}초)")
+                    print(f"🔍 오류 내용: {result.get('error')}")
+                    print(f"⏱️ 실패까지 경과 시간: {total_elapsed:.2f}초")
+                    
+                    # SSE 벡터화 실패 이벤트 발송
+                    try:
+                        from ..api.sse import get_sse_manager
+                        sse_manager = get_sse_manager()
+                        await sse_manager.broadcast("vectorization_failed", {
+                            "file_id": file_id,
+                            "filename": file_info.filename if file_info else "Unknown",
+                            "status": "failed",
+                            "error": result.get("error", "알 수 없는 오류")
+                        })
+                        print(f"⚠️ SSE 벡터화 실패 이벤트 전송: {file_id}")
+                    except Exception as sse_error:
+                        print(f"❌ SSE 이벤트 전송 실패: {sse_error}")
                 
                 self._save_files_metadata()
-                print(f"최종 상태 업데이트: {self.files_metadata[file_id]['status']}")
+                print("✅ 파일 메타데이터 업데이트 완료")
+            else:
+                print("⚠️ 메타데이터에서 파일을 찾을 수 없어 상태 업데이트를 건너뜀니다.")
+            
+            print(f"=== 벡터화 최종 완료: {file_id} ===")
+            print(f"📊 전체 통계:")
+            print(f"   - 총 소요 시간: {total_elapsed:.2f}초")
+            print(f"   - 파일 크기: {file_size / 1024 / 1024:.2f} MB")
+            print(f"   - 처리 속도: {(file_size / 1024 / 1024) / total_elapsed:.2f} MB/초")
+            print(f"   - 최종 상태: {result.get('status', '알 수 없음')}")
+            if result.get('status') == 'completed':
+                print(f"   - 생성된 청크: {result.get('chunks_count', 0)}개")
+            print(f"=== 벡터화 세션 종료: {datetime.now().strftime('%H:%M:%S')} ===")
                 
         except Exception as e:
-            print(f"벡터화 중 오류 발생: {file_id}, 오류: {str(e)}")
+            total_elapsed = time.time() - vectorization_start_time
+            print(f"❌ 벡터화 중 예상치 못한 오류: {str(e)} (소요 시간: {total_elapsed:.2f}초)")
             import traceback
-            traceback.print_exc()
+            print(f"🔍 오류 상세: {traceback.format_exc()}")
             # 오류 발생 시 상태 업데이트
             if file_id in self.files_metadata:
                 self.files_metadata[file_id]["status"] = "vectorization_failed"
                 self.files_metadata[file_id]["error"] = str(e)
                 self._save_files_metadata()
+                print("✅ 오류 상태로 메타데이터 업데이트 완료")
+            
+            print(f"=== 벡터화 오류 종료: {file_id} (소요 시간: {total_elapsed:.2f}초) ===")
     
     async def _determine_vectorization_flow(self, file_id: str) -> Optional[str]:
         """관리자가 활성화한 벡터화 Flow를 결정합니다."""
@@ -389,25 +571,73 @@ class FileService:
                 print(f"LangFlow Flow ID가 설정되지 않았습니다: {file_id}")
                 return False
             
-            # LangFlow를 통한 벡터화
+            # Docling 통합 벡터화 파이프라인을 통한 벡터화
             file_info = await self.get_file_info(file_id)
             if not file_info:
                 print(f"파일 정보를 찾을 수 없습니다: {file_id}")
                 return False
-                
-            try:
-                from .langflow_service import LangflowService
-                langflow_service = LangflowService()
-                result = await langflow_service.process_file_with_flow(file_id, vectorization_flow_id, file_info)
-            except Exception as e:
-                print(f"LangflowService 초기화 실패: {str(e)}")
-                return False
             
-            if result.get("status") == "completed":
-                print(f"LangFlow 벡터화 완료: {file_id}")
-                return True
-            else:
-                print(f"LangFlow 벡터화 실패: {file_id}")
+            try:
+                # VectorService의 새로운 통합 파이프라인 사용
+                if self.vector_service:
+                    # 파일 메타데이터 준비
+                    vector_metadata = {
+                        "filename": file_info.filename,
+                        "category_id": file_info.category_id,
+                        "category_name": file_info.category_name,
+                        "upload_time": file_info.upload_time.isoformat() if file_info.upload_time else None,
+                        "file_size": file_info.file_size
+                    }
+                    
+                    # Docling 옵션 확인 (벡터화 시점에서 Docling 재시도)
+                    docling_options = None
+                    file_metadata = self.files_metadata.get(file_id, {})
+                    
+                    # 벡터화 시점에서 Docling을 시도 (업로드 시점 설정과 무관하게)
+                    enable_docling = True  # 항상 Docling 시도
+                    
+                    # 기본 Docling 옵션 설정
+                    from ..models.schemas import DoclingOptions
+                    docling_options = DoclingOptions(
+                        enabled=True,
+                        extract_tables=True,
+                        extract_images=True,
+                        ocr_enabled=False,
+                        output_format="markdown"
+                    )
+                    
+                    print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
+                    
+                    # 통합 벡터화 파이프라인 실행
+                    vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
+                        file_path=file_info.file_path,
+                        file_id=file_id,
+                        metadata=vector_metadata,
+                        enable_docling=enable_docling,
+                        docling_options=docling_options
+                    )
+                    
+                    if vectorization_result["success"]:
+                        print(f"✅ 강제 벡터화 완료: {file_id}, {vectorization_result['chunks_count']}개 청크")
+                        
+                        # 파일 상태 업데이트
+                        if file_id in self.files_metadata:
+                            self.files_metadata[file_id]["status"] = "vectorized"
+                            self.files_metadata[file_id]["vectorized"] = True
+                            self.files_metadata[file_id]["vectorization_method"] = vectorization_result.get("processing_method", "unknown")
+                            self.files_metadata[file_id]["vectorization_time"] = datetime.now()
+                            self._save_files_metadata()
+                        
+                        return True
+                    else:
+                        print(f"❌ 강제 벡터화 실패: {file_id}, 오류: {vectorization_result.get('error')}")
+                        return False
+                else:
+                    print("❌ VectorService를 사용할 수 없습니다.")
+                    return False
+                    
+            except Exception as e:
+                print(f"❌ 강제 벡터화 중 오류: {str(e)}")
                 return False
                 
         except Exception as e:
@@ -520,12 +750,14 @@ class FileService:
                             "filename": str(file_data.get("filename", "")),
                             "status": str(file_data.get("status", "unknown")),
                             "file_size": file_size,
+                            "file_path": file_data.get("file_path"),
                             "category_id": file_data.get("category_id"),
                             "category_name": file_data.get("category_name"),
                             "upload_time": upload_time,
                             "vectorized": vectorized,
                             "vectorization_status": file_data.get("vectorization_status"),
-                            "error_message": file_data.get("error_message")
+                            "error_message": file_data.get("error_message"),
+                            "chunk_count": file_data.get("chunk_count")
                         }
                         
                         # 벡터화 상태가 변경된 경우만 로그 출력
@@ -618,6 +850,7 @@ class FileService:
                     "filename": file_data.get("filename", ""),
                     "status": file_data.get("status", "unknown"),
                     "file_size": int(file_data.get("file_size", file_data.get("size", 0))),
+                    "file_path": file_data.get("file_path"),
                     "category_id": file_data.get("category_id"),
                     "category_name": file_data.get("category_name"),
                     "upload_time": upload_time,
@@ -905,7 +1138,7 @@ class FileService:
         
         return chunks
 
-    async def update_file_vectorization_status(self, file_id: str, vectorized: bool = True, error_message: str = None, vectorized_at: str = None) -> bool:
+    async def update_file_vectorization_status(self, file_id: str, vectorized: bool = True, error_message: str = None, vectorized_at: str = None, chunk_count: int = None) -> bool:
         """파일의 벡터화 상태를 업데이트합니다."""
         try:
             if file_id not in self.files_metadata:
@@ -917,11 +1150,17 @@ class FileService:
                 vectorized_at = datetime.now().isoformat()
             
             # 메타데이터 업데이트
-            self.files_metadata[file_id].update({
+            update_data = {
                 "vectorized": vectorized,
                 "vectorized_at": vectorized_at,
                 "status": "vectorized" if vectorized else "vectorization_failed"
-            })
+            }
+            
+            # 청크 수가 제공된 경우 추가
+            if chunk_count is not None:
+                update_data["chunk_count"] = chunk_count
+                
+            self.files_metadata[file_id].update(update_data)
             
             # 오류 메시지가 있는 경우 추가
             if error_message:

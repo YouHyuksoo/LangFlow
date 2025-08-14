@@ -25,11 +25,15 @@ import {
 interface FileUploadProps {
   onFileUpload: (file: File, category: string) => void;
   onLoadFiles?: () => void;
+  onUploadStart?: (fileName: string) => void;
+  onUploadComplete?: (fileName: string) => void;
 }
 
 export function FileUpload({
   onFileUpload,
   onLoadFiles,
+  onUploadStart,
+  onUploadComplete,
 }: FileUploadProps) {
   const { toast } = useToast();
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -135,11 +139,17 @@ export function FileUpload({
       setIsUploading(true);
 
       for (const file of acceptedFiles) {
+        // 업로드 시작 알림 🆕
+        onUploadStart?.(file.name);
+        
         try {
           // 각 카테고리별로 파일 업로드
           for (const category of selectedCategories) {
             await onFileUpload(file, category);
           }
+          
+          // 업로드 완료 알림 🆕
+          onUploadComplete?.(file.name);
         } catch (error) {
           console.error("파일 업로드 실패:", error);
           throw error; // 에러를 상위로 전파하여 부모 컴포넌트가 처리할 수 있게 함
@@ -148,7 +158,7 @@ export function FileUpload({
 
       setIsUploading(false);
     },
-    [selectedCategories, onFileUpload]
+    [selectedCategories, onFileUpload, onUploadStart, onUploadComplete]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

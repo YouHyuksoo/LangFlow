@@ -717,13 +717,10 @@ class LangflowService:
                 "response": "검색 중 오류가 발생했습니다."
             }
     
-    async def execute_flow_with_llm(self, flow_id: str, prompt: str, system_message: str = None) -> Dict[str, Any]:
+    async def execute_flow_with_llm(self, flow_id: str, prompt: str, system_message: str = None, model_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """LangFlow를 통해 LLM 모델을 실행합니다."""
         try:
-            print(f"=== LangFlow LLM 실행 시작 ===")
-            print(f"Flow ID: {flow_id}")
-            print(f"프롬프트 길이: {len(prompt)} 글자")
-            print(f"시스템 메시지: {system_message[:100] if system_message else 'None'}...")
+            print(f"LangFlow LLM 실행: {flow_id}")
             
             # Flow JSON 파일 로드
             flow_file_path = os.path.join(settings.BASE_DIR, "langflow", "flows", f"{flow_id.replace('_', ' ').title()}.json")
@@ -740,9 +737,7 @@ class LangflowService:
                     "response": "Flow 설정 파일이 없습니다."
                 }
             
-            print(f"Flow 파일 로드: {flow_file_path}")
-            print(f"파일 존재 여부: {os.path.exists(flow_file_path)}")
-            print(f"파일 크기: {os.path.getsize(flow_file_path) if os.path.exists(flow_file_path) else 'N/A'} bytes")
+            # Flow 파일 로드
             
             # Flow JSON에서 LLM 설정 추출
             with open(flow_file_path, 'r', encoding='utf-8') as f:
@@ -765,52 +760,52 @@ class LangflowService:
                     "response": "LLM 설정을 찾을 수 없습니다."
                 }
             
-            # LLM 설정 추출 - 올바른 경로 탐색
+            # LLM 설정 추출
             llm_data = llm_node.get("data", {})
-            print(f"=== LLM 노드 데이터 확인 ===")
-            print(f"LLM 노드 ID: {llm_node.get('id')}")
-            print(f"data 키들: {list(llm_data.keys())}")
-            
-            # node 키 안에 실제 설정들이 있는지 확인
             node_data = llm_data.get("node", {})
-            print(f"node 키들: {list(node_data.keys())}")
-            
-            # template 또는 inputs에서 설정 찾기
             template_data = node_data.get("template", {})
-            if template_data:
-                print(f"template 키들: {list(template_data.keys())}")
-                
+            
+            # 사용자 설정이 있으면 사용자 설정을 완전 우선시
+            if model_config and model_config.get("llm", {}).get("model"):
+                provider = model_config["llm"].get("provider", "openai").title()
+                model_name = model_config["llm"]["model"]
+                temperature = model_config["llm"].get("temperature", 0.7)
+                print(f"사용자 설정 사용: {provider} {model_name} (temp: {temperature})")
+            elif template_data:
+                # 사용자 설정이 없으면 Flow 설정 사용
                 # Provider 추출
                 provider_data = template_data.get("provider", {})
-                print(f"Provider 데이터: {provider_data}")
                 provider = provider_data.get("value", "OpenAI")
                 
                 # Model Name 추출  
                 model_name_data = template_data.get("model_name", {})
-                print(f"Model Name 데이터: {model_name_data}")
-                model_name = model_name_data.get("value", "gpt-3.5-turbo")
+                model_name = model_name_data.get("value", "gpt-4o-mini")
                 
                 # Temperature 추출
                 temperature_data = template_data.get("temperature", {})
-                print(f"Temperature 데이터: {temperature_data}")
-                temperature = temperature_data.get("value", 0.1)
+                temperature = temperature_data.get("value", 0.7)
+                print(f"Flow 설정 사용: {provider} {model_name} (temp: {temperature})")
             else:
-                # 기본값 사용
-                provider = "OpenAI"
-                model_name = "gpt-3.5-turbo"
-                temperature = 0.1
+                # 사용자 설정도 Flow 설정도 없으면 기본값 사용
+                if model_config and model_config.get("llm", {}).get("model"):
+                    provider = model_config["llm"].get("provider", "openai").title()
+                    model_name = model_config["llm"]["model"]
+                    temperature = model_config["llm"].get("temperature", 0.7)
+                    print(f"사용자 설정 기본값 사용: {provider} {model_name} (temp: {temperature})")
+                else:
+                    provider = "OpenAI"
+                    model_name = "gpt-4o-mini"
+                    temperature = 0.7
+                    print(f"시스템 기본값 사용: {provider} {model_name} (temp: {temperature})")
             
-            print(f"=== LLM 설정 확인 ===")
-            print(f"Provider: {provider}")
-            print(f"Model: {model_name}")
-            print(f"Temperature: {temperature}")
+            print(f"LLM 실행: {provider} {model_name} (temp: {temperature})")
             
-            # Provider별 LLM 실행
-            if provider == "Google":
+            # Provider별 LLM 실행 (대소문자 구분 없이)
+            if provider.lower() == "google":
                 response_text = await self._execute_google_llm(model_name, prompt, system_message, temperature)
-            elif provider == "OpenAI":
+            elif provider.lower() == "openai":
                 response_text = await self._execute_openai_llm(model_name, prompt, system_message, temperature)
-            elif provider == "Anthropic":
+            elif provider.lower() == "anthropic":
                 response_text = await self._execute_anthropic_llm(model_name, prompt, system_message, temperature)
             else:
                 print(f"지원하지 않는 Provider: {provider}")
@@ -844,9 +839,6 @@ class LangflowService:
     async def _execute_google_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
         """Google Gemini 모델을 실행합니다."""
         try:
-            print(f"=== Google Gemini 실행 ===")
-            print(f"모델: {model_name}")
-            
             # langchain_google_genai 사용
             from langchain_google_genai import ChatGoogleGenerativeAI
             from ..core.config import settings
@@ -855,8 +847,6 @@ class LangflowService:
             api_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
             if not api_key:
                 raise ValueError("Google API 키가 설정되지 않았습니다. GOOGLE_API_KEY 또는 GEMINI_API_KEY를 설정해주세요.")
-            
-            print(f"Google API 키 확인됨: {api_key[:10]}...")
             
             # ChatGoogleGenerativeAI 인스턴스 생성 - 기본 설정 사용
             llm = ChatGoogleGenerativeAI(
@@ -873,37 +863,21 @@ class LangflowService:
             else:
                 messages = [("human", prompt)]
             
-            print(f"Gemini API 호출 시작...")
-            print(f"프롬프트 길이: {len(messages[0][1])} 글자")
             start_time = time.time()
             
             # LLM 실행
             response = llm.invoke(messages)
             
             api_time = time.time() - start_time
-            print(f"Gemini API 호출 완료: {api_time:.2f}초")
+            print(f"Gemini 응답 완료 ({api_time:.2f}초)")
             
-            # 응답 내용 디버깅
-            print(f"=== Gemini 응답 디버깅 ===")
-            print(f"응답 타입: {type(response)}")
-            print(f"응답 content: '{response.content}'")
-            print(f"응답 content 길이: {len(response.content) if hasattr(response, 'content') else 'N/A'}")
-            
-            # 메타데이터 확인
-            if hasattr(response, 'response_metadata'):
-                metadata = response.response_metadata
-                print(f"finish_reason: {metadata.get('finish_reason')}")
-                print(f"safety_ratings: {metadata.get('safety_ratings')}")
-                print(f"prompt_feedback: {metadata.get('prompt_feedback')}")
-            
-            # 빈 응답 처리
+            # 응답 내용 추출
             content = response.content if hasattr(response, 'content') else str(response)
             
-            # 빈 응답인 경우 안전 필터 메시지 반환
+            # 빈 응답 처리
             if not content or content.strip() == "":
                 if hasattr(response, 'response_metadata'):
                     metadata = response.response_metadata
-                    safety_ratings = metadata.get('safety_ratings', [])
                     prompt_feedback = metadata.get('prompt_feedback', {})
                     
                     # 안전 필터가 작동한 경우
@@ -915,7 +889,6 @@ class LangflowService:
                 else:
                     return "죄송합니다. Gemini에서 빈 응답을 받았습니다. 다시 시도해 주세요."
             
-            print(f"최종 반환할 content: '{content[:100]}...' ({len(content)} 글자)")
             return content
             
         except Exception as e:
@@ -927,8 +900,7 @@ class LangflowService:
     async def _execute_openai_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
         """OpenAI 모델을 실행합니다."""
         try:
-            print(f"=== OpenAI 실행 ===")
-            print(f"모델: {model_name}")
+            # OpenAI 모델 실행
             
             from langchain_openai import ChatOpenAI
             from ..core.config import settings
@@ -947,13 +919,10 @@ class LangflowService:
                 messages.append(("system", system_message))
             messages.append(("human", prompt))
             
-            print(f"OpenAI API 호출 시작...")
             start_time = time.time()
-            
             response = llm.invoke(messages)
-            
             api_time = time.time() - start_time
-            print(f"OpenAI API 호출 완료: {api_time:.2f}초")
+            print(f"OpenAI 응답 완료 ({api_time:.2f}초)")
             
             return response.content
             
@@ -964,8 +933,7 @@ class LangflowService:
     async def _execute_anthropic_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
         """Anthropic Claude 모델을 실행합니다."""
         try:
-            print(f"=== Anthropic Claude 실행 ===")
-            print(f"모델: {model_name}")
+            # Anthropic Claude 모델 실행
             
             from langchain_anthropic import ChatAnthropic
             from ..core.config import settings
@@ -984,13 +952,10 @@ class LangflowService:
                 messages.append(("system", system_message))
             messages.append(("human", prompt))
             
-            print(f"Anthropic API 호출 시작...")
             start_time = time.time()
-            
             response = llm.invoke(messages)
-            
             api_time = time.time() - start_time
-            print(f"Anthropic API 호출 완료: {api_time:.2f}초")
+            print(f"Anthropic 응답 완료 ({api_time:.2f}초)")
             
             return response.content
             
@@ -1069,14 +1034,10 @@ class LangflowService:
                 "category_stats": {}
             }
     
-    async def execute_multimodal_flow_with_llm(self, flow_id: str, prompt: str, images: List[str], system_message: str = None) -> Dict[str, Any]:
+    async def execute_multimodal_flow_with_llm(self, flow_id: str, prompt: str, images: List[str], system_message: str = None, model_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """멀티모달 LangFlow를 통해 이미지 + 텍스트를 함께 처리하여 LLM 모델을 실행합니다."""
         try:
-            print(f"=== 멀티모달 LangFlow LLM 실행 시작 ===")
-            print(f"Flow ID: {flow_id}")
-            print(f"프롬프트 길이: {len(prompt)} 글자")
-            print(f"이미지 수: {len(images)}")
-            print(f"시스템 메시지: {system_message[:100] if system_message else 'None'}...")
+            print(f"멀티모달 LangFlow 실행: {flow_id} (이미지 {len(images)}개)")
             
             # Flow JSON 파일 로드
             flow_file_path = os.path.join(settings.BASE_DIR, "langflow", "flows", f"{flow_id.replace('_', ' ').title()}.json")
@@ -1093,7 +1054,7 @@ class LangflowService:
                     "response": "Flow 설정 파일이 없습니다."
                 }
             
-            print(f"Flow 파일 로드: {flow_file_path}")
+            # 멀티모달 Flow 파일 로드
             
             # Flow JSON에서 LLM 설정 추출
             with open(flow_file_path, 'r', encoding='utf-8') as f:
@@ -1121,36 +1082,50 @@ class LangflowService:
             node_data = llm_data.get("node", {})
             template_data = node_data.get("template", {})
             
-            if template_data:
+            # 멀티모달: 사용자 설정이 있으면 사용자 설정을 완전 우선시
+            if model_config and model_config.get("llm", {}).get("model"):
+                provider = model_config["llm"].get("provider", "openai").title()
+                model_name = model_config["llm"]["model"]
+                temperature = model_config["llm"].get("temperature", 0.7)
+                print(f"멀티모달 사용자 설정 사용: {provider} {model_name} (temp: {temperature})")
+            elif template_data:
+                # 사용자 설정이 없으면 Flow 설정 사용
                 provider_data = template_data.get("provider", {})
                 provider = provider_data.get("value", "OpenAI")
                 
                 model_name_data = template_data.get("model_name", {})
-                model_name = model_name_data.get("value", "gpt-3.5-turbo")
+                model_name = model_name_data.get("value", "gpt-4o")  # 멀티모달 기본값
                 
                 temperature_data = template_data.get("temperature", {})
-                temperature = temperature_data.get("value", 0.1)
+                temperature = temperature_data.get("value", 0.7)
+                print(f"멀티모달 Flow 설정 사용: {provider} {model_name} (temp: {temperature})")
             else:
-                provider = "OpenAI"
-                model_name = "gpt-3.5-turbo"
-                temperature = 0.1
+                # 멀티모달: 사용자 설정도 Flow 설정도 없으면 기본값 사용
+                if model_config and model_config.get("llm", {}).get("model"):
+                    provider = model_config["llm"].get("provider", "openai").title()
+                    model_name = model_config["llm"]["model"]
+                    temperature = model_config["llm"].get("temperature", 0.7)
+                    print(f"멀티모달 사용자 설정 기본값 사용: {provider} {model_name} (temp: {temperature})")
+                else:
+                    # 멀티모달 시스템 기본 설정
+                    provider = "OpenAI"
+                    model_name = "gpt-4o"  # 멀티모달을 위한 기본값
+                    temperature = 0.7
+                    print(f"멀티모달 시스템 기본값 사용: {provider} {model_name} (temp: {temperature})")
             
-            print(f"=== 멀티모달 LLM 설정 ===")
-            print(f"Provider: {provider}")
-            print(f"Model: {model_name}")
-            print(f"Temperature: {temperature}")
+            print(f"멀티모달 LLM 실행: {provider} {model_name} (temp: {temperature}, 이미지: {len(images)}개)")
             
-            # Provider별 멀티모달 LLM 실행
-            if provider == "Google":
+            # Provider별 멀티모달 LLM 실행 (대소문자 구분 없이)
+            if provider.lower() == "google":
                 response_text = await self._execute_google_multimodal_llm(model_name, prompt, images, system_message, temperature)
-            elif provider == "OpenAI":
+            elif provider.lower() == "openai":
                 response_text = await self._execute_openai_multimodal_llm(model_name, prompt, images, system_message, temperature)
-            elif provider == "Anthropic":
+            elif provider.lower() == "anthropic":
                 response_text = await self._execute_anthropic_multimodal_llm(model_name, prompt, images, system_message, temperature)
             else:
                 print(f"멀티모달을 지원하지 않는 Provider: {provider}")
                 # Fallback: 텍스트 전용 처리
-                return await self.execute_flow_with_llm(flow_id, prompt, system_message)
+                return await self.execute_flow_with_llm(flow_id, prompt, system_message, model_config)
             
             print(f"=== 멀티모달 LLM 실행 완료 ===")
             print(f"응답 길이: {len(response_text)} 글자")

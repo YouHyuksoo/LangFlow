@@ -472,7 +472,7 @@ export default function UsersPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">전체 사용자</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <Users className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.totalUsers}</div>
@@ -483,7 +483,7 @@ export default function UsersPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">활성 사용자</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
+                <Activity className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.activeUsers}</div>
@@ -494,7 +494,7 @@ export default function UsersPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">관리자</CardTitle>
-                <Shield className="h-4 w-4 text-muted-foreground" />
+                <Shield className="h-4 w-4 text-red-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.adminUsers}</div>
@@ -505,7 +505,7 @@ export default function UsersPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">신규 사용자</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Clock className="h-4 w-4 text-orange-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.recentUsers}</div>

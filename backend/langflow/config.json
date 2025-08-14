@@ -1,5 +1,10 @@
 {
-  "default_vectorization_flow_id": "vector_store_rag",
-  "updated_at": "2025-08-04T22:59:51.355246",
-  "default_search_flow_id": "vector_store_search"
+  "default_search_flow_id": "Vector Store Search",
+  "default_rag_flow_id": "Vector Store RAG",
+  "default_llm_config": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "temperature": 0.7,
+    "max_tokens": 4096
+  }
 }

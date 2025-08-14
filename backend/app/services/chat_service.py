@@ -8,19 +8,145 @@ from .file_service import FileService
 from .langflow_service import LangflowService
 from .persona_service import PersonaService
 from .system_settings_service import SystemSettingsService
+from .model_settings_service import get_current_model_config
 import openai
 from datetime import datetime
 
 class ChatService:
     def __init__(self):
-        self.openai_client = None
         self.file_service = FileService()
         self.langflow_service = LangflowService()
         self.persona_service = PersonaService()
         self.system_settings_service = SystemSettingsService()
-        if settings.OPENAI_API_KEY:
-            openai.api_key = settings.OPENAI_API_KEY
-            self.openai_client = openai
+    
+    async def _get_llm_client(self):
+        """현재 모델 설정에 따라 LLM 클라이언트를 반환합니다."""
+        try:
+            model_config = await get_current_model_config()
+            llm_config = model_config.get("llm", {})
+            
+            provider = llm_config.get("provider", "openai")
+            api_key = llm_config.get("api_key", "")
+            
+            if provider == "openai" and api_key:
+                import openai
+                client = openai.OpenAI(api_key=api_key)
+                return client, provider
+            elif provider == "anthropic" and api_key:
+                try:
+                    import anthropic
+                    client = anthropic.Anthropic(api_key=api_key)
+                    return client, provider
+                except ImportError:
+                    print("Anthropic 패키지가 설치되지 않았습니다. pip install anthropic으로 설치해주세요.")
+                    return None, None
+            elif provider == "google" and api_key:
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=api_key)
+                    return genai, provider
+                except ImportError:
+                    print("Google AI 패키지가 설치되지 않았습니다. pip install google-generativeai로 설치해주세요.")
+                    return None, None
+            elif provider == "groq" and api_key:
+                try:
+                    import groq
+                    client = groq.Groq(api_key=api_key)
+                    return client, provider
+                except ImportError:
+                    print("Groq 패키지가 설치되지 않았습니다. pip install groq로 설치해주세요.")
+                    return None, None
+            else:
+                print(f"지원하지 않는 LLM 제공업체이거나 API 키가 없음: {provider}")
+                return None, None
+                
+        except Exception as e:
+            print(f"LLM 클라이언트 생성 실패: {e}")
+            return None, None
+    
+    async def _call_llm(self, messages: List[Dict[str, Any]]) -> str:
+        """설정된 LLM으로 메시지를 전송하고 응답을 받습니다."""
+        try:
+            model_config = await get_current_model_config()
+            llm_config = model_config.get("llm", {})
+            
+            llm_client, provider = await self._get_llm_client()
+            if not llm_client:
+                return "LLM 클라이언트를 사용할 수 없습니다."
+            
+            model = llm_config.get("model", "gpt-4o-mini")  # 설정된 모델이 없으면 기본값 사용
+            temperature = llm_config.get("temperature", 0.7)
+            max_tokens = llm_config.get("max_tokens", 4096)
+            
+            print(f"LLM 호출: {provider} {model} (temp: {temperature})")
+            
+            if provider == "openai":
+                response = llm_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                return response.choices[0].message.content
+                
+            elif provider == "anthropic":
+                # Anthropic 메시지 형식 변환
+                system_message = ""
+                user_messages = []
+                
+                for msg in messages:
+                    if msg["role"] == "system":
+                        system_message = msg["content"]
+                    else:
+                        user_messages.append(msg)
+                
+                response = llm_client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system_message,
+                    messages=user_messages
+                )
+                return response.content[0].text
+                
+            elif provider == "google":
+                # Google Gemini 호출
+                model_instance = llm_client.GenerativeModel(model)
+                
+                # 메시지를 하나의 프롬프트로 결합
+                prompt_parts = []
+                for msg in messages:
+                    if msg["role"] == "system":
+                        prompt_parts.append(f"System: {msg['content']}")
+                    elif msg["role"] == "user":
+                        prompt_parts.append(f"User: {msg['content']}")
+                
+                prompt = "\n\n".join(prompt_parts)
+                
+                response = model_instance.generate_content(
+                    prompt,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens,
+                    }
+                )
+                return response.text
+                
+            elif provider == "groq":
+                response = llm_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                return response.choices[0].message.content
+                
+            else:
+                return f"지원하지 않는 LLM 제공업체: {provider}"
+                
+        except Exception as e:
+            print(f"LLM 호출 실패: {e}")
+            return f"LLM 호출 중 오류가 발생했습니다: {str(e)}"
     
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
         """채팅 요청을 처리하고 응답을 생성합니다."""
@@ -327,10 +453,12 @@ class ChatService:
             flow_id_to_use = flow_id or await self._get_default_search_flow()
             if flow_id_to_use:
                 print(f"LangFlow 실행: {flow_id_to_use}")
+                model_config = await get_current_model_config()
                 langflow_result = await self.langflow_service.execute_flow_with_llm(
                     flow_id_to_use,
                     prompt,
-                    system_message
+                    system_message,
+                    model_config=model_config
                 )
                 
                 if langflow_result.get("status") == "success":
@@ -358,9 +486,10 @@ class ChatService:
         return await self.generate_response(query, context, system_message)
 
     async def generate_response(self, query: str, context: List[Dict[str, Any]], system_message: str = None) -> str:
-        """OpenAI를 사용하여 응답을 생성합니다."""
-        if not self.openai_client:
-            return "OpenAI API 키가 설정되지 않았습니다."
+        """설정된 LLM을 사용하여 응답을 생성합니다."""
+        llm_client, provider = await self._get_llm_client()
+        if not llm_client:
+            return "LLM API 키가 설정되지 않았거나 지원하지 않는 제공업체입니다."
         
         try:
             # 컨텍스트를 더 명확하게 구분하여 프롬프트 생성
@@ -403,65 +532,19 @@ class ChatService:
 2. 답변 내용에 관련된 출처를 [1], [2] 형태로 표시하세요  
 3. 여러 문서에서 얻은 정보는 모두 활용하세요"""
             
-            # LangFlow를 통해 멀티모달 응답 생성
-            if flow_id:
-                print(f"LangFlow 멀티모달 처리 시작: {flow_id}")
-                try:
-                    langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
-                        flow_id, 
-                        prompt, 
-                        images,
-                        system_message
-                    )
-                    
-                    if langflow_result.get("status") == "success":
-                        print(f"LangFlow 멀티모달 처리 성공")
-                        return langflow_result.get("response", "응답을 생성하지 못했습니다.")
-                    else:
-                        print(f"LangFlow 멀티모달 처리 실패: {langflow_result.get('error')}")
-                        # 폴백: OpenAI API 직접 사용
-                        
-                except Exception as e:
-                    print(f"LangFlow 멀티모달 처리 중 예외: {str(e)}")
-                    # 폴백: OpenAI API 직접 사용
+            # 시스템 메시지 설정
+            if not system_message:
+                system_message = "당신은 도움이 되는 AI 어시스턴트입니다. 제공된 문서를 바탕으로 정확하고 도움이 되는 답변을 제공하세요."
             
-            # 폴백 또는 flow_id가 없는 경우: OpenAI API 직접 사용 (텍스트 전용)
-            print("텍스트 전용 폴백 처리")
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=settings.OPENAI_API_KEY)
-                
-                # 전달받은 시스템 메시지 사용 (이미 _build_system_message에서 처리됨)
-                final_system_message = system_message
-                
-                print(f"사용된 시스템 메시지: {final_system_message}")
-                
-                # OpenAI API 호출 시작 시간 기록
-                openai_start_time = time.time()
-                print(f"OpenAI API 호출 시작: gpt-3.5-turbo, max_tokens=1500")
-                
-                # 이미지가 있다는 것을 텍스트에 명시
-                image_note = f"\n\n참고: 사용자가 {len(images)}개의 이미지를 첨부했으나, 현재 텍스트 전용 모드로 처리되고 있습니다."
-                final_prompt = prompt + image_note
-                
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",  # 빠른 응답을 위해 gpt-3.5-turbo 사용
-                    messages=[
-                        {"role": "system", "content": final_system_message},
-                        {"role": "user", "content": final_prompt}
-                    ],
-                    max_tokens=1500,
-                    temperature=0.7
-                )
-                
-                openai_time = time.time() - openai_start_time
-                print(f"OpenAI API 호출 완료: {openai_time:.2f}초")
-                
-                return response.choices[0].message.content
-                
-            except Exception as openai_error:
-                print(f"OpenAI API 폴백 실패: {str(openai_error)}")
-                return f"죄송합니다. 이미지 분석 및 응답 생성에 실패했습니다. 오류: {str(openai_error)}"
+            # 동적 LLM 호출
+            print(f"설정된 LLM으로 응답 생성 시작")
+            response = await self._call_llm([
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
+            ])
+            
+            print(f"LLM 응답 생성 완료")
+            return response
             
         except Exception as e:
             return f"응답 생성 중 오류가 발생했습니다: {str(e)}"
@@ -722,7 +805,7 @@ class ChatService:
             print(f"채팅 메시지 저장 중 오류: {str(e)}")
     
     async def _build_system_message(self, custom_message: str = None, persona_id: str = None) -> str:
-        """시스템 메시지를 구성합니다: 기본/사용자 지정 메시지 + (선택) 페르소나 메시지 결합."""
+        """시스템 메시지를 구성합니다: 기본/사용자 지정 메시지 + (선택) 페르소나 메시지 + Chart.js 생성 지시사항 결합."""
         try:
             # 기본 시스템 메시지 (설정 or 사용자 지정)
             if custom_message:
@@ -744,13 +827,21 @@ class ChatService:
                 else:
                     print(f"페르소나를 찾을 수 없거나 시스템 메시지가 없음: {chosen_persona_id}")
 
+
+            # 최종 시스템 메시지 구성
+            message_parts = [base_message]
+            
             if persona_text:
-                return f"{base_message}\n\n{persona_text}"
-            return base_message
+                message_parts.append(persona_text)
+            
+            final_message = "\n\n".join(message_parts)
+            print(f"시스템 메시지 구성 완료 (길이: {len(final_message)}자)")
+            
+            return final_message
 
         except Exception as e:
             print(f"시스템 메시지 구성 중 오류: {str(e)}")
-            # 최종 폴백: 하드코딩된 기본값
+            # 최종 폴백: 간단한 기본값
             return "당신은 도움이 되는 AI 어시스턴트입니다. 정확하고 유용한 정보를 제공하며, 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요."
     
     async def generate_multimodal_response_with_flow(self, query: str, images: List[str], context: List[Dict[str, Any]], system_message: str = None, flow_id: str = None) -> str:
@@ -809,11 +900,13 @@ class ChatService:
             flow_id_to_use = flow_id or await self._get_default_search_flow()
             if flow_id_to_use:
                 print(f"멀티모달 LangFlow 실행: {flow_id_to_use}")
+                model_config = await get_current_model_config()
                 langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
                     flow_id_to_use,
                     prompt,
                     images,
-                    system_message
+                    system_message,
+                    model_config=model_config
                 )
                 
                 if langflow_result.get("status") == "success":

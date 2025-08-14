@@ -5,6 +5,9 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from ..core.config import settings
+from .model_settings_service import get_current_model_config
+from .docling_service import DoclingService
+from ..models.schemas import DoclingOptions
 
 # ChromaDB 관련 패키지 임포트 시도 (필수: chromadb만 확인)
 try:
@@ -14,6 +17,50 @@ try:
 except ImportError:
     CHROMADB_AVAILABLE = False
     print("ChromaDB 패키지가 설치되지 않았습니다. pip install chromadb 로 설치해주세요.")
+
+def _create_embedding_function():
+    """현재 모델 설정에 따라 임베딩 함수를 생성합니다."""
+    try:
+        # 동기적으로 모델 설정 로드
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            model_config = loop.run_until_complete(get_current_model_config())
+        except RuntimeError:
+            # 이벤트 루프가 없는 경우 새로 생성
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            model_config = loop.run_until_complete(get_current_model_config())
+        
+        embedding_config = model_config.get("embedding", {})
+        
+        provider = embedding_config.get("provider", "openai")
+        model = embedding_config.get("model", "text-embedding-3-small")
+        api_key = embedding_config.get("api_key", "")
+        
+        print(f"임베딩 함수 생성: {provider} - {model}")
+        
+        if provider == "openai" and api_key:
+            from chromadb.utils import embedding_functions
+            return embedding_functions.OpenAIEmbeddingFunction(
+                api_key=api_key,
+                model_name=model
+            )
+        elif provider == "google" and api_key:
+            # Google 임베딩 함수 (향후 확장)
+            from chromadb.utils import embedding_functions
+            # Google용 임베딩 함수가 있다면 여기에 추가
+            return None
+        elif provider == "ollama":
+            # Ollama 임베딩 함수 (향후 확장)
+            return None
+        else:
+            print(f"지원하지 않는 임베딩 제공업체이거나 API 키가 없음: {provider}")
+            return None
+            
+    except Exception as e:
+        print(f"임베딩 함수 생성 실패: {e}")
+        return None
 
 class VectorService:
     """ChromaDB 기반 벡터 데이터베이스 관리를 담당하는 서비스 (개선된 싱글톤)"""
@@ -38,12 +85,15 @@ class VectorService:
         os.makedirs(self.vector_dir, exist_ok=True)
         os.makedirs(self.metadata_dir, exist_ok=True)
         
+        # Docling 서비스 초기화
+        self.docling_service = DoclingService()
+        
         # 지연 초기화 - 실제 벡터화 작업에서만 ChromaDB 연결을 수행
         # 파일 업로드 등 일반적인 작업에서는 ChromaDB를 초기화하지 않음
         print("VectorService 초기화 완료 (ChromaDB는 실제 사용 시 지연 로딩)")
         VectorService._initialized = True
     
-    def _ensure_client(self):
+    async def _ensure_client(self):
         """ChromaDB 클라이언트가 초기화되었는지 확인하고, 필요시 자동 연결을 시도합니다."""
         try:
             # 클라이언트와 컬렉션이 모두 초기화되어 있는지 확인
@@ -59,7 +109,7 @@ class VectorService:
                     )
                 
                 # 기존 데이터베이스에 연결 시도
-                self._connect_to_chromadb()
+                await self._connect_to_chromadb()
             
             # 컬렉션이 사용 가능한지 테스트
             try:
@@ -75,7 +125,7 @@ class VectorService:
             print(f"ChromaDB 클라이언트 확인 실패: {str(e)}")
             raise RuntimeError(f"ChromaDB 클라이언트를 사용할 수 없습니다: {str(e)}")
     
-    def create_chromadb_database(self) -> bool:
+    async def create_chromadb_database(self) -> bool:
         """ChromaDB 데이터베이스 파일과 기본 구조만 생성합니다 (설정에서만 사용)."""
         if not CHROMADB_AVAILABLE:
             raise RuntimeError("ChromaDB를 사용할 수 없습니다. pip install chromadb langchain-chroma langchain-openai로 설치해주세요.")
@@ -111,19 +161,12 @@ class VectorService:
                     # 새 컬렉션 생성
                     from ..core.config import settings
                     
-                    # OpenAI 임베딩 함수 설정
-                    embedding_function = None
-                    if hasattr(settings, 'OPENAI_API_KEY') and settings.OPENAI_API_KEY:
-                        try:
-                            from chromadb.utils import embedding_functions
-                            embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                                api_key=settings.OPENAI_API_KEY,
-                                model_name="text-embedding-ada-002"
-                            )
-                            print("OpenAI 임베딩 함수 설정 완료")
-                        except Exception as e:
-                            print(f"OpenAI 임베딩 함수 설정 실패: {str(e)}")
-                            embedding_function = None
+                    # 동적 임베딩 함수 설정
+                    embedding_function = await _create_embedding_function()
+                    if embedding_function:
+                        print("동적 임베딩 함수 설정 완료")
+                    else:
+                        print("임베딩 함수를 사용할 수 없습니다 - 기본 설정으로 진행")
                     
                     temp_collection = temp_client.create_collection(
                         name=self.collection_name,
@@ -151,7 +194,7 @@ class VectorService:
             print(f"ChromaDB 데이터베이스 생성 실패: {str(e)}")
             return False
     
-    def _connect_to_chromadb(self):
+    async def _connect_to_chromadb(self):
         """기존 ChromaDB 데이터베이스 파일에 연결합니다 (파일이 없으면 오류)."""
         if not CHROMADB_AVAILABLE:
             raise RuntimeError("ChromaDB를 사용할 수 없습니다. pip install chromadb langchain-chroma langchain-openai로 설치해주세요.")
@@ -185,17 +228,10 @@ class VectorService:
                 print(f"기존 컬렉션 '{self.collection_name}' 연결 성공")
             except Exception:
                 print(f"컬렉션 '{self.collection_name}'이 존재하지 않습니다. 새로 생성합니다.")
-                # OpenAI 임베딩 함수 설정 시도
-                embedding_function = None
-                if settings.OPENAI_API_KEY:
-                    try:
-                        import chromadb.utils.embedding_functions as embedding_functions
-                        embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                            api_key=settings.OPENAI_API_KEY,
-                            model_name="text-embedding-ada-002"
-                        )
-                    except Exception:
-                        embedding_function = None
+                # 동적 임베딩 함수 설정
+                embedding_function = await _create_embedding_function()
+                if not embedding_function:
+                    print("임베딩 함수를 사용할 수 없습니다 - 기본 설정으로 진행")
                 
                 VectorService._collection = VectorService._client.create_collection(
                     name=self.collection_name,
@@ -217,7 +253,7 @@ class VectorService:
         """문서 청크를 ChromaDB에 추가합니다."""
         try:
             # ChromaDB가 초기화되었는지 확인
-            client = self._ensure_client()
+            client = await self._ensure_client()
             if not CHROMADB_AVAILABLE or not VectorService._collection:
                 print("❌ ChromaDB를 사용할 수 없습니다.")
                 return False
@@ -293,7 +329,7 @@ class VectorService:
         
         # ChromaDB 클라이언트와 컬렉션 초기화 확인 및 재시도
         try:
-            self._ensure_client()
+            await self._ensure_client()
         except Exception as e:
             print(f"ChromaDB 클라이언트 초기화 실패: {str(e)}")
             raise RuntimeError(f"ChromaDB를 사용할 수 없습니다. ChromaDB가 올바르게 초기화되었는지 확인해주세요. 오류: {str(e)}")
@@ -356,7 +392,7 @@ class VectorService:
         
         # ChromaDB 클라이언트와 컬렉션 초기화 확인 및 재시도
         try:
-            self._ensure_client()
+            await self._ensure_client()
         except Exception as e:
             print(f"ChromaDB 클라이언트 초기화 실패: {str(e)}")
             raise RuntimeError(f"ChromaDB를 사용할 수 없습니다. ChromaDB가 올바르게 초기화되었는지 확인해주세요. 오류: {str(e)}")
@@ -395,7 +431,7 @@ class VectorService:
         
         # ChromaDB 클라이언트와 컬렉션 초기화 확인 및 재시도
         try:
-            self._ensure_client()
+            await self._ensure_client()
         except Exception as e:
             print(f"ChromaDB 클라이언트 초기화 실패: {str(e)}")
             raise RuntimeError(f"ChromaDB를 사용할 수 없습니다. ChromaDB가 올바르게 초기화되었는지 확인해주세요. 오류: {str(e)}")
@@ -482,7 +518,7 @@ class VectorService:
             print(f"파일 메타데이터 조회 중 오류: {str(e)}")
             return None
     
-    def reset_chromadb(self):
+    async def reset_chromadb(self):
         """ChromaDB 데이터베이스를 완전히 리셋합니다."""
         try:
             # 기존 연결 해제
@@ -501,8 +537,8 @@ class VectorService:
             print("ChromaDB 데이터베이스 리셋 완료")
             
             # 새 데이터베이스 생성
-            if self.create_chromadb_database():
-                print("새 ChromaDB 데이터베이스 생성 완룼")
+            if await self.create_chromadb_database():
+                print("새 ChromaDB 데이터베이스 생성 완료")
             else:
                 print("ChromaDB 데이터베이스 생성 실패")
             
@@ -629,7 +665,7 @@ class VectorService:
         
         print("=== ChromaDB 상태 확인 완료 ===\n")
     
-    def initialize_chromadb_manually(self) -> Dict[str, Any]:
+    async def initialize_chromadb_manually(self) -> Dict[str, Any]:
         """ChromaDB를 수동으로 초기화합니다 (데이터베이스 생성 또는 연결)."""
         result = {
             "success": False,
@@ -652,16 +688,16 @@ class VectorService:
             if os.path.exists(chroma_db_path):
                 # 기존 데이터베이스에 연결
                 print("기존 ChromaDB 데이터베이스 발견 - 연결 시도")
-                self._connect_to_chromadb()
+                await self._connect_to_chromadb()
             else:
                 # 새 데이터베이스 생성
                 print("ChromaDB 데이터베이스 없음 - 새로 생성")
-                if not self.create_chromadb_database():
+                if not await self.create_chromadb_database():
                     result["error"] = "ChromaDB 데이터베이스 생성에 실패했습니다."
                     return result
                 
                 # 생성된 데이터베이스에 연결
-                self._connect_to_chromadb()
+                await self._connect_to_chromadb()
             
             # 초기화 성공 확인
             if VectorService._client is not None and VectorService._collection is not None:
@@ -703,11 +739,11 @@ class VectorService:
             print(f"ChromaDB 마이그레이션 중 오류: {str(e)}")
             return False
     
-    def _safe_ensure_client(self):
+    async def _safe_ensure_client(self):
         """안전한 ChromaDB 클라이언트 초기화 (로깅 최소화)"""
         try:
             if VectorService._client is None or VectorService._collection is None:
-                self._ensure_client()
+                await self._ensure_client()
             
             # 초기화 확인
             if VectorService._client is None or VectorService._collection is None:
@@ -724,6 +760,500 @@ class VectorService:
         except Exception as e:
             print(f"ChromaDB 클라이언트 초기화 실패: {str(e)}")
             return False
+    
+    async def process_document_with_docling(
+        self, 
+        file_path: str, 
+        file_id: str, 
+        metadata: Dict[str, Any],
+        docling_options: Optional[DoclingOptions] = None
+    ) -> Dict[str, Any]:
+        """
+        Docling을 사용하여 문서를 고급 전처리하고 벡터화합니다.
+        
+        Args:
+            file_path: 처리할 파일 경로
+            file_id: 파일 고유 ID
+            metadata: 파일 메타데이터
+            docling_options: Docling 처리 옵션
+            
+        Returns:
+            처리 결과 정보
+        """
+        try:
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            print(f"🔧 Docling 문서 처리 요청: {os.path.basename(file_path)} ({file_size / 1024 / 1024:.2f} MB)")
+            
+            # Docling이 사용 가능한지 확인
+            print("🔍 Docling 서비스 가용성 확인 중...")
+            if not self.docling_service.is_available:
+                print("⚠️ Docling을 사용할 수 없어 기본 텍스트 처리로 진행합니다.")
+                print("↪️ 폴백 처리로 전환합니다.")
+                return await self._fallback_text_processing(file_path, file_id, metadata)
+            else:
+                print("✅ Docling 서비스 사용 가능")
+            
+            # 파일 형식 지원 여부 확인
+            print("📋 파일 형식 지원 여부 확인 중...")
+            is_supported = await self.docling_service.is_supported_format(file_path)
+            if not is_supported:
+                print(f"⚠️ Docling이 지원하지 않는 파일 형식: {file_path}")
+                print("↪️ 폴백 처리로 전환합니다.")
+                return await self._fallback_text_processing(file_path, file_id, metadata)
+            else:
+                print(f"✅ 지원되는 파일 형식: {os.path.splitext(file_path)[1]}")
+            
+            # Docling 옵션 설정
+            print("⚙️ Docling 옵션 구성 중...")
+            if docling_options is None:
+                docling_options = DoclingOptions(
+                    output_format="markdown",
+                    extract_tables=True,
+                    extract_images=True,
+                    ocr_enabled=False
+                )
+                print("📋 기본 Docling 옵션 사용")
+            else:
+                print("📋 사용자 정의 Docling 옵션 적용")
+            
+            print(f"   - 출력 형식: {docling_options.output_format}")
+            print(f"   - 테이블 추출: {docling_options.extract_tables}")
+            print(f"   - 이미지 추출: {docling_options.extract_images}")
+            print(f"   - OCR 활성화: {docling_options.ocr_enabled}")
+            
+            print(f"🔄 Docling으로 문서 전처리 시작: {file_path}")
+            
+            # Docling으로 문서 처리
+            print("🚀 Docling 문서 처리 요청 시작...")
+            docling_start_time = time.time()
+            docling_result = await self.docling_service.process_document(file_path, docling_options)
+            docling_elapsed = time.time() - docling_start_time
+            
+            if not docling_result.success:
+                error_msg = docling_result.error
+                is_timeout = docling_result.metadata.get("timeout", False)
+                
+                print(f"❌ Docling 처리 실패 ({docling_elapsed:.2f}초 소요): {error_msg}")
+                
+                if is_timeout:
+                    print("⏰ 타임아웃으로 인한 실패 - 파일이 너무 크거나 복잡함")
+                    print("💡 해결방법: 파일 크기 축소 또는 OCR 비활성화 시도")
+                else:
+                    print(f"🔍 실패 원인: {error_msg}")
+                
+                print("↪️ 기본 텍스트 처리로 폴백 시도 중...")
+                return await self._fallback_text_processing(file_path, file_id, metadata)
+            
+            print(f"✅ Docling 처리 성공 ({docling_elapsed:.2f}초 소요)")
+            print(f"📊 처리 결과: {len(docling_result.content.get('text', ''))} 글자 추출")
+            
+            # 처리된 콘텐츠를 청크로 분할
+            print("✂️ 청크 생성 프로세스 시작...")
+            chunk_start_time = time.time()
+            chunks = await self._create_enhanced_chunks(docling_result, docling_options)
+            chunk_elapsed = time.time() - chunk_start_time
+            
+            if not chunks:
+                print(f"⚠️ 처리된 콘텐츠에서 유효한 청크를 생성할 수 없습니다. ({chunk_elapsed:.2f}초 소요)")
+                return {
+                    "success": False,
+                    "error": "청크 생성 실패",
+                    "chunks_count": 0
+                }
+            
+            print(f"✅ 청크 생성 완료: {len(chunks)}개 청크 ({chunk_elapsed:.2f}초 소요)")
+            if chunks:
+                avg_chunk_size = sum(len(chunk) for chunk in chunks) / len(chunks)
+                print(f"📊 청크 통계: 평균 길이 {avg_chunk_size:.0f} 글자")
+            
+            # 메타데이터에 Docling 정보 추가
+            print("📋 메타데이터 구성 중...")
+            enhanced_metadata = {
+                **metadata,
+                "processing_method": "docling",
+                "docling_options": docling_options.dict(),
+                "processing_time": docling_result.processing_time,
+                "page_count": docling_result.metadata.get("page_count", 0),
+                "table_count": docling_result.metadata.get("table_count", 0),
+                "image_count": docling_result.metadata.get("image_count", 0)
+            }
+            print(f"✅ 메타데이터 구성 완료 (페이지: {enhanced_metadata['page_count']}, 테이블: {enhanced_metadata['table_count']}, 이미지: {enhanced_metadata['image_count']})")
+            
+            # ChromaDB에 벡터 저장
+            print(f"💾 ChromaDB에 벡터 저장 시작... ({len(chunks)}개 청크)")
+            vector_start_time = time.time()
+            success = await self.add_document_chunks(file_id, chunks, enhanced_metadata)
+            vector_elapsed = time.time() - vector_start_time
+            
+            if success:
+                print(f"✅ 벡터 저장 완료 ({vector_elapsed:.2f}초 소요)")
+                total_time = docling_elapsed + chunk_elapsed + vector_elapsed
+                print(f"🎉 Docling 기반 벡터화 전체 완료: {len(chunks)}개 청크 (총 {total_time:.2f}초)")
+                print(f"⏱️  시간 분석: Docling {docling_elapsed:.2f}초, 청킹 {chunk_elapsed:.2f}초, 벡터화 {vector_elapsed:.2f}초")
+                return {
+                    "success": True,
+                    "chunks_count": len(chunks),
+                    "processing_method": "docling",
+                    "processing_time": docling_result.processing_time,
+                    "docling_metadata": docling_result.metadata,
+                    "total_pipeline_time": total_time
+                }
+            else:
+                print(f"❌ 벡터 저장 실패 ({vector_elapsed:.2f}초 소요)")
+                return {
+                    "success": False,
+                    "error": "벡터 저장 실패",
+                    "chunks_count": len(chunks)
+                }
+                
+        except Exception as e:
+            print(f"❌ Docling 기반 벡터화 중 예상치 못한 오류: {str(e)}")
+            import traceback
+            print(f"🔍 오류 상세: {traceback.format_exc()}")
+            return {
+                "success": False,
+                "error": str(e),
+                "chunks_count": 0
+            }
+    
+    async def _create_enhanced_chunks(
+        self, 
+        docling_result, 
+        options: DoclingOptions
+    ) -> List[str]:
+        """
+        Docling 결과를 기반으로 향상된 청킹을 수행합니다.
+        """
+        chunks = []
+        
+        try:
+            content = docling_result.content
+            
+            # 주요 콘텐츠 선택 (우선순위: markdown > text)
+            if options.output_format == "markdown" and content.get("markdown"):
+                main_content = content["markdown"]
+                content_type = "markdown"
+            elif content.get("text"):
+                main_content = content["text"]
+                content_type = "text"
+            else:
+                print("⚠️ 유효한 콘텐츠를 찾을 수 없습니다.")
+                return chunks
+            
+            print(f"📝 {content_type} 형식으로 청킹 시작 (길이: {len(main_content)}자)")
+            
+            # 기본 청킹 (1500자 단위, 200자 오버랩)
+            chunk_size = 1500
+            overlap_size = 200
+            
+            # 문단 기반 스마트 청킹
+            if content_type == "markdown":
+                chunks.extend(await self._smart_markdown_chunking(main_content, chunk_size, overlap_size))
+            else:
+                chunks.extend(await self._smart_text_chunking(main_content, chunk_size, overlap_size))
+            
+            # 테이블 콘텐츠 추가
+            if options.extract_tables and docling_result.tables:
+                table_chunks = await self._create_table_chunks(docling_result.tables)
+                chunks.extend(table_chunks)
+                print(f"📊 테이블 청크 {len(table_chunks)}개 추가")
+            
+            # 구조 정보 기반 청크 (제목, 섹션 등)
+            if content.get("structure"):
+                structure_chunks = await self._create_structure_chunks(content["structure"], main_content)
+                chunks.extend(structure_chunks)
+                print(f"🏗️ 구조 기반 청크 {len(structure_chunks)}개 추가")
+            
+            # 중복 제거 및 정리
+            chunks = await self._deduplicate_chunks(chunks)
+            
+            print(f"✅ 청킹 완료: 총 {len(chunks)}개 청크")
+            return chunks
+            
+        except Exception as e:
+            print(f"❌ 청킹 중 오류: {str(e)}")
+            return chunks
+    
+    async def _smart_markdown_chunking(self, content: str, chunk_size: int, overlap_size: int) -> List[str]:
+        """Markdown 형식에 최적화된 스마트 청킹"""
+        chunks = []
+        
+        # Markdown 섹션별로 분할
+        sections = content.split('\n## ')
+        
+        for i, section in enumerate(sections):
+            if i > 0:  # 첫 번째 섹션이 아니면 헤더 복원
+                section = '## ' + section
+            
+            if len(section) <= chunk_size:
+                # 섹션이 청크 크기보다 작으면 그대로 사용
+                chunks.append(section.strip())
+            else:
+                # 섹션이 큰 경우 하위 분할
+                subsections = section.split('\n### ')
+                current_chunk = ""
+                
+                for j, subsection in enumerate(subsections):
+                    if j > 0:
+                        subsection = '### ' + subsection
+                    
+                    if len(current_chunk + subsection) <= chunk_size:
+                        current_chunk += ('\n' if current_chunk else '') + subsection
+                    else:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                        
+                        # 서브섹션도 큰 경우 텍스트 청킹
+                        if len(subsection) > chunk_size:
+                            text_chunks = await self._smart_text_chunking(subsection, chunk_size, overlap_size)
+                            chunks.extend(text_chunks)
+                            current_chunk = ""
+                        else:
+                            current_chunk = subsection
+                
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+        
+        return [chunk for chunk in chunks if chunk.strip()]
+    
+    async def _smart_text_chunking(self, content: str, chunk_size: int, overlap_size: int) -> List[str]:
+        """텍스트에 대한 스마트 청킹 (문단 경계 고려)"""
+        chunks = []
+        
+        # 문단별로 분할
+        paragraphs = content.split('\n\n')
+        current_chunk = ""
+        
+        for paragraph in paragraphs:
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+            
+            # 현재 청크에 문단을 추가할 수 있는지 확인
+            if len(current_chunk + '\n\n' + paragraph) <= chunk_size:
+                current_chunk += ('\n\n' if current_chunk else '') + paragraph
+            else:
+                # 현재 청크를 저장
+                if current_chunk:
+                    chunks.append(current_chunk)
+                
+                # 문단이 청크 크기보다 큰 경우 문장 단위로 분할
+                if len(paragraph) > chunk_size:
+                    sentences = paragraph.split('. ')
+                    sentence_chunk = ""
+                    
+                    for sentence in sentences:
+                        if not sentence.endswith('.'):
+                            sentence += '.'
+                        
+                        if len(sentence_chunk + ' ' + sentence) <= chunk_size:
+                            sentence_chunk += (' ' if sentence_chunk else '') + sentence
+                        else:
+                            if sentence_chunk:
+                                chunks.append(sentence_chunk)
+                            sentence_chunk = sentence
+                    
+                    if sentence_chunk:
+                        current_chunk = sentence_chunk
+                    else:
+                        current_chunk = ""
+                else:
+                    current_chunk = paragraph
+        
+        # 마지막 청크 저장
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        return chunks
+    
+    async def _create_table_chunks(self, tables: List[Dict[str, Any]]) -> List[str]:
+        """테이블 데이터를 청크로 변환"""
+        chunks = []
+        
+        for table in tables:
+            table_content = f"[테이블 {table.get('id', 'unknown')}]\n"
+            table_content += f"페이지: {table.get('page', 'unknown')}\n"
+            
+            if table.get('html'):
+                table_content += f"HTML: {table['html']}\n"
+            
+            if table.get('content'):
+                table_content += f"내용: {table['content']}"
+            
+            chunks.append(table_content)
+        
+        return chunks
+    
+    async def _create_structure_chunks(self, structure: List[Dict[str, Any]], content: str) -> List[str]:
+        """문서 구조 정보를 기반으로 청크 생성"""
+        chunks = []
+        
+        # 제목/헤딩만 별도로 인덱싱
+        headings = [item for item in structure if 'title' in item.get('type', '').lower() or 'heading' in item.get('type', '').lower()]
+        
+        for heading in headings[:10]:  # 최대 10개의 주요 헤딩만
+            heading_text = f"[구조: {heading.get('type', 'unknown')}] {heading.get('text_preview', '')}"
+            chunks.append(heading_text)
+        
+        return chunks
+    
+    async def _deduplicate_chunks(self, chunks: List[str]) -> List[str]:
+        """중복 청크 제거"""
+        seen = set()
+        unique_chunks = []
+        
+        for chunk in chunks:
+            # 공백 정규화 후 중복 확인
+            normalized = ' '.join(chunk.split())
+            chunk_hash = hash(normalized)
+            
+            if chunk_hash not in seen and len(normalized) > 50:  # 최소 50자 이상
+                seen.add(chunk_hash)
+                unique_chunks.append(chunk)
+        
+        return unique_chunks
+    
+    async def _fallback_text_processing(self, file_path: str, file_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Docling을 사용할 수 없을 때의 폴백 처리"""
+        try:
+            print(f"📄 기본 텍스트 처리로 진행: {file_path}")
+            
+            # 파일 확장자에 따른 텍스트 추출
+            import os
+            file_extension = os.path.splitext(file_path)[1].lower()
+            
+            if file_extension == '.pdf':
+                # PDF 파일 처리 - FileService의 extract_text_from_pdf 사용
+                from .file_service import FileService
+                file_service = FileService()
+                content = await file_service.extract_text_from_pdf(file_path)
+            elif file_extension in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']:
+                # Office 파일 처리
+                from .file_service import FileService
+                file_service = FileService()
+                content = await file_service.extract_text_from_office(file_path)
+            else:
+                # 텍스트 파일 처리 (txt, md 등)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    # UTF-8로 읽을 수 없으면 다른 인코딩 시도
+                    try:
+                        with open(file_path, 'r', encoding='cp949') as f:
+                            content = f.read()
+                    except:
+                        with open(file_path, 'r', encoding='latin-1') as f:
+                            content = f.read()
+            
+            if not content or content.strip() == "":
+                return {
+                    "success": False,
+                    "error": "파일에서 텍스트를 추출할 수 없습니다.",
+                    "chunks_count": 0
+                }
+            
+            # 기본 청킹
+            chunks = await self._smart_text_chunking(content, 1500, 200)
+            
+            if not chunks:
+                return {
+                    "success": False,
+                    "error": "유효한 청크를 생성할 수 없습니다.",
+                    "chunks_count": 0
+                }
+            
+            # 메타데이터 업데이트
+            fallback_metadata = {
+                **metadata,
+                "processing_method": "basic_text",
+                "processing_time": 0.1,
+                "file_type": file_extension
+            }
+            
+            # 벡터 저장
+            success = await self.add_document_chunks(file_id, chunks, fallback_metadata)
+            
+            return {
+                "success": success,
+                "chunks_count": len(chunks),
+                "processing_method": "basic_text",
+                "processing_time": 0.1
+            }
+            
+        except Exception as e:
+            print(f"❌ 폴백 텍스트 처리 실패: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "chunks_count": 0
+            }
+    
+    async def vectorize_with_docling_pipeline(
+        self, 
+        file_path: str, 
+        file_id: str, 
+        metadata: Dict[str, Any],
+        enable_docling: bool = True,
+        docling_options: Optional[DoclingOptions] = None
+    ) -> Dict[str, Any]:
+        """
+        통합된 벡터화 파이프라인 (Docling 활용 가능)
+        
+        Args:
+            file_path: 파일 경로
+            file_id: 파일 ID
+            metadata: 메타데이터
+            enable_docling: Docling 사용 여부
+            docling_options: Docling 옵션
+            
+        Returns:
+            벡터화 결과
+        """
+        try:
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            print(f"🚀 통합 벡터화 파이프라인 시작: {file_path}")
+            print(f"📊 파일 정보: {file_size / 1024 / 1024:.2f} MB, Docling 활성화: {enable_docling}")
+            
+            if enable_docling:
+                print("🔧 Docling 기반 처리 시작...")
+                # Docling을 우선적으로 시도
+                result = await self.process_document_with_docling(
+                    file_path, file_id, metadata, docling_options
+                )
+                
+                if result["success"]:
+                    print("✅ Docling 기반 벡터화 성공")
+                    return result
+                else:
+                    print(f"⚠️ Docling 처리 실패: {result.get('error', '알 수 없는 오류')}")
+                    print("↪️ 기본 텍스트 처리로 전환 중...")
+            else:
+                print("📝 Docling 비활성화 - 기본 처리 사용")
+            
+            # 기본 텍스트 처리로 폴백
+            print("📝 기본 텍스트 처리 시작...")
+            fallback_start_time = time.time()
+            result = await self._fallback_text_processing(file_path, file_id, metadata)
+            fallback_elapsed = time.time() - fallback_start_time
+            
+            if result["success"]:
+                print(f"✅ 기본 텍스트 처리 성공 ({fallback_elapsed:.2f}초 소요)")
+                print(f"⚙️ 처리 방법: {result.get('processing_method', '기본')}")
+            else:
+                print(f"❌ 모든 처리 방법 실패 ({fallback_elapsed:.2f}초 소요): {result.get('error', '알 수 없는 오류')}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ 벡터화 파이프라인 예상치 못한 오류: {str(e)}")
+            import traceback
+            print(f"🔍 오류 상세: {traceback.format_exc()}")
+            return {
+                "success": False,
+                "error": str(e),
+                "chunks_count": 0
+            }
     
 
     
@@ -801,16 +1331,10 @@ class VectorService:
                 print(f"기존 컬렉션 '{self.collection_name}' 사용")
             except Exception:
                 # 새 컬렉션 생성
-                embedding_function = None
-                if hasattr(settings, 'OPENAI_API_KEY') and settings.OPENAI_API_KEY:
-                    try:
-                        from chromadb.utils import embedding_functions
-                        embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                            api_key=settings.OPENAI_API_KEY,
-                            model_name="text-embedding-ada-002"
-                        )
-                    except Exception:
-                        embedding_function = None
+                # 동적 임베딩 함수 설정
+                embedding_function = _create_embedding_function()
+                if not embedding_function:
+                    print("임베딩 함수를 사용할 수 없습니다 - 기본 설정으로 진행")
                 
                 VectorService._collection = VectorService._client.create_collection(
                     name=self.collection_name,
@@ -830,7 +1354,7 @@ class VectorService:
     async def find_orphaned_vectors(self) -> Dict[str, Any]:
         """고아 벡터(파일이 삭제되었지만 벡터는 남아있는 경우)를 찾습니다."""
         try:
-            self._ensure_client()
+            await self._ensure_client()
             
             # ChromaDB에서 모든 벡터 조회
             all_results = VectorService._collection.get()

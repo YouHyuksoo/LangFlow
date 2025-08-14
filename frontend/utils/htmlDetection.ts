@@ -93,12 +93,43 @@ export function detectHtmlContent(content: string): HtmlDetectionResult {
 }
 
 /**
- * HTML 콘텐츠를 안전하게 정리합니다
+ * HTML 콘텐츠를 안전하게 정리합니다 - Chart.js 스크립트는 허용
  */
 function sanitizeHtml(html: string): string {
-  // 위험한 태그들 제거
-  const dangerousTags = ['script', 'object', 'embed', 'form', 'input', 'iframe', 'link', 'meta'];
+  // Chart.js 관련 스크립트인지 확인
+  const isChartJsScript = (content: string): boolean => {
+    return /Chart\.js|new Chart\(|Chart\s*\(|chart\.js|cdn\.jsdelivr\.net\/npm\/chart\.js/i.test(content);
+  };
+
+  // 위험한 태그들 제거 (script는 제외)
+  const dangerousTags = ['object', 'embed', 'form', 'input', 'iframe', 'link', 'meta'];
   let sanitized = html;
+  
+  // script 태그는 Chart.js 관련만 허용
+  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  const scriptsToRemove: string[] = [];
+  
+  while ((match = scriptRegex.exec(html)) !== null) {
+    const scriptContent = match[1];
+    const fullScript = match[0];
+    
+    // Chart.js CDN 로드나 Chart.js 코드가 아닌 스크립트는 제거 대상에 추가
+    const isChartCdn = /cdn\.jsdelivr\.net\/npm\/chart\.js|chartjs\.org/i.test(fullScript);
+    const hasChartCode = isChartJsScript(scriptContent);
+    
+    if (!isChartCdn && !hasChartCode) {
+      scriptsToRemove.push(fullScript);
+      console.log('[htmlDetection.ts] 위험한 스크립트 제거:', fullScript.substring(0, 100) + '...');
+    } else {
+      console.log('[htmlDetection.ts] Chart.js 스크립트 허용:', fullScript.substring(0, 100) + '...');
+    }
+  }
+  
+  // 위험한 스크립트만 제거
+  scriptsToRemove.forEach(script => {
+    sanitized = sanitized.replace(script, '');
+  });
   
   dangerousTags.forEach(tag => {
     const regex = new RegExp(`<${tag}[^>]*>.*?<\/${tag}>`, 'gis');
@@ -116,19 +147,42 @@ function sanitizeHtml(html: string): string {
     sanitized = sanitized.replace(regex, '');
   });
   
-  // javascript: 프로토콜 제거
-  sanitized = sanitized.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
+  // javascript: 프로토콜 제거 (하지만 Chart.js는 예외)
+  sanitized = sanitized.replace(/href\s*=\s*["']javascript:(?!.*chart).*?["']/gi, 'href="#"');
   
   return sanitized;
 }
 
 /**
- * HTML에서 순수 텍스트 콘텐츠를 추출합니다
+ * HTML에서 순수 텍스트 콘텐츠를 추출합니다 - Chart.js 스크립트는 보존
  */
 function extractTextContent(html: string): string {
+  let processedHtml = html;
+  
+  // Chart.js가 아닌 스크립트만 제거
+  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  const scriptsToRemove: string[] = [];
+  
+  while ((match = scriptRegex.exec(html)) !== null) {
+    const scriptContent = match[1];
+    const fullScript = match[0];
+    
+    // Chart.js 관련이 아닌 스크립트만 제거
+    const isChartRelated = /Chart\.js|new Chart\(|Chart\s*\(|chart\.js|cdn\.jsdelivr\.net\/npm\/chart\.js/i.test(scriptContent + fullScript);
+    
+    if (!isChartRelated) {
+      scriptsToRemove.push(fullScript);
+    }
+  }
+  
+  // 위험한 스크립트만 제거
+  scriptsToRemove.forEach(script => {
+    processedHtml = processedHtml.replace(script, '');
+  });
+  
   // HTML 태그 제거
-  const textContent = html
-    .replace(/<script[^>]*>.*?<\/script>/gi, '') // 스크립트 제거
+  const textContent = processedHtml
     .replace(/<style[^>]*>.*?<\/style>/gi, '')   // 스타일 제거
     .replace(/<[^>]*>/g, '')                      // 모든 태그 제거
     .replace(/&amp;/g, '&')                      // HTML 엔티티 복원
@@ -144,12 +198,14 @@ function extractTextContent(html: string): string {
 }
 
 /**
- * HTML 콘텐츠가 미리보기하기에 적합한지 확인합니다
+ * HTML 콘텐츠가 미리보기하기에 적합한지 확인합니다 - Chart.js는 안전한 것으로 처리
  */
 export function isPreviewSafe(htmlContent: string): boolean {
+  // Chart.js 관련 스크립트인지 확인
+  const hasChartJs = /Chart\.js|new Chart\(|Chart\s*\(|chart\.js|cdn\.jsdelivr\.net\/npm\/chart\.js/i.test(htmlContent);
+  
   const dangerousPatterns = [
-    /javascript:/i,
-    /<script/i,
+    /javascript:(?!.*chart)/i,  // javascript: 프로토콜 (Chart.js 제외)
     /<object/i,
     /<embed/i,
     /<iframe/i,
@@ -157,7 +213,20 @@ export function isPreviewSafe(htmlContent: string): boolean {
     /data:text\/html/i
   ];
   
-  return !dangerousPatterns.some(pattern => pattern.test(htmlContent));
+  // Chart.js가 포함된 경우 스크립트 태그 허용
+  const scriptPattern = /<script/i;
+  const hasScript = scriptPattern.test(htmlContent);
+  
+  if (hasScript && hasChartJs) {
+    // Chart.js 스크립트가 있는 경우 다른 위험한 패턴만 검사
+    return !dangerousPatterns.some(pattern => pattern.test(htmlContent));
+  } else if (hasScript && !hasChartJs) {
+    // Chart.js가 아닌 스크립트가 있는 경우 위험함
+    return false;
+  } else {
+    // 스크립트가 없는 경우 기본 검사
+    return !dangerousPatterns.some(pattern => pattern.test(htmlContent));
+  }
 }
 
 /**

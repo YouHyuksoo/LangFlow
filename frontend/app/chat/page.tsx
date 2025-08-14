@@ -62,8 +62,6 @@ interface ChatSession {
   timestamp: Date;
 }
 
-// --- 재사용 컴포넌트 ---
-
 // ChatHistory: 좌측 채팅 히스토리 패널 (메모이제이션으로 최적화)
 const ChatHistory = memo(
   ({
@@ -121,7 +119,11 @@ const ChatMessage = memo(
     };
 
     return (
-      <div className={`flex items-start gap-4 w-full ${isUser ? "justify-end" : ""}`}>
+      <div
+        className={`flex items-start gap-4 w-full ${
+          isUser ? "justify-end" : ""
+        }`}
+      >
         {!isUser && (
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary">
@@ -131,8 +133,8 @@ const ChatMessage = memo(
         )}
         <div
           className={`group relative rounded-lg px-4 py-3 ${
-            isUser 
-              ? "max-w-2xl bg-primary text-primary-foreground" 
+            isUser
+              ? "max-w-2xl bg-primary text-primary-foreground"
               : "max-w-4xl bg-muted dark:bg-slate-800 dark:text-slate-100 border dark:border-slate-600"
           }`}
         >
@@ -150,7 +152,7 @@ const ChatMessage = memo(
               ))}
             </div>
           )}
-          
+
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
@@ -334,12 +336,12 @@ export default function ChatPage() {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // 사용자 정보 상태 추가
   const [userName, setUserName] = useState(() =>
     loadFromStorage("chat_user_name", "사용자")
   );
-  
+
   // 사이드바 표시/숨김 상태 추가
   const [sidebarVisible, setSidebarVisible] = useState(() =>
     loadFromStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, true)
@@ -359,7 +361,7 @@ export default function ChatPage() {
   // 인증 체크
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [authLoading, isAuthenticated, router]);
 
@@ -426,14 +428,15 @@ export default function ChatPage() {
     const files = event.target.files;
     if (!files) return;
 
-    const newImages = Array.from(files).filter(file => 
-      file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024 // 5MB 제한
+    const newImages = Array.from(files).filter(
+      (file) => file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024 // 5MB 제한
     );
 
     if (newImages.length === 0) {
       toast({
         title: "파일 오류",
-        description: "이미지 파일만 업로드 가능하며, 크기는 5MB 이하여야 합니다.",
+        description:
+          "이미지 파일만 업로드 가능하며, 크기는 5MB 이하여야 합니다.",
         variant: "destructive",
       });
       return;
@@ -444,23 +447,23 @@ export default function ChatPage() {
     setSelectedImages(totalImages);
 
     // 미리보기 URL 생성
-    const previewUrls = totalImages.map(file => URL.createObjectURL(file));
+    const previewUrls = totalImages.map((file) => URL.createObjectURL(file));
     setImagePreviewUrls(previewUrls);
   };
 
   const removeImage = (index: number) => {
     const newImages = selectedImages.filter((_, i) => i !== index);
     const newPreviewUrls = imagePreviewUrls.filter((_, i) => i !== index);
-    
+
     // 제거된 URL 해제
     URL.revokeObjectURL(imagePreviewUrls[index]);
-    
+
     setSelectedImages(newImages);
     setImagePreviewUrls(newPreviewUrls);
   };
 
   const clearImages = () => {
-    imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     setSelectedImages([]);
     setImagePreviewUrls([]);
   };
@@ -518,7 +521,10 @@ export default function ChatPage() {
   }, [toast]);
 
   const handleSendMessage = async () => {
-    if ((!inputValue.trim() && selectedImages.length === 0) || selectedCategories.length === 0) {
+    if (
+      (!inputValue.trim() && selectedImages.length === 0) ||
+      selectedCategories.length === 0
+    ) {
       toast({
         title: "알림",
         description: "카테고리를 선택하고 텍스트나 이미지를 입력해주세요.",
@@ -545,22 +551,25 @@ export default function ChatPage() {
     try {
       // Base64로 이미지 인코딩
       let base64Images: string[] = [];
-      
+
       if (currentImages.length > 0) {
         console.log(`이미지 ${currentImages.length}개를 Base64로 변환 중...`);
-        
+
         const imagePromises = currentImages.map((file, index) => {
           return new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
-              if (reader.result && typeof reader.result === 'string') {
+              if (reader.result && typeof reader.result === "string") {
                 console.log(`이미지 ${index + 1} 변환 완료: ${file.name}`);
                 resolve(reader.result);
               } else {
-                reject(new Error(`이미지 ${index + 1} 변환 실패: ${file.name}`));
+                reject(
+                  new Error(`이미지 ${index + 1} 변환 실패: ${file.name}`)
+                );
               }
             };
-            reader.onerror = () => reject(new Error(`이미지 읽기 실패: ${file.name}`));
+            reader.onerror = () =>
+              reject(new Error(`이미지 읽기 실패: ${file.name}`));
             reader.readAsDataURL(file);
           });
         });
@@ -572,7 +581,8 @@ export default function ChatPage() {
           console.error("이미지 변환 중 오류:", imageError);
           toast({
             title: "이미지 처리 오류",
-            description: "이미지를 처리하는 중 오류가 발생했습니다. 텍스트만 전송합니다.",
+            description:
+              "이미지를 처리하는 중 오류가 발생했습니다. 텍스트만 전송합니다.",
             variant: "destructive",
           });
           base64Images = [];
@@ -821,7 +831,7 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 relative">
-          <div 
+          <div
             className="absolute inset-0 overflow-y-auto overflow-x-hidden"
             ref={scrollAreaRef}
           >
@@ -859,7 +869,7 @@ export default function ChatPage() {
               <div ref={messagesEndRef} />
             </div>
           </div>
-          
+
           {/* 플로팅 네비게이션 */}
           <FloatingNavigation scrollContainerRef={scrollAreaRef} />
         </div>
@@ -904,7 +914,7 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-            
+
             <div className="relative rainbow-focus rounded-2xl">
               <Textarea
                 ref={inputRef}
@@ -926,12 +936,15 @@ export default function ChatPage() {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  disabled={selectedCategories.length === 0 || selectedImages.length >= 3}
+                  disabled={
+                    selectedCategories.length === 0 ||
+                    selectedImages.length >= 3
+                  }
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                
+
                 <Button
                   variant="ghost"
                   size="icon"
@@ -940,7 +953,7 @@ export default function ChatPage() {
                 >
                   <Mic className="h-4 w-4" />
                 </Button>
-                
+
                 <Button
                   onClick={handleSendMessage}
                   disabled={
@@ -954,7 +967,7 @@ export default function ChatPage() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-              
+
               {/* 숨겨진 파일 입력 */}
               <input
                 ref={fileInputRef}

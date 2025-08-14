@@ -401,31 +401,6 @@ const ActivityFeed = ({ data }: ActivityFeedProps) => (
   </Card>
 );
 
-// QuickActions: 빠른 작업 링크
-const QuickActions = () => (
-  <Card className="shadow-sm">
-    <CardHeader>
-      <CardTitle>빠른 작업</CardTitle>
-    </CardHeader>
-    <CardContent className="grid grid-cols-2 gap-2">
-      {[
-        { href: "/admin/upload", icon: FileText, label: "파일 업로드" },
-        { href: "/admin/categories", icon: Factory, label: "카테고리" },
-        { href: "/admin/vectorization", icon: Database, label: "벡터화" },
-        { href: "/admin/users", icon: Users, label: "사용자" },
-        { href: "/admin/langflow", icon: Bot, label: "LangFlow" },
-        { href: "/admin/settings", icon: Settings, label: "설정" },
-      ].map(({ href, icon: Icon, label }) => (
-        <Button key={href} variant="outline" className="w-full justify-start" asChild>
-          <a href={href}>
-            <Icon className="h-4 w-4 mr-2" />
-            {label}
-          </a>
-        </Button>
-      ))}
-    </CardContent>
-  </Card>
-);
 
 // --- 메인 대시보드 컴포넌트 ---
 export default function AdminDashboard() {
@@ -582,7 +557,6 @@ export default function AdminDashboard() {
             onReset={handleChromaDBReset} 
           />
           <ActivityFeed data={dashboardData} />
-          <QuickActions />
         </div>
       </div>
     </div>

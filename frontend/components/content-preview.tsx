@@ -1,133 +1,179 @@
 "use client";
 
-import React from "react";
-import {
-  detectContentType,
-  type ContentDetectionResult,
-} from "@/utils/contentDetection";
-import { HtmlPreview } from "@/components/html-preview";
-import { CodePreview } from "@/components/code-preview";
-import { MarkdownPreview } from "@/components/markdown-preview";
-import { SimpleTablePreview } from "@/components/simple-table-preview";
+import React, { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { MarkdownPreview } from "./markdown-preview";
+import { HtmlPreview } from "./html-preview";
+import { SimpleTablePreview } from "./simple-table-preview";
+import { CodePreview } from "./code-preview";
+
+interface File {
+  id: string;
+  mime_type: string;
+  content: string;
+}
 
 interface ContentPreviewProps {
-  content: string;
-  className?: string;
+  file?: File | null;
+  active?: boolean;
+  content?: string;
 }
 
-/**
- * 통합 콘텐츠 미리보기 컴포넌트
- * HTML, 코드, 마크다운을 자동으로 감지하고 적절한 미리보기를 제공
- */
-export function ContentPreview({
+type PreviewType =
+  | "markdown"
+  | "html"
+  | "table"
+  | "code"
+  | "unsupported"
+  | null;
+
+const ContentPreview: React.FC<ContentPreviewProps> = ({
+  file,
+  active,
   content,
-  className = "",
-}: ContentPreviewProps) {
-  // 콘텐츠 타입 자동 감지
-  const detectionResult: ContentDetectionResult = detectContentType(content);
+}) => {
+  const [previewType, setPreviewType] = useState<PreviewType>(null);
+  const [previewContent, setPreviewContent] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // 콘텐츠 타입에 따라 적절한 미리보기 컴포넌트 렌더링
-  switch (detectionResult.contentType) {
-    case "html":
-      if (detectionResult.confidence > 0.7) {
-        return <HtmlPreview content={content} className={className} />;
-      }
-      break;
-
-    case "code":
-    case "json":
-    case "xml":
-      if (detectionResult.confidence > 0.7) {
-        return (
-          <CodePreview
-            code={content}
-            language={detectionResult.language || detectionResult.contentType}
-            confidence={detectionResult.confidence}
-            className={className}
-          />
-        );
-      }
-      break;
-
-    case "markdown":
-      if (detectionResult.confidence > 0.5) {
-        return (
-          <MarkdownPreview
-            markdown={content}
-            confidence={detectionResult.confidence}
-            className={className}
-          />
-        );
-      }
-      break;
-
-    case "text":
-    default:
-      // 기본적으로 SimpleTablePreview를 사용 (내부적으로 표 또는 일반 텍스트 처리)
-      return <SimpleTablePreview content={content} className={className} />;
+  // content prop이 있으면 직접 렌더링
+  if (content) {
+    return <div className="whitespace-pre-wrap">{content}</div>;
   }
-  // confidence가 기준 미달일 경우 기본 렌더러 사용
-  return <SimpleTablePreview content={content} className={className} />;
-}
 
-/**
- * 콘텐츠 타입 감지 결과만 반환하는 훅
- */
-export function useContentDetection(content: string): ContentDetectionResult {
-  return detectContentType(content);
-}
+  useEffect(() => {
+    let isCancelled = false;
 
-/**
- * 여러 콘텐츠 타입을 지원하는지 확인
- */
-export function isPreviewSupported(content: string): boolean {
-  const result = detectContentType(content);
-  return (
-    result.confidence >= 0.4 &&
-    ["html", "code", "json", "xml", "markdown"].includes(result.contentType)
-  );
-}
+    if (!active || !file) {
+      setPreviewType(null);
+      setPreviewContent(null);
+      return;
+    }
 
-/**
- * 콘텐츠 타입별 아이콘 매핑
- */
-export function getContentTypeIcon(contentType: string): string {
-  const iconMap: Record<string, string> = {
-    html: "🌐",
-    code: "💻",
-    json: "📊",
-    xml: "📋",
-    markdown: "📝",
-    javascript: "🟨",
-    typescript: "🔷",
-    python: "🐍",
-    java: "☕",
-    cpp: "⚡",
-    css: "🎨",
-    sql: "🗃️",
-  };
+    const processFile = async () => {
+      setLoading(true);
+      setError(null);
+      setPreviewContent(null);
 
-  return iconMap[contentType] || "📄";
-}
+      try {
+        const { mime_type, content, id } = file;
+        let newPreviewType: PreviewType = "unsupported";
+        let newPreviewContent: any = null;
 
-/**
- * 콘텐츠 타입별 색상 매핑
- */
-export function getContentTypeColor(contentType: string): string {
-  const colorMap: Record<string, string> = {
-    html: "text-red-600",
-    code: "text-blue-600",
-    json: "text-green-600",
-    xml: "text-purple-600",
-    markdown: "text-gray-600",
-    javascript: "text-yellow-600",
-    typescript: "text-blue-500",
-    python: "text-green-500",
-    java: "text-orange-600",
-    cpp: "text-purple-500",
-    css: "text-pink-600",
-    sql: "text-indigo-600",
-  };
+        if (mime_type === "text/markdown") {
+          newPreviewType = "markdown";
+          newPreviewContent = content;
+        } else if (mime_type === "text/html") {
+          newPreviewType = "html";
+          newPreviewContent = content;
+        } else if (
+          mime_type ===
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ) {
+          newPreviewType = "table";
+          const response = await fetch(`/api/files/${id}/table`);
+          if (!response.ok) {
+            throw new Error("Failed to fetch table data");
+          }
+          newPreviewContent = await response.json();
+        } else if (
+          mime_type.startsWith("text/") ||
+          [
+            "application/json",
+            "application/javascript",
+            "application/x-python-code",
+          ].includes(mime_type)
+        ) {
+          newPreviewType = "code";
+          newPreviewContent = content;
+        }
 
-  return colorMap[contentType] || "text-gray-500";
-}
+        if (!isCancelled) {
+          setPreviewType(newPreviewType);
+          setPreviewContent(newPreviewContent);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          const errorMessage =
+            err instanceof Error ? err.message : "An unknown error occurred";
+          setError(errorMessage);
+          toast({
+            title: "Error",
+            description: `Could not load preview: ${errorMessage}`,
+            variant: "destructive",
+          });
+          setPreviewType("unsupported");
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    processFile();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [file?.id, file?.content, active, toast]);
+
+  if (!active || !file) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-500">
+        Select a file to see a preview
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="loader"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-red-500">
+        Error: {error}
+      </div>
+    );
+  }
+
+  switch (previewType) {
+    case "markdown":
+      return (
+        <MarkdownPreview markdown={previewContent || ""} confidence={0.9} />
+      );
+    case "html":
+      return <HtmlPreview content={previewContent || ""} />;
+    case "table":
+      return <SimpleTablePreview content={previewContent} />;
+    case "code":
+      return (
+        <CodePreview
+          code={previewContent || ""}
+          language={file.mime_type}
+          confidence={0.9}
+        />
+      );
+    case "unsupported":
+      return (
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          Preview not supported for this file type.
+        </div>
+      );
+    default:
+      return (
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          Select a file to see a preview
+        </div>
+      );
+  }
+};
+
+export { ContentPreview };

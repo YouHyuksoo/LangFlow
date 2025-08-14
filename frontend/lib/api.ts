@@ -135,6 +135,82 @@ export const settingsAPI = {
   },
 };
 
+// 모델 설정 API (Docling 포함)
+export const modelSettingsAPI = {
+  getSettings: async () => {
+    try {
+      const response = await api.get("/api/v1/model-settings/");
+      return response.data;
+    } catch (error) {
+      console.error("모델 설정 로드 실패:", error);
+      throw error;
+    }
+  },
+
+  updateSettings: async (settings: any) => {
+    const response = await api.put("/api/v1/model-settings/", settings);
+    return response.data;
+  },
+
+  getAvailableProviders: async () => {
+    const response = await api.get("/api/v1/model-settings/providers");
+    return response.data;
+  },
+
+  getDoclingSettings: async () => {
+    const response = await api.get("/api/v1/model-settings/docling");
+    return response.data;
+  },
+
+  getDoclingStatus: async () => {
+    const response = await api.get("/api/v1/model-settings/docling/status");
+    return response.data;
+  },
+
+  getModelsByProvider: async (provider: string) => {
+    const response = await api.get(`/api/v1/model-settings/models/${provider}`);
+    return response.data;
+  },
+
+  updateModelSettings: async (settings: any) => {
+    const response = await api.put("/api/v1/model-settings/", settings);
+    return response.data;
+  },
+
+  updateDoclingSettings: async (settings: any) => {
+    const response = await api.put("/api/v1/model-settings/docling", settings);
+    return response.data;
+  },
+
+  testModelConnection: async () => {
+    const response = await api.post("/api/v1/model-settings/test");
+    return response.data;
+  },
+
+  resetModelSettings: async () => {
+    const response = await api.post("/api/v1/model-settings/reset");
+    return response.data;
+  },
+};
+
+// Docling 관련 API
+export const doclingAPI = {
+  getDoclingSettings: async () => {
+    const response = await api.get("/api/v1/model-settings/docling");
+    return response.data;
+  },
+
+  updateDoclingSettings: async (settings: any) => {
+    const response = await api.put("/api/v1/model-settings/docling", settings);
+    return response.data;
+  },
+
+  getDoclingStatus: async () => {
+    const response = await api.get("/api/v1/model-settings/docling/status");
+    return response.data;
+  },
+};
+
 // 파일 업로드 API
 export const fileAPI = {
   uploadFile: async (file: File, category?: string, forceReplace?: boolean) => {
@@ -240,6 +316,12 @@ export const fileAPI = {
   // 개별 파일 벡터화
   vectorizeFile: async (fileId: string) => {
     const response = await api.post(`/api/v1/files/${fileId}/vectorize`);
+    return response.data;
+  },
+
+  // 파일 재벡터화
+  revectorizeFile: async (fileId: string) => {
+    const response = await api.post(`/api/v1/files/${fileId}/revectorize`);
     return response.data;
   },
 

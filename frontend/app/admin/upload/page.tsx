@@ -27,6 +27,9 @@ import {
 } from "lucide-react";
 import { FileUpload } from "@/components/file-upload";
 import { DuplicateFileModal } from "@/components/duplicate-file-modal";
+import { DeleteFileModal } from "@/components/delete-file-modal";
+import { DoclingStatusBadge, DoclingDetailCard } from "@/components/docling-status-badge";
+import { DoclingSettingsInfo } from "@/components/docling-settings-info";
 import { fileAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { emitFileUploaded, emitFileDeleted } from "@/lib/file-events";
@@ -40,6 +43,21 @@ interface UploadedFile {
   uploadTime: Date;
   fileId?: string;
   error?: string;
+  // Docling 관련 정보 추가
+  docling_processed?: boolean;
+  docling_success?: boolean;
+  docling_result?: {
+    success: boolean;
+    processing_time: number;
+    metadata: {
+      page_count?: number;
+      table_count?: number;
+      image_count?: number;
+      processing_time?: number;
+      docling_version?: string;
+    };
+  };
+  vectorized?: boolean;
 }
 
 interface FileStats {
@@ -61,6 +79,9 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(true);
   const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  
+  // Docling 설정 상태
+  const [currentSettings, setCurrentSettings] = useState<any>(null);
 
   // 중복 파일 모달 상태
   const [duplicateModal, setDuplicateModal] = useState({
@@ -70,17 +91,87 @@ export default function UploadPage() {
     duplicateInfo: null as any,
   });
 
-  // 파일 목록 로드 함수 (개선된 에러 처리)
-  const loadUploadedFiles = useCallback(async () => {
-    console.log("loadUploadedFiles 호출됨 - 개선된 files API 사용");
+  // 삭제 확인 모달 상태
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    file: null as UploadedFile | null,
+    isDeleting: false,
+  });
 
-    // 강화된 중복 호출 방지
-    if (isLoadingRef) {
+  // 삭제 핸들러 함수
+  const handleDeleteClick = (file: UploadedFile) => {
+    setDeleteModal({
+      isOpen: true,
+      file: file,
+      isDeleting: false,
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.file) return;
+
+    setDeleteModal(prev => ({ ...prev, isDeleting: true }));
+
+    try {
+      await fileAPI.deleteFile(deleteModal.file.fileId!);
+      
+      // UI에서 즉시 해당 파일 제거
+      setUploadedFiles(prevFiles => 
+        prevFiles.filter(file => file.fileId !== deleteModal.file!.fileId)
+      );
+      
+      // 통계 재계산
+      const remainingFiles = uploadedFiles.filter(file => file.fileId !== deleteModal.file!.fileId);
+      const totalSize = remainingFiles.reduce((sum, file) => sum + file.size, 0);
+      const vectorizedCount = remainingFiles.filter(file => file.status === "success").length;
+      const recentCount = remainingFiles.filter(file => {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return file.uploadTime > oneDayAgo;
+      }).length;
+
+      setStats({
+        totalFiles: remainingFiles.length,
+        totalSize,
+        vectorizedFiles: vectorizedCount,
+        recentUploads: recentCount,
+      });
+      
+      // 파일 삭제 이벤트 발송
+      emitFileDeleted({
+        fileId: deleteModal.file.fileId!,
+        filename: deleteModal.file.name,
+      });
+      
+      toast({
+        title: "파일 삭제 완료",
+        description: `${deleteModal.file.name} 파일이 성공적으로 삭제되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "삭제 실패",
+        description: "파일 삭제 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteModal({
+        isOpen: false,
+        file: null,
+        isDeleting: false,
+      });
+    }
+  };
+
+  // 파일 목록 로드 함수 (개선된 에러 처리)
+  const loadUploadedFiles = useCallback(async (forceRefresh = false) => {
+    console.log("loadUploadedFiles 호출됨 - 개선된 files API 사용", forceRefresh ? "(강제 새로고침)" : "");
+
+    // 강화된 중복 호출 방지 (강제 새로고침 시에는 무시)
+    if (isLoadingRef && !forceRefresh) {
       console.log("파일 목록 로드 중복 호출 방지 - isLoadingRef");
       return;
     }
 
-    if (hasLoadedOnce) {
+    if (hasLoadedOnce && !forceRefresh) {
       console.log("파일 목록 로드 중복 호출 방지 - hasLoadedOnce");
       return;
     }
@@ -184,6 +275,29 @@ export default function UploadPage() {
     loadUploadedFiles();
   }, []); // 빈 의존성 배열 - 컴포넌트 마운트 시 한 번만 실행
 
+  // 설정 로드 (Docling 설정 포함)
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        // 모델 설정 API에서 Docling 설정 직접 로드
+        const response = await fetch('http://localhost:8000/api/v1/model-settings/', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const settings = await response.json();
+          console.log('로드된 모델 설정:', settings);
+          console.log('Docling 활성화 상태:', settings.docling_enabled);
+          setCurrentSettings(settings);
+        } else {
+          console.error('모델 설정 로드 실패:', response.status);
+        }
+      } catch (error) {
+        console.error('Docling 설정 로드 실패:', error);
+      }
+    };
+    loadSettings();
+  }, []);
+
   const handleFileUpload = async (
     file: File,
     category: string,
@@ -219,10 +333,16 @@ export default function UploadPage() {
         });
       }
 
-      // 파일 목록 새로고침
-      setTimeout(() => {
-        loadUploadedFiles();
-      }, 1000);
+      // 파일 목록 즉시 갱신 🆕 (강제 새로고침)
+      console.log("업로드 완료 후 파일 목록 갱신 중...");
+      await loadUploadedFiles(true); // 강제 새로고침
+
+      // 파일 이벤트 발송 (다른 컴포넌트 갱신용)
+      emitFileUploaded({
+        fileId: response.file_id,
+        filename: response.filename,
+        category: category,
+      });
     } catch (error: any) {
       console.error("파일 업로드 실패:", error);
 
@@ -266,6 +386,10 @@ export default function UploadPage() {
         duplicateModal.pendingCategory,
         true
       );
+      // 교체 완료 후 추가 갱신 (보험)
+      setTimeout(() => {
+        loadUploadedFiles(true); // 강제 새로고침
+      }, 500);
     }
   };
 
@@ -306,15 +430,15 @@ export default function UploadPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "success":
-        return <Badge className="bg-green-100 text-green-800">완료</Badge>;
+        return <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">완료</Badge>;
       case "error":
         return <Badge variant="destructive">오류</Badge>;
       case "processing":
-        return <Badge className="bg-yellow-100 text-yellow-800">처리중</Badge>;
+        return <Badge className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">처리중</Badge>;
       case "uploading":
-        return <Badge className="bg-blue-100 text-blue-800">업로드중</Badge>;
+        return <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">업로드중</Badge>;
       case "pending":
-        return <Badge className="bg-orange-100 text-orange-800">벡터화 대기</Badge>;
+        return <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200">벡터화 대기</Badge>;
       default:
         return <Badge variant="secondary">알 수 없음</Badge>;
     }
@@ -350,7 +474,7 @@ export default function UploadPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">전체 파일</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalFiles}</div>
@@ -363,7 +487,7 @@ export default function UploadPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">벡터화 완료</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
+            <Database className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.vectorizedFiles}</div>
@@ -380,7 +504,7 @@ export default function UploadPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">최근 업로드</CardTitle>
-            <Upload className="h-4 w-4 text-muted-foreground" />
+            <Upload className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.recentUploads}</div>
@@ -391,7 +515,7 @@ export default function UploadPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">처리 대기</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Clock className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -409,11 +533,25 @@ export default function UploadPage() {
           <CardDescription>
             PDF 파일을 업로드하여 벡터화할 자료를 준비합니다.
           </CardDescription>
+          {/* 현재 Docling 설정 상태 표시 🆕 */}
+          <div className="pt-2">
+            <DoclingSettingsInfo settings={currentSettings} />
+          </div>
         </CardHeader>
         <CardContent>
           <FileUpload
             onFileUpload={handleFileUpload}
             onLoadFiles={loadUploadedFiles}
+            onUploadStart={(fileName) => {
+              console.log(`📤 업로드 시작: ${fileName}`);
+            }}
+            onUploadComplete={(fileName) => {
+              console.log(`✅ 업로드 완료: ${fileName}`);
+              // 추가 갱신 (보험)
+              setTimeout(() => {
+                loadUploadedFiles(true); // 강제 새로고침
+              }, 200);
+            }}
           />
         </CardContent>
       </Card>
@@ -447,9 +585,9 @@ export default function UploadPage() {
                     key={`${file.fileId || index}-${file.name}`}
                     className={`relative p-4 border rounded-lg transition-all ${
                       isVectorized
-                        ? "border-green-200 bg-green-50/30 hover:bg-green-50/50"
+                        ? "border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-950/30 hover:bg-green-50/50 dark:hover:bg-green-950/50"
                         : hasError
-                        ? "border-red-200 bg-red-50/30 hover:bg-red-50/50"
+                        ? "border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/30 hover:bg-red-50/50 dark:hover:bg-red-950/50"
                         : "border-border hover:bg-muted/50"
                     }`}
                   >
@@ -462,10 +600,16 @@ export default function UploadPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-medium truncate">{file.name}</p>
                             {isVectorized && (
-                              <Badge className="bg-green-100 text-green-800 text-xs">
+                              <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs">
                                 벡터화 완료
                               </Badge>
                             )}
+                            {/* Docling 상태 배지 추가 🆕 */}
+                            <DoclingStatusBadge
+                              docling_processed={file.docling_processed}
+                              docling_success={file.docling_success}
+                              docling_result={file.docling_result}
+                            />
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
@@ -479,9 +623,9 @@ export default function UploadPage() {
 
                           {/* 벡터화 상태별 안내 메시지 */}
                           {isVectorized && (
-                            <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md mb-2">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <div className="text-sm text-green-700">
+                            <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-md mb-2">
+                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                              <div className="text-sm text-green-700 dark:text-green-300">
                                 <span className="font-medium">벡터화 완료!</span>
                                 <span className="ml-2">원본 파일은 이제 안전하게 삭제할 수 있습니다. 검색/채팅 기능에 영향이 없습니다.</span>
                               </div>
@@ -489,29 +633,32 @@ export default function UploadPage() {
                           )}
 
                           {isProcessing && (
-                            <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md mb-2">
-                              <Clock className="h-4 w-4 text-blue-600 flex-shrink-0 animate-pulse" />
-                              <span className="text-sm text-blue-700">
+                            <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-md mb-2">
+                              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 animate-pulse" />
+                              <span className="text-sm text-blue-700 dark:text-blue-300">
                                 벡터화 진행 중... 완료될 때까지 파일을 삭제하지 마세요.
                               </span>
                             </div>
                           )}
 
                           {file.status === "pending" && (
-                            <div className="flex items-center gap-2 p-2 bg-orange-50 border border-orange-200 rounded-md mb-2">
-                              <AlertCircle className="h-4 w-4 text-orange-600 flex-shrink-0" />
-                              <span className="text-sm text-orange-700">
+                            <div className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/50 border border-orange-200 dark:border-orange-800 rounded-md mb-2">
+                              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                              <span className="text-sm text-orange-700 dark:text-orange-300">
                                 벡터화 대기 중입니다. 벡터화 관리 페이지에서 벡터화를 시작해주세요.
                               </span>
                             </div>
                           )}
 
                           {hasError && file.error && (
-                            <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-md mb-2">
-                              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-                              <span className="text-sm text-red-700">{file.error}</span>
+                            <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md mb-2">
+                              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                              <span className="text-sm text-red-700 dark:text-red-300">{file.error}</span>
                             </div>
                           )}
+
+                          {/* Docling 상세 정보 카드 추가 🆕 */}
+                          <DoclingDetailCard docling_result={file.docling_result} />
 
                           {/* 진행률 표시 */}
                           {file.status === "uploading" && (
@@ -584,39 +731,10 @@ export default function UploadPage() {
                         <Button
                           variant={isVectorized ? "default" : "outline"}
                           size="sm"
-                          onClick={async () => {
-                            if (isVectorized) {
-                              // 벡터화 완료된 파일 삭제 확인
-                              const confirmed = window.confirm(
-                                `"${file.name}" 파일을 삭제하시겠습니까?\n\n✅ 벡터화가 완료되어 검색/채팅에 영향이 없습니다.\n📄 원본 파일과 벡터 데이터가 모두 삭제됩니다.`
-                              );
-                              if (!confirmed) return;
-                            } else {
-                              // 벡터화 미완료 파일 삭제 경고
-                              const confirmed = window.confirm(
-                                `"${file.name}" 파일을 삭제하시겠습니까?\n\n⚠️ 벡터화가 완료되지 않아 검색/채팅에서 사용할 수 없게 됩니다.\n정말 삭제하시겠습니까?`
-                              );
-                              if (!confirmed) return;
-                            }
-
-                            try {
-                              await fileAPI.deleteFile(file.fileId!);
-                              loadUploadedFiles();
-                              toast({
-                                title: "파일 삭제 완료",
-                                description: `${file.name} 파일이 성공적으로 삭제되었습니다.`,
-                              });
-                            } catch (error) {
-                              toast({
-                                title: "삭제 실패",
-                                description: "파일 삭제 중 오류가 발생했습니다.",
-                                variant: "destructive",
-                              });
-                            }
-                          }}
+                          onClick={() => handleDeleteClick(file)}
                           disabled={!file.fileId}
                           title={isVectorized ? "안전하게 삭제" : "파일 삭제"}
-                          className={isVectorized ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                          className={isVectorized ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white" : ""}
                         >
                           <Trash2 className="h-4 w-4" />
                           {isVectorized ? "안전 삭제" : "삭제"}
@@ -645,6 +763,15 @@ export default function UploadPage() {
         }
         fileSize={duplicateModal.pendingFile?.size || 0}
         category={duplicateModal.pendingCategory}
+      />
+
+      <DeleteFileModal
+        open={deleteModal.isOpen}
+        onOpenChange={(open) => setDeleteModal(prev => ({ ...prev, isOpen: open }))}
+        onConfirm={handleDeleteConfirm}
+        fileName={deleteModal.file?.name || ""}
+        isVectorized={deleteModal.file?.status === "success" && deleteModal.file?.vectorized === true}
+        isLoading={deleteModal.isDeleting}
       />
     </div>
   );

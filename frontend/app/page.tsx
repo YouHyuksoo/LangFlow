@@ -79,7 +79,7 @@ export default function LandingPage() {
     },
     {
       icon: Cpu,
-      title: "LangFlow 통합",
+      title: "ThinkFlow 통합",
       description: "노코드 AI 워크플로우 구성으로 맞춤형 응답 처리가 가능합니다.",
       color: "from-orange-500 to-red-500",
     },
@@ -147,7 +147,7 @@ export default function LandingPage() {
             </div>
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-foreground via-primary to-secondary bg-clip-text text-transparent mb-6 leading-tight">
-              LangFlow
+              ThinkFlow
               <br />
               <span className="text-3xl md:text-5xl lg:text-6xl">스마트 문서 어시스턴트</span>
             </h1>
@@ -218,7 +218,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              왜 LangFlow를 선택해야 할까요?
+              왜 ThinkFlow를 선택해야 할까요?
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               최신 AI 기술과 사용자 중심 설계로 업무 효율성을 극대화합니다
@@ -304,7 +304,7 @@ export default function LandingPage() {
               사용자들의 이야기
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              실제 사용자들이 경험한 LangFlow의 효과를 확인하세요
+              실제 사용자들이 경험한 ThinkFlow의 효과를 확인하세요
             </p>
           </div>
           
@@ -368,7 +368,7 @@ export default function LandingPage() {
             <div className="md:col-span-2">
               <div className="flex items-center mb-4">
                 <Bot className="h-8 w-8 text-primary mr-2" />
-                <span className="text-2xl font-bold">LangFlow</span>
+                <span className="text-2xl font-bold">ThinkFlow</span>
               </div>
               <p className="text-muted-foreground mb-4">
                 AI 기반 지능형 문서 검색 시스템으로 업무 효율성을 극대화하세요.
@@ -402,7 +402,7 @@ export default function LandingPage() {
           </div>
           
           <div className="border-t border-border pt-8 mt-8 text-center text-sm text-muted-foreground">
-            <p>&copy; 2024 LangFlow. All rights reserved.</p>
+            <p>&copy; 2024 ThinkFlow. All rights reserved.</p>
           </div>
         </div>
       </footer>

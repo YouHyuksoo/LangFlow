@@ -83,7 +83,7 @@ export function MainNavigation() {
             {/* Logo/Brand */}
             <div className="flex-shrink-0 flex items-center">
               <Link href="/" className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                LangFlow
+                ThinkFlow
               </Link>
             </div>
 

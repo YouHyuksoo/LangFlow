@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 # 채팅 관련 스키마
@@ -66,12 +66,14 @@ class FileInfo(BaseModel):
     filename: str
     status: str
     file_size: int
+    file_path: Optional[str] = None
     category_id: Optional[str] = None
     category_name: Optional[str] = None
     upload_time: datetime
     vectorized: bool = False
     vectorization_status: Optional[str] = None
     error_message: Optional[str] = None
+    chunk_count: Optional[int] = None
 
 # Flow 관련 스키마
 class FlowRequest(BaseModel):
@@ -169,15 +171,101 @@ class InterestAreaCreateRequest(BaseModel):
     description: Optional[str] = Field(None, description="관심 영역 설명")
     category_ids: List[str] = Field(default=[], description="관련 카테고리 ID 목록")
 
+# 모델 설정 스키마
+class ModelSettings(BaseModel):
+    # LLM 모델 설정
+    llm_provider: str = Field("openai", description="LLM 제공업체 (openai, anthropic, google, etc.)")
+    llm_model: str = Field("gpt-4o-mini", description="LLM 모델명")
+    llm_api_key: Optional[str] = Field(None, description="LLM API 키")
+    llm_temperature: float = Field(0.7, description="LLM 온도 설정", ge=0.0, le=2.0)
+    llm_max_tokens: int = Field(4096, description="LLM 최대 토큰 수", ge=1)
+    
+    # Embedding 모델 설정
+    embedding_provider: str = Field("openai", description="임베딩 제공업체")
+    embedding_model: str = Field("text-embedding-3-small", description="임베딩 모델명")
+    embedding_api_key: Optional[str] = Field(None, description="임베딩 API 키")
+    embedding_dimension: int = Field(1536, description="임베딩 차원", ge=1)
+    
+    # 기타 설정
+    chunk_size: int = Field(1000, description="청크 크기", ge=100)
+    chunk_overlap: int = Field(200, description="청크 오버랩", ge=0)
+    top_k: int = Field(5, description="검색 결과 수", ge=1, le=50)
+    
+    # Docling 설정
+    docling_enabled: bool = Field(True, description="Docling 문서 처리 활성화")
+    docling_extract_tables: bool = Field(True, description="테이블 추출 활성화")
+    docling_extract_images: bool = Field(True, description="이미지 추출 활성화")
+    docling_ocr_enabled: bool = Field(True, description="OCR 기능 활성화")
+    docling_output_format: str = Field("markdown", description="Docling 출력 형식")
+    
+    updated_at: datetime = Field(default_factory=datetime.now, description="수정 시간")
+
+class ModelSettingsUpdateRequest(BaseModel):
+    # LLM 모델 설정
+    llm_provider: Optional[str] = Field(None, description="LLM 제공업체")
+    llm_model: Optional[str] = Field(None, description="LLM 모델명")
+    llm_api_key: Optional[str] = Field(None, description="LLM API 키")
+    llm_temperature: Optional[float] = Field(None, description="LLM 온도 설정", ge=0.0, le=2.0)
+    llm_max_tokens: Optional[int] = Field(None, description="LLM 최대 토큰 수", ge=1)
+    
+    # Embedding 모델 설정
+    embedding_provider: Optional[str] = Field(None, description="임베딩 제공업체")
+    embedding_model: Optional[str] = Field(None, description="임베딩 모델명")
+    embedding_api_key: Optional[str] = Field(None, description="임베딩 API 키")
+    embedding_dimension: Optional[int] = Field(None, description="임베딩 차원", ge=1)
+    
+    # 기타 설정
+    chunk_size: Optional[int] = Field(None, description="청크 크기", ge=100)
+    chunk_overlap: Optional[int] = Field(None, description="청크 오버랩", ge=0)
+    top_k: Optional[int] = Field(None, description="검색 결과 수", ge=1, le=50)
+    
+    # Docling 설정
+    docling_enabled: Optional[bool] = Field(None, description="Docling 문서 처리 활성화")
+    docling_extract_tables: Optional[bool] = Field(None, description="테이블 추출 활성화")
+    docling_extract_images: Optional[bool] = Field(None, description="이미지 추출 활성화")
+    docling_ocr_enabled: Optional[bool] = Field(None, description="OCR 기능 활성화")
+    docling_output_format: Optional[str] = Field(None, description="Docling 출력 형식")
+
 # 시스템 설정 스키마
 class SystemSettings(BaseModel):
     default_system_message: str = Field(..., description="기본 시스템 메시지")
     default_persona_id: Optional[str] = Field(None, description="기본 페르소나 ID")
+    
+    # 파일 업로드 설정
+    maxFileSize: int = Field(10, description="최대 파일 크기 (MB)")
+    allowedFileTypes: List[str] = Field(default=["pdf", "docx", "pptx", "xlsx"], description="허용된 파일 형식")
+    uploadDirectory: str = Field("uploads/", description="업로드 디렉토리")
+    
+    # 벡터화 설정
+    vectorDimension: int = Field(1536, description="벡터 차원 수")
+    chunkSize: int = Field(1000, description="청크 크기")
+    chunkOverlap: int = Field(200, description="청크 오버랩")
+    
+    # 시스템 동작 설정
+    enableAutoVectorization: bool = Field(True, description="자동 벡터화 활성화")
+    enableNotifications: bool = Field(True, description="알림 활성화")
+    debugMode: bool = Field(False, description="디버그 모드")
+    
     updated_at: datetime = Field(default_factory=datetime.now, description="수정 시간")
 
 class SystemSettingsUpdateRequest(BaseModel):
     default_system_message: Optional[str] = Field(None, description="기본 시스템 메시지")
     default_persona_id: Optional[str] = Field(None, description="기본 페르소나 ID")
+    
+    # 파일 업로드 설정
+    maxFileSize: Optional[int] = Field(None, description="최대 파일 크기 (MB)")
+    allowedFileTypes: Optional[List[str]] = Field(None, description="허용된 파일 형식")
+    uploadDirectory: Optional[str] = Field(None, description="업로드 디렉토리")
+    
+    # 벡터화 설정
+    vectorDimension: Optional[int] = Field(None, description="벡터 차원 수")
+    chunkSize: Optional[int] = Field(None, description="청크 크기")
+    chunkOverlap: Optional[int] = Field(None, description="청크 오버랩")
+    
+    # 시스템 동작 설정
+    enableAutoVectorization: Optional[bool] = Field(None, description="자동 벡터화 활성화")
+    enableNotifications: Optional[bool] = Field(None, description="알림 활성화")
+    debugMode: Optional[bool] = Field(None, description="디버그 모드")
 
 # 프로필 관련 스키마
 class ProfileUpdateRequest(BaseModel):
@@ -196,4 +284,52 @@ class AvatarUploadResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str = Field(..., description="에러 메시지")
     detail: Optional[str] = Field(None, description="상세 정보")
-    status_code: int = Field(..., description="HTTP 상태 코드") 
+    status_code: int = Field(..., description="HTTP 상태 코드")
+
+# Docling 관련 스키마
+class DoclingOptions(BaseModel):
+    """Docling 문서 처리 옵션"""
+    enabled: bool = Field(False, description="Docling 전처리 활성화")
+    extract_tables: bool = Field(True, description="테이블 구조 분석")
+    extract_images: bool = Field(True, description="이미지 추출")
+    ocr_enabled: bool = Field(False, description="OCR 활성화")
+    output_format: str = Field("markdown", description="출력 형식 (markdown, html, json, all)")
+
+class DoclingResult(BaseModel):
+    """Docling 처리 결과"""
+    success: bool = Field(..., description="처리 성공 여부")
+    content: Dict[str, Any] = Field(default={}, description="추출된 구조화 콘텐츠")
+    metadata: Dict[str, Any] = Field(default={}, description="처리 메타데이터")
+    tables: List[Dict[str, Any]] = Field(default=[], description="추출된 테이블 목록")
+    images: List[Dict[str, Any]] = Field(default=[], description="추출된 이미지 목록")
+    error: Optional[str] = Field(None, description="에러 메시지")
+    processing_time: Optional[float] = Field(None, description="처리 시간(초)")
+
+class DoclingSettings(BaseModel):
+    """Docling 전역 설정"""
+    enabled: bool = Field(False, description="Docling 기능 활성화")
+    default_extract_tables: bool = Field(True, description="기본 테이블 추출 설정")
+    default_extract_images: bool = Field(True, description="기본 이미지 추출 설정")
+    default_ocr_enabled: bool = Field(False, description="기본 OCR 활성화 설정")
+    default_output_format: str = Field("markdown", description="기본 출력 형식")
+    max_file_size_mb: int = Field(50, description="Docling 처리 최대 파일 크기(MB)")
+    supported_formats: List[str] = Field(
+        default=[".pdf", ".docx", ".pptx", ".xlsx", ".html"],
+        description="지원하는 파일 형식"
+    )
+
+class FileProcessingOptions(BaseModel):
+    """파일 처리 옵션 (업로드 시 사용)"""
+    use_docling: bool = Field(False, description="Docling 전처리 사용")
+    docling_options: Optional[DoclingOptions] = Field(None, description="Docling 상세 옵션")
+    traditional_processing: bool = Field(True, description="기존 처리 방식도 함께 사용")
+
+class DocumentAnalysis(BaseModel):
+    """문서 분석 결과"""
+    file_id: str = Field(..., description="파일 ID")
+    filename: str = Field(..., description="파일명")
+    docling_processed: bool = Field(False, description="Docling 처리 여부")
+    docling_result: Optional[DoclingResult] = Field(None, description="Docling 처리 결과")
+    traditional_result: Optional[Dict[str, Any]] = Field(None, description="기존 처리 결과")
+    comparison: Optional[Dict[str, Any]] = Field(None, description="처리 방식 비교")
+    recommended_processing: str = Field("traditional", description="권장 처리 방식") 

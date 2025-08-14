@@ -1,267 +1,192 @@
-# Langflow RAG System
+# LangFlow - AI-Powered Knowledge Management System
 
-사내 지식관리 AI 도우미 시스템
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14+-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 프로젝트 개요
+사내 문서와 지식 자산을 활용하여 답변하는 AI 어시스턴트 플랫폼입니다. LangFlow를 기반으로 RAG(Retrieval-Augmented Generation) 파이프라인을 구축하고, 사용자가 쉽게 문서를 업로드하고 지능적인 답변을 얻을 수 있는 환경을 제공합니다.
 
-Langflow 기반의 사내 RAG(Retrieval Augmented Generation) 시스템으로, PDF 문서를 업로드하고 AI를 통해 질문-답변 서비스를 제공합니다.
+---
 
-## 기술 스택
+## 목차
 
-### 백엔드
+- [주요 기능](#-주요-기능)
+- [시스템-아키텍처](#-시스템-아키텍처)
+- [기술-스택](#-기술-스택)
+- [프로젝트-구조](#-프로젝트-구조)
+- [설치-및-실행](#-설치-및-실행)
+- [API-엔드포인트](#-주요-api-엔드포인트)
+- [기여-방법](#-기여-방법)
+- [라이선스](#-라이선스)
 
-- **FastAPI**: Python 웹 프레임워크
-- **Langflow**: RAG Flow 설계 및 실행
-- **LangChain**: LLM 통합
-- **OpenAI GPT-4o**: 대화형 AI 모델
-- **FAISS/ChromaDB**: 벡터 데이터베이스
-- **Supabase**: 사용자 및 로그 관리
-- **Pydantic**: 데이터 검증
+## ✨ 주요 기능
 
-### 프론트엔드
+- **📄 문서 관리**: PDF, TXT 등 다양한 형식의 문서를 업로드하고 관리합니다.
+- **🧠 지능형 RAG 파이프라인**:
+  - 업로드된 문서는 자동으로 텍스트, 이미지, 표 등으로 분석 및 분할됩니다.
+  - 멀티모달 임베딩 모델을 통해 각 정보 조각을 벡터화하여 데이터베이스에 저장합니다.
+- **💬 AI 채팅**: 문서 내용을 기반으로 자연스러운 질의응답을 제공하며, 답변의 근거가 되는 소스(텍스트, 이미지)를 함께 제시합니다.
+- **⚙️ Flow 관리**: LangFlow UI 또는 API를 통해 RAG 파이프라인을 시각적으로 설계하고 수정할 수 있습니다.
+- **👥 사용자 관리**: 역할 기반의 사용자 인증 및 접근 제어 기능을 제공합니다.
+- **📊 대시보드**: 시스템 사용 현황과 통계를 시각적으로 모니터링합니다.
 
-- **Next.js 14**: React 프레임워크
-- **shadcn/ui**: UI 컴포넌트 라이브러리
-- **Tailwind CSS**: 스타일링
-- **TypeScript**: 타입 안전성
+## 🏗️ 시스템 아키텍처
 
-## 주요 기능
+```mermaid
+graph TD
+    subgraph User Interface
+        A[Next.js Frontend]
+    end
 
-### 사용자 기능
+    subgraph Backend API
+        B[FastAPI Server]
+    end
 
-- 📄 **PDF 문서 업로드**: 벡터화 및 인덱싱
-- 💬 **AI 채팅**: 문서 기반 질문-답변
-- 🔍 **문서 검색**: 관련 문서 검색
-- 📊 **통계 대시보드**: 사용 현황 확인
+    subgraph Core Services
+        C[Chat Service]
+        D[File Service]
+        E[Vector Service]
+        F[User Service]
+    end
 
-### 관리자 기능
+    subgraph Data & Storage
+        G[PostgreSQL/Supabase]
+        H[Vector DB: ChromaDB]
+        I[File Storage]
+    end
 
-- ⚙️ **Flow 관리**: Langflow Flow 설계 및 관리
-- 📈 **성능 모니터링**: 시스템 성능 추적
-- 👥 **사용자 관리**: 사용자 권한 및 활동 관리
-- 📋 **로그 분석**: 사용 패턴 분석
+    subgraph AI/ML
+        J[Multimodal LLM: GPT-4o/Gemini]
+        K[LangFlow Engine]
+    end
 
-## 프로젝트 구조
-
-```
-LangFlow/
-├── backend/                 # FastAPI 백엔드
-│   ├── app/
-│   │   ├── api/            # API 라우터
-│   │   │   ├── chat.py     # 채팅 API
-│   │   │   ├── files.py    # 파일 관리 API
-│   │   │   ├── flows.py    # Flow 관리 API
-│   │   │   └── stats.py    # 통계 API
-│   │   ├── core/           # 핵심 설정
-│   │   │   └── config.py   # 환경 변수 관리
-│   │   ├── models/         # 데이터 모델
-│   │   │   └── schemas.py  # Pydantic 스키마
-│   │   ├── services/       # 비즈니스 로직
-│   │   │   ├── chat_service.py
-│   │   │   ├── file_service.py
-│   │   │   └── flow_service.py
-│   │   └── utils/          # 유틸리티
-│   ├── langflow/           # Langflow Flow 저장소
-│   │   ├── flows/          # Flow JSON 파일들
-│   │   ├── components/     # 기본 컴포넌트
-│   │   └── custom_components/ # 커스텀 컴포넌트
-│   ├── uploads/            # 업로드된 PDF 파일들
-│   ├── vector_db/          # 벡터 데이터베이스
-│   ├── main.py             # FastAPI 애플리케이션
-│   ├── requirements.txt    # Python 의존성
-│   └── env.example        # 환경 변수 예제
-├── frontend/               # Next.js 프론트엔드
-│   ├── app/               # App Router
-│   ├── components/        # React 컴포넌트
-│   ├── lib/              # 유틸리티 함수
-│   └── package.json      # Node.js 의존성
-├── package.json           # 프로젝트 스크립트
-└── README.md             # 프로젝트 문서
+    A -- REST API --> B
+    B --> C & D & F
+    D -- Extracts & Chunks --> E
+    E -- Embeds & Stores --> H
+    C -- Retrieves from --> H
+    C -- Generates with --> J
+    F -- Manages Users --> G
+    D -- Stores Files --> I
+    B -- Manages Flows --> K
 ```
 
-## 설치 및 실행
+## 🛠️ 기술 스택
 
-### 1. 의존성 설치
+| 구분        | 기술                               | 역할                                     |
+| ----------- | ---------------------------------- | ---------------------------------------- |
+| **Frontend**| `Next.js` / `React`                | 사용자 인터페이스 구축                   |
+|             | `TypeScript`                       | 타입 안정성 확보                         |
+|             | `Tailwind CSS` / `shadcn/ui`       | 모던하고 반응형인 UI 디자인              |
+| **Backend** | `Python` / `FastAPI`               | 고성능 REST API 서버 구축                |
+|             | `Pydantic`                         | 엄격한 데이터 유효성 검사                |
+|             | `SQLModel` / `SQLAlchemy`          | 데이터베이스 ORM                         |
+| **AI/ML**   | `LangFlow` / `LangChain`           | RAG 파이프라인 설계 및 오케스트레이션    |
+|             | `OpenAI GPT-4o` / `Google Gemini`  | 멀티모달 LLM (생성 및 임베딩)            |
+| **Database**| `PostgreSQL` (Supabase)            | 사용자 정보, 메타데이터 등 관계형 데이터 저장 |
+|             | `ChromaDB`                         | 텍스트/이미지 벡터 데이터 저장 및 검색   |
+| **DevOps**  | `uv`                               | Python 패키지 및 가상환경 관리           |
+|             | `Docker`                           | 컨테이너화 및 배포 자동화 (예정)         |
+
+## 📂 프로젝트 구조
+
+```
+.
+├── backend/            # Python FastAPI 백엔드
+│   ├── app/            # 핵심 애플리케이션 로직
+│   ├── data/           # 업로드 파일, 로그, 벡터 DB 저장
+│   ├── langflow/       # LangFlow 파이프라인 정의
+│   ├── main.py         # FastAPI 앱 진입점
+│   └── pyproject.toml  # Python 프로젝트 설정 및 의존성 (uv)
+├── frontend/           # Next.js 프론트엔드
+│   ├── app/            # Next.js App Router 페이지
+│   ├── components/     # 재사용 가능한 React 컴포넌트
+│   ├── lib/            # 유틸리티 및 API 클라이언트
+│   └── package.json    # Node.js 의존성
+└── README.md
+```
+
+## 🚀 설치 및 실행
+
+### 사전 요구사항
+
+- [Python 3.11+](https://www.python.org/)
+- [Node.js 18+](https://nodejs.org/)
+- [uv](https://github.com/astral-sh/uv) (Python 패키지 관리자)
+
+### 1. 저장소 복제
 
 ```bash
-# 루트 디렉토리에서
-npm install
-
-# 백엔드 의존성 설치
-cd backend
-pip install -r requirements.txt
-
-# 프론트엔드 의존성 설치
-cd ../frontend
-npm install
+git clone https://github.com/your-username/LangFlow.git
+cd LangFlow
 ```
 
 ### 2. 환경 변수 설정
 
+각 `backend` 및 `frontend` 디렉토리의 `.env.example` 파일을 복사하여 `.env` (백엔드) 및 `.env.local` (프론트엔드) 파일을 생성하고, API 키 및 데이터베이스 정보를 입력합니다.
+
 ```bash
-# 백엔드 환경 변수
+# Backend
+cp backend/.env.example backend/.env
+
+# Frontend
+cp frontend/.env.example frontend/.env.local
+```
+
+### 3. 백엔드 실행
+
+```bash
 cd backend
-cp env.example .env
-# .env 파일을 편집하여 API 키 등을 설정
 
-# 프론트엔드 환경 변수
-cd ../frontend
-cp env.example .env.local
-# .env.local 파일을 편집하여 API URL 등을 설정
+# 가상환경 생성 및 활성화
+uv venv
+source .venv/bin/activate  # macOS/Linux
+# .venv\Scripts\activate  # Windows
+
+# 의존성 설치
+uv pip install -r requirements.txt
+
+# 서버 실행 (개발 모드)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3. 개발 서버 실행
+### 4. 프론트엔드 실행
+
+(별도의 터미널에서 진행)
 
 ```bash
-# 루트 디렉토리에서 (백엔드 + 프론트엔드 동시 실행)
+cd frontend
+
+# 의존성 설치
+npm install
+
+# 개발 서버 실행
 npm run dev
-
-# 또는 개별 실행
-npm run dev:backend  # 백엔드만
-npm run dev:frontend # 프론트엔드만
 ```
 
-## 시스템 아키텍처
+이제 브라우저에서 `http://localhost:3000`으로 접속하여 애플리케이션을 확인할 수 있습니다.
 
-### 백엔드 개발
+## 🌐 주요 API 엔드포인트
 
-```
-backend/
-├── app/
-│   ├── api/          # REST API 엔드포인트
-│   ├── core/         # 설정 및 유틸리티
-│   ├── models/       # Pydantic 데이터 모델
-│   ├── services/     # 비즈니스 로직
-│   └── utils/        # 헬퍼 함수
-├── langflow/         # Langflow Flow 저장소
-├── uploads/          # 업로드된 파일
-└── vector_db/        # 벡터 데이터베이스
-```
+- `POST /api/v1/users/signup`: 사용자 회원가입
+- `POST /api/v1/users/login`: 사용자 로그인
+- `POST /api/v1/files/upload`: 문서 파일 업로드
+- `GET /api/v1/files`: 업로드된 파일 목록 조회
+- `POST /api/v1/chat/stream`: AI와 스트리밍 채팅
+- `GET /api/v1/flows`: 저장된 LangFlow 파이프라인 목록 조회
 
-### 프론트엔드 개발
+## 🤝 기여 방법
 
-```
-frontend/
-├── app/              # Next.js App Router
-├── components/       # 재사용 가능한 컴포넌트
-│   └── ui/          # shadcn/ui 컴포넌트
-└── lib/             # 유틸리티 함수
-```
+기여를 환영합니다! 버그를 발견하거나 새로운 기능을 제안하고 싶다면 언제든지 이슈를 등록해주세요. 직접 코드 기여를 원하시면 다음 절차를 따라주세요.
 
-## 환경 변수
+1.  이 저장소를 Fork 하세요.
+2.  새로운 기능 브랜치를 생성하세요 (`git checkout -b feature/AmazingFeature`).
+3.  변경 사항을 커밋하세요 (`git commit -m 'Add some AmazingFeature'`).
+4.  브랜치에 푸시하세요 (`git push origin feature/AmazingFeature`).
+5.  Pull Request를 열어주세요.
 
-### 백엔드 (.env)
+## 📄 라이선스
 
-```env
-# OpenAI API 설정
-OPENAI_API_KEY=your_openai_api_key_here
-
-# Supabase 설정
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_anon_key_here
-
-# 벡터 DB 설정
-VECTOR_DB_TYPE=faiss
-VECTOR_DB_PATH=./vector_db
-
-# 서버 설정
-HOST=0.0.0.0
-PORT=8000
-DEBUG=true
-
-# 파일 업로드 설정
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=10485760
-
-# Langflow 설정
-LANGFLOW_DIR=./langflow
-FLOWS_DIR=./langflow/flows
-COMPONENTS_DIR=./langflow/components
-CUSTOM_COMPONENTS_DIR=./langflow/custom_components
-```
-
-### 프론트엔드 (.env.local)
-
-```env
-# API 설정
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Supabase 설정
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-
-# 개발 설정
-NODE_ENV=development
-```
-
-## Langflow Flow 관리
-
-### Flow 저장소 구조
-
-```
-backend/langflow/
-├── flows/              # Flow JSON 파일들
-│   ├── {flow_id}_{name}.json
-│   └── ...
-├── components/         # 기본 컴포넌트
-└── custom_components/  # 커스텀 컴포넌트
-```
-
-### Flow API 엔드포인트
-
-- `POST /api/v1/flows/load` - Flow 로드
-- `POST /api/v1/flows/import` - Flow 파일 가져오기
-- `GET /api/v1/flows/` - Flow 목록 조회
-- `GET /api/v1/flows/{flow_id}` - Flow 정보 조회
-- `POST /api/v1/flows/{flow_id}/execute` - Flow 실행
-- `PUT /api/v1/flows/{flow_id}` - Flow 업데이트
-- `DELETE /api/v1/flows/{flow_id}` - Flow 삭제
-- `GET /api/v1/flows/{flow_id}/export` - Flow 내보내기
-- `GET /api/v1/flows/{flow_id}/nodes` - Flow 노드 정보
-- `GET /api/v1/flows/statistics` - Flow 통계
-
-### Flow 파일 형식
-
-Flow는 JSON 형식으로 저장되며, Langflow의 표준 Flow 구조를 따릅니다:
-
-```json
-{
-  "name": "Flow 이름",
-  "nodes": [
-    {
-      "id": "node_id",
-      "type": "node_type",
-      "data": {
-        "node_data": "value"
-      },
-      "position": {
-        "x": 100,
-        "y": 100
-      }
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge_id",
-      "source": "source_node_id",
-      "target": "target_node_id"
-    }
-  ]
-}
-```
-
-## 다음 단계
-
-1. **환경 변수 설정**: API 키 및 데이터베이스 연결 정보 설정
-2. **Langflow Flow 설계**: RAG 시스템을 위한 Flow 구성
-3. **벡터 DB 설정**: FAISS 또는 ChromaDB 설정
-4. **커스텀 컴포넌트 개발**: 프로젝트 특화 컴포넌트 추가
-5. **테스트 및 배포**: 시스템 테스트 및 프로덕션 배포
-
-## 참고 자료
-
-- [Langflow 공식 문서](https://docs.langflow.org/)
-- [FastAPI 공식 문서](https://fastapi.tiangolo.com/)
-- [Next.js 공식 문서](https://nextjs.org/docs)
-- [shadcn/ui 컴포넌트](https://ui.shadcn.com/)
-"# LangFlow" 
+이 프로젝트는 [MIT License](LICENSE)에 따라 배포됩니다.

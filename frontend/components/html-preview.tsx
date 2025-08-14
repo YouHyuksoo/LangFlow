@@ -63,6 +63,10 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
       // 다크테마 감지
       const isDarkMode = document.documentElement.classList.contains('dark');
       
+      // Chart.js가 포함되어 있는지 확인
+      const hasChartJs = /new Chart\(|Chart\s*\(/i.test(detectionResult.sanitizedHtml);
+      console.log('HTML에 Chart.js 코드 포함 여부:', hasChartJs);
+
       // 다크테마에 맞는 CSS 스타일 추가
       const htmlWithStyles = `
         <!DOCTYPE html>
@@ -70,89 +74,125 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          ${hasChartJs ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' : ''}
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
               line-height: 1.6;
-              color: ${isDarkMode ? '#e2e8f0' : '#333'};
+              color: #212529; /* 기본 검은색 텍스트 */
               margin: 16px;
-              background: ${isDarkMode ? '#1e293b' : 'white'};
+              background: #ffffff; /* 항상 흰색 배경 */
             }
-            h1, h2, h3, h4, h5, h6 {
-              color: ${isDarkMode ? '#60a5fa' : '#2563eb'};
-              margin-top: 1.5em;
-              margin-bottom: 0.5em;
-            }
-            p {
-              margin-bottom: 1em;
+            h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote {
+              color: #212529; /* 모든 텍스트 요소 색상 강제 */
             }
             a {
-              color: ${isDarkMode ? '#60a5fa' : '#2563eb'};
-              text-decoration: none;
-            }
-            a:hover {
-              text-decoration: underline;
+              color: #0056b3; /* 링크 색상 */
             }
             table {
               border-collapse: collapse;
               width: 100%;
               margin: 1em 0;
-              background: ${isDarkMode ? '#334155' : 'white'};
             }
             th, td {
-              border: 1px solid ${isDarkMode ? '#475569' : '#ddd'};
+              border: 1px solid #dee2e6;
               padding: 8px;
               text-align: left;
             }
             th {
-              background-color: ${isDarkMode ? '#475569' : '#f5f5f5'};
-              color: ${isDarkMode ? '#f1f5f9' : '#333'};
+              background-color: #f8f9fa;
             }
-            code {
-              background-color: ${isDarkMode ? '#475569' : '#f1f5f9'};
-              color: ${isDarkMode ? '#e2e8f0' : '#333'};
+            code, pre {
+              background-color: #f1f3f5;
+              color: #212529;
               padding: 2px 4px;
               border-radius: 3px;
-              font-family: 'Courier New', monospace;
-            }
-            pre {
-              background-color: ${isDarkMode ? '#475569' : '#f1f5f9'};
-              color: ${isDarkMode ? '#e2e8f0' : '#333'};
-              padding: 12px;
-              border-radius: 6px;
-              overflow-x: auto;
             }
             img {
               max-width: 100%;
               height: auto;
             }
-            /* 리스트 스타일 */
-            ul, ol {
-              color: ${isDarkMode ? '#e2e8f0' : '#333'};
-            }
-            li {
-              margin-bottom: 0.5em;
-            }
-            /* 인용구 스타일 */
             blockquote {
-              border-left: 4px solid ${isDarkMode ? '#60a5fa' : '#2563eb'};
+              border-left: 4px solid #0056b3;
               margin-left: 0;
               padding-left: 16px;
-              background-color: ${isDarkMode ? '#374151' : '#f8fafc'};
+              background-color: #f8f9fa;
               padding: 12px 16px;
-              border-radius: 4px;
             }
-            /* HR 스타일 */
             hr {
               border: none;
               height: 1px;
-              background-color: ${isDarkMode ? '#475569' : '#ddd'};
+              background-color: #dee2e6;
               margin: 2em 0;
+            }
+            /* Chart.js 컨테이너 스타일링 */
+            canvas {
+              max-width: 100%;
+              height: auto;
+              border: 1px solid #dee2e6;
+              border-radius: 8px;
+              background: white;
+            }
+            .chart-container {
+              margin: 20px 0;
+              padding: 20px;
+              border: 1px solid #e9ecef;
+              border-radius: 8px;
+              background: #f8f9fa;
             }
           </style>
         </head>
         <body>
           ${detectionResult.sanitizedHtml}
+          ${hasChartJs ? `
+          <script>
+            // Chart.js 초기화 디버깅 및 실행 보장
+            console.log('Chart.js 로드됨:', typeof Chart !== 'undefined');
+            
+            // 원본 HTML의 스크립트를 다시 실행하는 함수
+            function executeScripts() {
+              console.log('스크립트 재실행 시작');
+              
+              // 페이지 내의 모든 스크립트 태그를 찾아 실행
+              const scripts = document.querySelectorAll('script:not([src])');
+              console.log('실행할 인라인 스크립트:', scripts.length + '개');
+              
+              scripts.forEach((script, index) => {
+                const scriptContent = script.textContent || script.innerHTML;
+                if (scriptContent.includes('new Chart') || scriptContent.includes('Chart(')) {
+                  console.log('Chart.js 스크립트 실행 중... (인덱스:', index + ')');
+                  try {
+                    // 안전한 스크립트 실행을 위해 Function 생성자 사용
+                    const cleanScript = scriptContent.replace(/\\\\/g, '').replace(/\\'/g, "'");
+                    const func = new Function(cleanScript);
+                    func();
+                    console.log('Chart.js 스크립트 실행 성공');
+                  } catch (error) {
+                    console.error('Chart.js 스크립트 실행 오류:', error);
+                  }
+                }
+              });
+            }
+            
+            // Chart.js 라이브러리 로드 확인 후 스크립트 실행
+            function waitForChartJs() {
+              if (typeof Chart !== 'undefined') {
+                console.log('Chart.js 준비 완료, 스크립트 실행');
+                executeScripts();
+              } else {
+                console.log('Chart.js 대기 중...');
+                setTimeout(waitForChartJs, 100);
+              }
+            }
+            
+            // DOM 로드 완료 후 Chart.js 대기
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+              waitForChartJs();
+            } else {
+              document.addEventListener('DOMContentLoaded', waitForChartJs);
+            }
+          </script>
+          ` : ''}
         </body>
         </html>
       `;
@@ -256,6 +296,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
 
   const complexity = estimateHtmlComplexity(content);
   const isSafe = isPreviewSafe(content);
+  const hasChartJs = /new Chart\(|Chart\s*\(/i.test(content);
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -267,6 +308,11 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
           <Badge variant="secondary" className="text-xs">
             {detectionResult.htmlType}
           </Badge>
+          {hasChartJs && (
+            <Badge variant="default" className="text-xs bg-green-600">
+              📊 Chart.js 포함
+            </Badge>
+          )}
           <Badge
             variant={isSafe ? "default" : "destructive"}
             className="text-xs"
@@ -412,7 +458,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
               {renderMode === "iframe" ? (
                 <iframe
                   ref={iframeRef}
-                  className={`w-full border-0 bg-white dark:bg-slate-900 ${
+                  className={`w-full border-0 ${
                     isFullscreen ? "h-[calc(100vh-80px)]" : "h-64 md:h-80"
                   }`}
                   title="HTML 미리보기"

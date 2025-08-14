@@ -9,7 +9,7 @@ import { AuthProvider } from "@/context/auth-context";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "LangFlow - AI 문서 챗봇",
+  title: "ThinkFlow - AI 문서 챗봇",
   description: "사내 지식관리 RAG 시스템",
 };
 

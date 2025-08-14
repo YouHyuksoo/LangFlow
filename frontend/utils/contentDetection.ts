@@ -2,6 +2,28 @@
  * 다양한 콘텐츠 타입 감지 및 검증 유틸리티
  */
 
+// 공통 정규식 상수들
+const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
+const HTML_STRUCTURE_REGEX = /<html[\s\S]*<\/html>/i;
+const DOCTYPE_REGEX = /<!DOCTYPE\s+html/i;
+const CODE_BLOCK_REGEX = /```[\s\S]*?```/g;
+const INLINE_CODE_REGEX = /`[^`]+`/g;
+const MARKDOWN_HEADER_REGEX = /^#{1,6}\s+.+$/m;
+const SCRIPT_TAG_REGEX = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+
+// 타입 가드 함수들
+function isValidString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isValidContentType(type: string): type is "html" | "markdown" | "code" | "json" | "xml" | "text" {
+  return ["html", "markdown", "code", "json", "xml", "text"].includes(type);
+}
+
+function isValidConfidence(confidence: number): boolean {
+  return typeof confidence === 'number' && confidence >= 0 && confidence <= 1;
+}
+
 export interface ContentDetectionResult {
   contentType: "html" | "markdown" | "code" | "json" | "xml" | "text";
   confidence: number;
@@ -22,18 +44,53 @@ export interface ContentDetectionResult {
  * 콘텐츠 타입을 자동으로 감지합니다
  */
 export function detectContentType(content: string): ContentDetectionResult {
-  if (!content || typeof content !== "string") {
+  if (!isValidString(content)) {
     return {
       contentType: "text",
       confidence: 0,
-      textContent: content,
+      textContent: String(content || ''),
     };
   }
 
   const trimmedContent = content.trim();
 
-  // HTML 감지
+  // HTML과 마크다운 동시 감지 (혼합 콘텐츠 처리)
   const htmlResult = detectHtmlContent(trimmedContent);
+  const markdownResult = detectMarkdownContent(trimmedContent);
+  
+  // 혼합 콘텐츠 판단: HTML 태그와 마크다운 문법이 모두 있는 경우
+  const hasSignificantHtml = htmlResult.confidence > 0.5;
+  const hasSignificantMarkdown = markdownResult.confidence > 0.5;
+  
+  if (hasSignificantHtml && hasSignificantMarkdown) {
+    // 혼합 콘텐츠: HTML이 더 구조적이면 HTML로, 마크다운이 더 많으면 마크다운으로
+    const htmlTagCount = (trimmedContent.match(/<[^>]+>/g) || []).length;
+    const markdownElementCount = (trimmedContent.match(/^[#*-`|]/gm) || []).length;
+    
+    console.log(`혼합 콘텐츠 감지 - HTML 태그: ${htmlTagCount}개, 마크다운 요소: ${markdownElementCount}개`);
+    
+    if (htmlTagCount > markdownElementCount) {
+      return {
+        contentType: "html",
+        confidence: Math.max(htmlResult.confidence, 0.8),
+        subType: "mixed",
+        sanitizedContent: htmlResult.sanitizedHtml,
+        textContent: htmlResult.textContent,
+        metadata: generateMetadata(trimmedContent),
+      };
+    } else {
+      return {
+        contentType: "markdown",
+        confidence: Math.max(markdownResult.confidence, 0.8),
+        subType: "mixed",
+        sanitizedContent: trimmedContent,
+        textContent: markdownResult.textContent,
+        metadata: generateMetadata(trimmedContent),
+      };
+    }
+  }
+
+  // 단일 콘텐츠 타입 처리
   if (htmlResult.confidence > 0.6) {
     return {
       contentType: "html",
@@ -45,8 +102,6 @@ export function detectContentType(content: string): ContentDetectionResult {
     };
   }
 
-  // 마크다운 감지
-  const markdownResult = detectMarkdownContent(trimmedContent);
   if (markdownResult.confidence > 0.6) {
     return {
       contentType: "markdown",
@@ -111,17 +166,14 @@ export function detectContentType(content: string): ContentDetectionResult {
  * HTML 콘텐츠 감지 (기존 함수 개선)
  */
 function detectHtmlContent(content: string) {
-  const htmlTagRegex = /<\/?[a-z][\s\S]*>/i;
-  const htmlStructureRegex = /<html[\s\S]*<\/html>/i;
-  const doctypeRegex = /<!DOCTYPE\s+html/i;
 
   let confidence = 0;
   let htmlType: "full-page" | "snippet" | "mixed" | "none" = "none";
 
-  if (doctypeRegex.test(content) || htmlStructureRegex.test(content)) {
+  if (DOCTYPE_REGEX.test(content) || HTML_STRUCTURE_REGEX.test(content)) {
     confidence = 0.95;
     htmlType = "full-page";
-  } else if (htmlTagRegex.test(content)) {
+  } else if (HTML_TAG_REGEX.test(content)) {
     const tagCount = (content.match(/<\/?[a-z][^>]*>/gi) || []).length;
     const commonTags = [
       "div",
@@ -157,6 +209,14 @@ function detectHtmlContent(content: string) {
 }
 
 /**
+ * 마크다운 테이블 감지 헬퍼 함수
+ */
+function detectMarkdownTable(content: string): boolean {
+  return /^\s*\|.+\|\s*\n\s*\|[-:\s|]+\|\s*\n(?:\s*\|.+\|\s*\n?)+/m.test(content) ||
+         /^\s*\|.*\|\s*$[\r\n]+^\s*\|[-:\s|]+\|\s*$[\r\n]+^\s*\|.*\|\s*$/m.test(content);
+}
+
+/**
  * 마크다운 콘텐츠 감지
  */
 function detectMarkdownContent(content: string) {
@@ -173,6 +233,7 @@ function detectMarkdownContent(content: string) {
     /^\s*>\s*.+$/m, // 인용문 - 공백 허용
     /^\s*\|.+\|\s*$/m, // 테이블 행 - 공백 허용
     /^\s*\|[-:\s|]+\|\s*$/m, // 테이블 구분선 - 공백 허용
+    /^\s*\|.*\|\s*$[\r\n]+^\s*\|[-:\s|]+\|\s*$/m, // 테이블 헤더 + 구분선 조합
     /^-{3,}$/m, // 구분선 (3개 이상)
   ];
 
@@ -185,22 +246,26 @@ function detectMarkdownContent(content: string) {
     }
   });
 
-  // 마크다운 패턴이 많을수록 높은 신뢰도
-  confidence = Math.min(matchedPatterns * 0.15, 0.95);
+  // 기본 신뢰도 계산
+  confidence = Math.min(matchedPatterns * 0.12, 0.95);
+  
+  // 테이블이 있는지 체크 (가장 강한 지표)
+  const hasTable = detectMarkdownTable(content);
+  
+  if (hasTable) {
+    confidence = Math.max(confidence, 0.7); // 테이블이 있으면 최소 0.7 보장
+    confidence += 0.2; // 추가 점수
+  }
 
   // 코드 블록이 있으면 추가 점수
-  if (/```[\s\S]*?```/.test(content)) {
+  if (CODE_BLOCK_REGEX.test(content)) {
     confidence += 0.2;
+    CODE_BLOCK_REGEX.lastIndex = 0; // 글로벌 플래그 리셋
   }
 
   // 헤더가 있으면 추가 점수
-  if (/^#{1,6}\s+.+$/m.test(content)) {
+  if (MARKDOWN_HEADER_REGEX.test(content)) {
     confidence += 0.15;
-  }
-
-  // 표가 있으면 추가 점수 (표는 마크다운의 강한 지표)
-  if (/^\|.+\|\s*\n\|[-:\s|]+\|\s*\n(?:\|.+\|\s*\n?)+/m.test(content)) {
-    confidence += 0.25;
   }
 
   confidence = Math.min(confidence, 0.95);
@@ -374,7 +439,8 @@ function detectXmlContent(content: string) {
  */
 function generateMetadata(content: string) {
   const lines = content.split("\n");
-  const codeBlockMatches = content.match(/```[\s\S]*?```/g) || [];
+  const codeBlockMatches = content.match(CODE_BLOCK_REGEX) || [];
+  CODE_BLOCK_REGEX.lastIndex = 0; // 글로벌 플래그 리셋
   const markdownSyntaxPatterns = [
     /^#{1,6}\s+/m,
     /\*\*.*\*\*/,
@@ -444,11 +510,10 @@ function extractTextFromMarkdown(markdown: string): string {
 }
 
 /**
- * HTML 새니타이징 (보안)
+ * HTML 새니타이징 (보안) - Chart.js 스크립트는 허용
  */
 function sanitizeHtml(html: string): string {
   const dangerousTags = [
-    "script",
     "object",
     "embed",
     "form",
@@ -458,6 +523,44 @@ function sanitizeHtml(html: string): string {
     "meta",
   ];
   let sanitized = html;
+
+  // Chart.js 관련 스크립트인지 확인
+  const isChartJsScript = (content: string): boolean => {
+    return /Chart\.js|new Chart\(|Chart\s*\(|chart\.js/i.test(content);
+  };
+
+  // script 태그는 Chart.js 관련만 허용
+  const scriptRegex = SCRIPT_TAG_REGEX;
+  let match;
+  const scriptsToRemove: string[] = [];
+  
+  // 무한루프 방지를 위한 안전장치
+  scriptRegex.lastIndex = 0;
+  let iterationCount = 0;
+  const maxIterations = 100;
+  
+  while ((match = scriptRegex.exec(html)) !== null && iterationCount < maxIterations) {
+    const scriptContent = match[1];
+    const fullScript = match[0];
+    
+    // Chart.js CDN 로드나 Chart.js 코드가 아닌 스크립트는 제거
+    const isChartCdn = /cdn\.jsdelivr\.net\/npm\/chart\.js|chartjs\.org/i.test(fullScript);
+    const hasChartCode = isChartJsScript(scriptContent);
+    
+    if (!isChartCdn && !hasChartCode) {
+      scriptsToRemove.push(fullScript);
+      console.log('위험한 스크립트 제거:', fullScript.substring(0, 100) + '...');
+    } else {
+      console.log('Chart.js 스크립트 허용:', fullScript.substring(0, 100) + '...');
+    }
+    
+    iterationCount++;
+  }
+  
+  // 위험한 스크립트만 제거
+  scriptsToRemove.forEach(script => {
+    sanitized = sanitized.replace(script, '');
+  });
 
   dangerousTags.forEach((tag) => {
     const regex = new RegExp(`<${tag}[^>]*>.*?<\/${tag}>`, "gis");
