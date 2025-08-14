@@ -2,12 +2,14 @@ import os
 import json
 import asyncio
 import time
+import threading
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from ..core.config import settings
 from .model_settings_service import get_current_model_config
 from .docling_service import DoclingService
 from ..models.schemas import DoclingOptions
+from ..models.vector_models import VectorMetadata, VectorMetadataService
 
 # ChromaDB 관련 패키지 임포트 시도 (필수: chromadb만 확인)
 try:
@@ -18,19 +20,11 @@ except ImportError:
     CHROMADB_AVAILABLE = False
     print("ChromaDB 패키지가 설치되지 않았습니다. pip install chromadb 로 설치해주세요.")
 
-def _create_embedding_function():
+async def _create_embedding_function():
     """현재 모델 설정에 따라 임베딩 함수를 생성합니다."""
     try:
-        # 동기적으로 모델 설정 로드
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            model_config = loop.run_until_complete(get_current_model_config())
-        except RuntimeError:
-            # 이벤트 루프가 없는 경우 새로 생성
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            model_config = loop.run_until_complete(get_current_model_config())
+        # 비동기적으로 모델 설정 로드
+        model_config = await get_current_model_config()
         
         embedding_config = model_config.get("embedding", {})
         
@@ -63,35 +57,44 @@ def _create_embedding_function():
         return None
 
 class VectorService:
-    """ChromaDB 기반 벡터 데이터베이스 관리를 담당하는 서비스 (개선된 싱글톤)"""
+    """ChromaDB 기반 벡터 데이터베이스 관리를 담당하는 서비스 (Thread-Safe 싱글톤)"""
     
     _instance = None
     _initialized = False
     _client = None
     _collection = None
+    _lock = threading.Lock()  # Thread-safe 싱글톤을 위한 락
     
     def __new__(cls):
+        # Double-checked locking pattern for thread-safety
         if cls._instance is None:
-            cls._instance = super(VectorService, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(VectorService, cls).__new__(cls)
         return cls._instance
     
     def __init__(self):
-        if VectorService._initialized:
-            return
+        # Thread-safe 초기화
+        with VectorService._lock:
+            if VectorService._initialized:
+                return
+                
+            self.vector_dir = os.path.join(settings.DATA_DIR, 'vectors')
+            self.metadata_dir = os.path.join(settings.DATA_DIR, 'vector_metadata')
             
-        self.vector_dir = os.path.join(settings.DATA_DIR, 'vectors')
-        self.metadata_dir = os.path.join(settings.DATA_DIR, 'vector_metadata')
-        
-        os.makedirs(self.vector_dir, exist_ok=True)
-        os.makedirs(self.metadata_dir, exist_ok=True)
-        
-        # Docling 서비스 초기화
-        self.docling_service = DoclingService()
-        
-        # 지연 초기화 - 실제 벡터화 작업에서만 ChromaDB 연결을 수행
-        # 파일 업로드 등 일반적인 작업에서는 ChromaDB를 초기화하지 않음
-        print("VectorService 초기화 완료 (ChromaDB는 실제 사용 시 지연 로딩)")
-        VectorService._initialized = True
+            os.makedirs(self.vector_dir, exist_ok=True)
+            os.makedirs(self.metadata_dir, exist_ok=True)
+            
+            # Docling 서비스 초기화
+            self.docling_service = DoclingService()
+            
+            # SQLite 메타데이터 서비스 초기화
+            self.metadata_service = VectorMetadataService()
+            
+            # 지연 초기화 - 실제 벡터화 작업에서만 ChromaDB 연결을 수행
+            # 파일 업로드 등 일반적인 작업에서는 ChromaDB를 초기화하지 않음
+            print("VectorService 초기화 완료 (ChromaDB는 실제 사용 시 지연 로딩)")
+            VectorService._initialized = True
     
     async def _ensure_client(self):
         """ChromaDB 클라이언트가 초기화되었는지 확인하고, 필요시 자동 연결을 시도합니다."""
@@ -263,7 +266,7 @@ class VectorService:
         
         try:
             # 메모리 부족을 방지하기 위해 청크를 배치로 처리
-            batch_size = 10  # 한 번에 10개씩 처리
+            batch_size = settings.BATCH_SIZE  # 설정에서 배치 크기 가져오기
             total_chunks = len(chunks)
             
             print(f"ChromaDB에 {total_chunks}개 청크를 {batch_size}개씩 배치 처리합니다.")
@@ -299,20 +302,45 @@ class VectorService:
                     chunk_metadatas.append(chunk_metadata)
                 
                 try:
-                    # ChromaDB에 배치 추가
-                    VectorService._collection.add(
-                        ids=chunk_ids,
-                        documents=chunk_texts,
-                        metadatas=chunk_metadatas
-                    )
+                    # 임베딩 생성
+                    embedding_function = await _create_embedding_function()
+                    if not embedding_function:
+                        print("임베딩 함수를 사용할 수 없습니다 - 텍스트만 저장")
+                        # 임베딩 없이 저장 (ChromaDB가 내부 함수 사용)
+                        VectorService._collection.add(
+                            ids=chunk_ids,
+                            documents=chunk_texts,
+                            metadatas=chunk_metadatas
+                        )
+                    else:
+                        # 임베딩 생성하여 저장
+                        print(f"배치 {batch_start + 1}-{batch_end} 임베딩 생성 중...")
+                        chunk_embeddings = []
+                        
+                        for chunk_text in chunk_texts:
+                            try:
+                                embedding = await asyncio.to_thread(embedding_function, chunk_text.strip())
+                                chunk_embeddings.append(embedding)
+                            except Exception as emb_error:
+                                print(f"임베딩 생성 실패: {emb_error}")
+                                # 기본 임베딩으로 대체 (차원수는 OpenAI 기본값)
+                                chunk_embeddings.append([0.0] * 1536)
+                        
+                        # ChromaDB에 배치 추가 (임베딩 포함)
+                        VectorService._collection.add(
+                            ids=chunk_ids,
+                            embeddings=chunk_embeddings,
+                            documents=chunk_texts,
+                            metadatas=chunk_metadatas
+                        )
                     print(f"배치 {batch_start + 1}-{batch_end} 저장 완료")
                     
                 except Exception as batch_error:
                     print(f"배치 {batch_start + 1}-{batch_end} 저장 실패: {str(batch_error)}")
                     raise batch_error
             
-            # 메타데이터 인덱스 업데이트
-            await self._update_metadata_index(file_id, metadata)
+            # SQLite에 메타데이터 저장
+            await self._save_metadata_to_sqlite(file_id, metadata, len(chunks))
             
             print(f"✅ ChromaDB 벡터 데이터 저장 완료: {file_id}, 총 청크 수: {total_chunks}")
             return True
@@ -365,8 +393,8 @@ class VectorService:
                     # ChromaDB distance를 유사도 점수로 변환 (낮을수록 유사함 -> 높을수록 유사함)
                     distance = results['distances'][0][i] if 'distances' in results else 0.5
                     # 거리를 유사도 점수로 변환: 1 - (distance / max_distance)
-                    # 일반적으로 0.0~2.0 사이 값이므로 2.0으로 정규화
-                    similarity_score = max(0.0, 1.0 - (distance / 2.0))
+                    # 설정에서 정규화 팩터 가져오기 (OpenAI 임베딩은 일반적으로 0.0~2.0)
+                    similarity_score = max(0.0, 1.0 - (distance / settings.DISTANCE_NORMALIZATION_FACTOR))
                     
                     search_results.append({
                         "chunk_id": results['ids'][0][i],
@@ -446,8 +474,8 @@ class VectorService:
                 where={"file_id": file_id}
             )
             
-            # 메타데이터 인덱스에서도 제거
-            await self._remove_from_metadata_index(file_id)
+            # SQLite에서 메타데이터 삭제
+            self.metadata_service.delete_metadata(file_id)
             
             print(f"✅ ChromaDB에서 문서 벡터 삭제 완료: {file_id}")
             return True
@@ -457,7 +485,7 @@ class VectorService:
             raise RuntimeError(f"ChromaDB 문서 벡터 삭제 중 오류가 발생했습니다: {str(e)}")
     
     async def _update_metadata_index(self, file_id: str, metadata: Dict[str, Any]):
-        """메타데이터 인덱스를 업데이트합니다."""
+        """메타데이터 인덱스를 업데이트합니다. (DEPRECATED: ChromaDB 메타데이터 사용)"""
         try:
             index_file_path = os.path.join(self.metadata_dir, 'index.json')
             
@@ -481,7 +509,7 @@ class VectorService:
             print(f"메타데이터 인덱스 업데이트 중 오류: {str(e)}")
     
     async def _remove_from_metadata_index(self, file_id: str):
-        """메타데이터 인덱스에서 파일 정보를 제거합니다."""
+        """메타데이터 인덱스에서 파일 정보를 제거합니다. (DEPRECATED: ChromaDB 메타데이터 사용)"""
         try:
             metadata_file_path = os.path.join(self.metadata_dir, "index.json")
             
@@ -501,21 +529,78 @@ class VectorService:
         except Exception as e:
             print(f"메타데이터 인덱스 제거 중 오류: {str(e)}")
     
-    async def _get_file_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
-        """파일의 메타데이터를 조회합니다."""
+    async def _save_metadata_to_sqlite(self, file_id: str, metadata: Dict[str, Any], chunk_count: int):
+        """SQLite에 메타데이터 저장"""
         try:
-            metadata_file_path = os.path.join(self.metadata_dir, "index.json")
+            vector_metadata = VectorMetadata(
+                file_id=file_id,
+                filename=metadata.get("filename", ""),
+                category_id=metadata.get("category_id"),
+                category_name=metadata.get("category_name"),
+                flow_id=metadata.get("flow_id"),
+                processing_method=metadata.get("processing_method", "basic_text"),
+                processing_time=metadata.get("processing_time", 0.0),
+                chunk_count=chunk_count,
+                file_size=metadata.get("file_size", 0),
+                page_count=metadata.get("page_count"),
+                table_count=metadata.get("table_count"),
+                image_count=metadata.get("image_count")
+            )
             
-            if os.path.exists(metadata_file_path):
-                with open(metadata_file_path, 'r', encoding='utf-8') as f:
-                    metadata_index = json.load(f)
+            # Docling 옵션이 있으면 저장
+            if metadata.get("docling_options"):
+                vector_metadata.set_docling_options(metadata["docling_options"])
+            
+            # 기존 메타데이터가 있으면 업데이트, 없으면 생성
+            existing = self.metadata_service.get_metadata(file_id)
+            if existing:
+                self.metadata_service.update_metadata(
+                    file_id,
+                    filename=vector_metadata.filename,
+                    category_id=vector_metadata.category_id,
+                    category_name=vector_metadata.category_name,
+                    flow_id=vector_metadata.flow_id,
+                    processing_method=vector_metadata.processing_method,
+                    processing_time=vector_metadata.processing_time,
+                    chunk_count=vector_metadata.chunk_count,
+                    file_size=vector_metadata.file_size,
+                    page_count=vector_metadata.page_count,
+                    table_count=vector_metadata.table_count,
+                    image_count=vector_metadata.image_count,
+                    docling_options=vector_metadata.docling_options
+                )
+            else:
+                self.metadata_service.create_metadata(vector_metadata)
                 
-                return metadata_index.get(file_id)
-            
+        except Exception as e:
+            print(f"SQLite 메타데이터 저장 중 오류: {str(e)}")
+
+    async def _get_file_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """SQLite에서 파일의 메타데이터를 조회합니다."""
+        try:
+            metadata = self.metadata_service.get_metadata(file_id)
+            if metadata:
+                return {
+                    "file_id": metadata.file_id,
+                    "filename": metadata.filename,
+                    "category_id": metadata.category_id,
+                    "category_name": metadata.category_name,
+                    "flow_id": metadata.flow_id,
+                    "processing_method": metadata.processing_method,
+                    "processing_time": metadata.processing_time,
+                    "chunk_count": metadata.chunk_count,
+                    "file_size": metadata.file_size,
+                    "page_count": metadata.page_count,
+                    "table_count": metadata.table_count,
+                    "image_count": metadata.image_count,
+                    "docling_options": metadata.get_docling_options(),
+                    "created_at": metadata.created_at.isoformat(),
+                    "updated_at": metadata.updated_at.isoformat()
+                }
             return None
             
         except Exception as e:
-            print(f"파일 메타데이터 조회 중 오류: {str(e)}")
+            print(f"SQLite 메타데이터 조회 중 오류: {str(e)}")
             return None
     
     async def reset_chromadb(self):
@@ -622,6 +707,19 @@ class VectorService:
             status["vector_dir_files"] = 0
         
         return status
+    
+    def get_metadata_stats(self) -> Dict[str, Any]:
+        """SQLite 메타데이터 통계 정보를 반환합니다."""
+        try:
+            return self.metadata_service.get_stats()
+        except Exception as e:
+            print(f"메타데이터 통계 조회 중 오류: {str(e)}")
+            return {
+                "total_files": 0,
+                "total_chunks": 0,
+                "processing_methods": {},
+                "database_path": "error"
+            }
     
     def debug_chromadb_status(self):
         """ChromaDB 상태를 자세히 출력합니다."""
@@ -766,7 +864,8 @@ class VectorService:
         file_path: str, 
         file_id: str, 
         metadata: Dict[str, Any],
-        docling_options: Optional[DoclingOptions] = None
+        docling_options: Optional[DoclingOptions] = None,
+        use_parallel: bool = False
     ) -> Dict[str, Any]:
         """
         Docling을 사용하여 문서를 고급 전처리하고 벡터화합니다.
@@ -879,11 +978,41 @@ class VectorService:
             }
             print(f"✅ 메타데이터 구성 완료 (페이지: {enhanced_metadata['page_count']}, 테이블: {enhanced_metadata['table_count']}, 이미지: {enhanced_metadata['image_count']})")
             
-            # ChromaDB에 벡터 저장
+            # ChromaDB에 벡터 저장 (병렬 처리 옵션)
             print(f"💾 ChromaDB에 벡터 저장 시작... ({len(chunks)}개 청크)")
             vector_start_time = time.time()
-            success = await self.add_document_chunks(file_id, chunks, enhanced_metadata)
-            vector_elapsed = time.time() - vector_start_time
+            
+            if use_parallel and len(chunks) > settings.BATCH_SIZE * 2:
+                # 병렬 처리 적용 (큰 파일에만)
+                print(f"🚀 병렬 벡터화 모드 적용 - {len(chunks)}개 청크")
+                try:
+                    from .parallel_vector_service import get_parallel_vector_service
+                    parallel_service = get_parallel_vector_service()
+                    
+                    result = await parallel_service.vectorize_document_parallel(
+                        file_id=file_id,
+                        chunks=chunks,
+                        metadata=enhanced_metadata
+                    )
+                    
+                    success = result.get("success", False)
+                    if success:
+                        vector_elapsed = result.get("processing_time", time.time() - vector_start_time)
+                        print(f"✅ 병렬 벡터화 완료 - 캐시 히트율: {result.get('cache_hit_rate', 0):.1%}")
+                        print(f"⚡ 성능 통계: {result.get('performance_stats', {})}")
+                    else:
+                        print(f"❌ 병렬 벡터화 실패, 기본 방식으로 fallback: {result.get('error', '')}")
+                        success = await self.add_document_chunks(file_id, chunks, enhanced_metadata)
+                        vector_elapsed = time.time() - vector_start_time
+                        
+                except Exception as parallel_error:
+                    print(f"⚠️ 병렬 처리 오류, 기본 방식으로 fallback: {parallel_error}")
+                    success = await self.add_document_chunks(file_id, chunks, enhanced_metadata)
+                    vector_elapsed = time.time() - vector_start_time
+            else:
+                # 기본 순차 처리
+                success = await self.add_document_chunks(file_id, chunks, enhanced_metadata)
+                vector_elapsed = time.time() - vector_start_time
             
             if success:
                 print(f"✅ 벡터 저장 완료 ({vector_elapsed:.2f}초 소요)")
@@ -942,9 +1071,9 @@ class VectorService:
             
             print(f"📝 {content_type} 형식으로 청킹 시작 (길이: {len(main_content)}자)")
             
-            # 기본 청킹 (1500자 단위, 200자 오버랩)
-            chunk_size = 1500
-            overlap_size = 200
+            # 기본 청킹 (설정값 사용)
+            chunk_size = settings.DEFAULT_CHUNK_SIZE
+            overlap_size = settings.DEFAULT_CHUNK_OVERLAP
             
             # 문단 기반 스마트 청킹
             if content_type == "markdown":
@@ -957,6 +1086,12 @@ class VectorService:
                 table_chunks = await self._create_table_chunks(docling_result.tables)
                 chunks.extend(table_chunks)
                 print(f"📊 테이블 청크 {len(table_chunks)}개 추가")
+            
+            # 이미지 캡션 추가 (Vision 모델 지원)
+            if options.extract_images and docling_result.images:
+                image_chunks = await self._create_image_caption_chunks(docling_result.images)
+                chunks.extend(image_chunks)
+                print(f"🖼️ 이미지 캡션 청크 {len(image_chunks)}개 추가")
             
             # 구조 정보 기반 청크 (제목, 섹션 등)
             if content.get("structure"):
@@ -1084,6 +1219,33 @@ class VectorService:
         
         return chunks
     
+    async def _create_image_caption_chunks(self, images: List[Dict[str, Any]]) -> List[str]:
+        """이미지 캡션을 청크로 변환 (Vision 모델 지원을 위한 메타데이터 포함)"""
+        chunks = []
+        
+        for image in images:
+            # 이미지 경로가 있는 경우만 처리
+            image_path = image.get('image_path')
+            if not image_path:
+                continue
+                
+            # 이미지 캡션 청크 생성
+            caption = image.get('caption', image.get('description', ''))
+            page = image.get('page', 0)
+            image_id = image.get('id', 'unknown')
+            
+            # 캡션 텍스트에 이미지 경로 포함 (Vision 모델이 참조할 수 있도록)
+            caption_text = f"[이미지: {image_path}] {caption}"
+            
+            # 추가 컨텍스트 정보 포함
+            if page > 0:
+                caption_text += f" (페이지 {page})"
+            
+            chunks.append(caption_text)
+            print(f"🖼️ 이미지 캡션 생성: {image_id} -> {len(caption_text)} 글자")
+        
+        return chunks
+    
     async def _create_structure_chunks(self, structure: List[Dict[str, Any]], content: str) -> List[str]:
         """문서 구조 정보를 기반으로 청크 생성"""
         chunks = []
@@ -1153,8 +1315,8 @@ class VectorService:
                     "chunks_count": 0
                 }
             
-            # 기본 청킹
-            chunks = await self._smart_text_chunking(content, 1500, 200)
+            # 기본 청킹 (설정값 사용)
+            chunks = await self._smart_text_chunking(content, settings.DEFAULT_CHUNK_SIZE, settings.DEFAULT_CHUNK_OVERLAP)
             
             if not chunks:
                 return {
@@ -1195,7 +1357,8 @@ class VectorService:
         file_id: str, 
         metadata: Dict[str, Any],
         enable_docling: bool = True,
-        docling_options: Optional[DoclingOptions] = None
+        docling_options: Optional[DoclingOptions] = None,
+        use_parallel: bool = True
     ) -> Dict[str, Any]:
         """
         통합된 벡터화 파이프라인 (Docling 활용 가능)
@@ -1219,7 +1382,7 @@ class VectorService:
                 print("🔧 Docling 기반 처리 시작...")
                 # Docling을 우선적으로 시도
                 result = await self.process_document_with_docling(
-                    file_path, file_id, metadata, docling_options
+                    file_path, file_id, metadata, docling_options, use_parallel
                 )
                 
                 if result["success"]:
@@ -1302,7 +1465,7 @@ class VectorService:
             print(f"데이터베이스 리셋 과정에서 오류: {str(e)}")
             print("ChromaDB를 사용하지 않고 계속 진행합니다.")
     
-    def _create_fresh_chromadb(self):
+    async def _create_fresh_chromadb(self):
         """새로운 ChromaDB 클라이언트와 컬렉션을 생성합니다."""
         try:
             import chromadb
@@ -1332,7 +1495,7 @@ class VectorService:
             except Exception:
                 # 새 컬렉션 생성
                 # 동적 임베딩 함수 설정
-                embedding_function = _create_embedding_function()
+                embedding_function = await _create_embedding_function()
                 if not embedding_function:
                     print("임베딩 함수를 사용할 수 없습니다 - 기본 설정으로 진행")
                 

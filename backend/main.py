@@ -131,10 +131,20 @@ app.include_router(system_settings.router, prefix=settings.API_V1_STR)
 app.include_router(model_settings.router, prefix=settings.API_V1_STR)
 app.include_router(sse.router)  # SSE는 별도 prefix 사용
 
-# 정적 파일 서빙 설정 (아바타 이미지용)
+# 정적 파일 서빙 설정 (아바타 이미지 및 문서 이미지용)
 uploads_dir = "uploads"
 if not os.path.exists(uploads_dir):
     os.makedirs(uploads_dir, exist_ok=True)
+
+# 이미지 디렉토리 생성
+images_dir = os.path.join(uploads_dir, "images")
+if not os.path.exists(images_dir):
+    os.makedirs(images_dir, exist_ok=True)
+
+# 아바타 디렉토리 생성
+avatars_dir = os.path.join(uploads_dir, "avatars")
+if not os.path.exists(avatars_dir):
+    os.makedirs(avatars_dir, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 

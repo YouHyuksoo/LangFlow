@@ -164,8 +164,10 @@ class DoclingService:
             # 구조화된 콘텐츠 추출
             print("🔍 구조화된 콘텐츠 추출 중...")
             content_start_time = time.time()
+            # 파일 ID 생성 (파일 경로에서 추출)
+            file_id = Path(file_path).stem
             structured_content = await self._extract_structured_content(
-                docling_doc, options
+                docling_doc, options, file_id
             )
             content_elapsed = time.time() - content_start_time
             print(f"✅ 구조화된 콘텐츠 추출 완료 ({content_elapsed:.2f}초 소요)")
@@ -305,7 +307,8 @@ class DoclingService:
     async def _extract_structured_content(
         self, 
         docling_doc: 'DoclingDocument', 
-        options: DoclingOptions
+        options: DoclingOptions,
+        file_id: str = None
     ) -> Dict[str, Any]:
         """DoclingDocument에서 구조화된 콘텐츠를 추출합니다."""
         
@@ -358,7 +361,7 @@ class DoclingService:
             # 이미지 추출
             if options.extract_images:
                 print("🖼️ 이미지 추출 중...")
-                structured_content["images"] = await self._extract_images(docling_doc)
+                structured_content["images"] = await self._extract_images(docling_doc, file_id)
                 print(f"✅ 이미지 추출 완료 ({len(structured_content['images'])}개)")
             
             # 문서 구조 정보 추출
@@ -397,20 +400,53 @@ class DoclingService:
         
         return tables
     
-    async def _extract_images(self, docling_doc: 'DoclingDocument') -> List[Dict[str, Any]]:
-        """문서에서 이미지를 추출합니다."""
+    async def _extract_images(self, docling_doc: 'DoclingDocument', file_id: str = None) -> List[Dict[str, Any]]:
+        """문서에서 이미지를 추출하고 저장합니다."""
         images = []
         
         try:
+            # 이미지 저장 디렉토리 생성
+            if file_id:
+                images_dir = Path(f"uploads/images/{file_id}")
+                images_dir.mkdir(parents=True, exist_ok=True)
+            
             # DoclingDocument에서 이미지 노드 찾기
             for item in docling_doc.iterate_items():
                 if hasattr(item, 'label') and 'picture' in str(item.label).lower():
+                    image_id = getattr(item, 'id', f"image_{len(images)}")
+                    image_path = None
+                    
+                    # 이미지 데이터 추출 및 저장
+                    if file_id and hasattr(item, 'image'):
+                        try:
+                            # 이미지 파일 저장
+                            image_filename = f"{image_id}.png"
+                            image_path = images_dir / image_filename
+                            
+                            # Docling에서 이미지 데이터 추출
+                            if hasattr(item.image, 'pil_image'):
+                                item.image.pil_image.save(image_path, format='PNG')
+                                print(f"✅ 이미지 저장 완료: {image_path}")
+                            elif hasattr(item.image, 'data'):
+                                with open(image_path, 'wb') as f:
+                                    f.write(item.image.data)
+                                print(f"✅ 이미지 저장 완료: {image_path}")
+                            
+                            # 상대 경로로 변환
+                            image_path = f"/uploads/images/{file_id}/{image_filename}"
+                            
+                        except Exception as img_error:
+                            print(f"⚠️ 이미지 저장 실패: {img_error}")
+                            image_path = None
+                    
                     image_data = {
-                        "id": getattr(item, 'id', f"image_{len(images)}"),
+                        "id": image_id,
                         "page": getattr(item, 'page', 0),
                         "bbox": getattr(item, 'bbox', None),
                         "description": str(item),
-                        "size": getattr(item, 'size', None)
+                        "size": getattr(item, 'size', None),
+                        "image_path": image_path,  # 저장된 이미지 경로
+                        "caption": await self._generate_image_caption(item)  # 이미지 캡션 생성
                     }
                     images.append(image_data)
                     
@@ -418,6 +454,25 @@ class DoclingService:
             print(f"이미지 추출 중 오류: {e}")
         
         return images
+    
+    async def _generate_image_caption(self, image_item) -> str:
+        """이미지 항목에 대한 캡션을 생성합니다."""
+        try:
+            # Docling에서 제공하는 이미지 설명 사용
+            description = str(image_item).strip()
+            
+            # 기본 캡션 생성
+            if description and len(description) > 5:
+                return description
+            else:
+                # 기본 캡션 생성
+                page = getattr(image_item, 'page', 0)
+                image_id = getattr(image_item, 'id', 'unknown')
+                return f"페이지 {page}의 이미지 ({image_id})"
+                
+        except Exception as e:
+            print(f"이미지 캡션 생성 중 오류: {e}")
+            return "이미지 설명 없음"
     
     async def _extract_document_structure(self, docling_doc: 'DoclingDocument') -> List[Dict[str, Any]]:
         """문서의 구조 정보를 추출합니다."""

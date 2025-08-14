@@ -43,6 +43,20 @@ class Settings(BaseSettings):
     VECTOR_DB_TYPE: str = "faiss"
     VECTOR_DB_PATH: str = "./vector_db"
     
+    # 벡터화 설정
+    DEFAULT_CHUNK_SIZE: int = 1500
+    DEFAULT_CHUNK_OVERLAP: int = 200
+    BATCH_SIZE: int = 10
+    DISTANCE_NORMALIZATION_FACTOR: float = 2.0  # OpenAI 임베딩용
+    
+    # 성능 최적화 설정
+    MAX_CONCURRENT_EMBEDDINGS: int = 5  # 동시 임베딩 처리 수
+    MAX_CONCURRENT_CHUNKS: int = 20     # 동시 청크 처리 수
+    EMBEDDING_POOL_SIZE: int = 3        # 임베딩 함수 풀 크기
+    CHUNK_STREAM_BUFFER_SIZE: int = 100 # 스트리밍 청크 버퍼 크기
+    CONNECTION_POOL_SIZE: int = 10      # ChromaDB 연결 풀 크기
+    CACHE_TTL_SECONDS: int = 3600       # 캐시 만료 시간 (1시간)
+    
     # 파일 업로드 설정
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 10485760  # 10MB

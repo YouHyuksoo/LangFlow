@@ -9,6 +9,7 @@ from .langflow_service import LangflowService
 from .persona_service import PersonaService
 from .system_settings_service import SystemSettingsService
 from .model_settings_service import get_current_model_config
+from ..utils.image_utils import extract_image_path_from_chunk, is_image_chunk, create_vision_image_content
 import openai
 from datetime import datetime
 
@@ -63,6 +64,57 @@ class ChatService:
         except Exception as e:
             print(f"LLM 클라이언트 생성 실패: {e}")
             return None, None
+    
+    async def _call_vision_llm(self, messages: List[Dict[str, Any]], images: List[str] = None) -> str:
+        """Vision 모델로 메시지를 전송하고 응답을 받습니다."""
+        try:
+            model_config = await get_current_model_config()
+            llm_config = model_config.get("llm", {})
+            
+            llm_client, provider = await self._get_llm_client()
+            if not llm_client:
+                return "LLM 클라이언트를 사용할 수 없습니다."
+            
+            model = llm_config.get("model", "gpt-4o")  # Vision 모델 기본값
+            temperature = llm_config.get("temperature", 0.7)
+            max_tokens = llm_config.get("max_tokens", 4096)
+            
+            print(f"Vision LLM 호출: {provider} {model} (이미지: {len(images) if images else 0}개)")
+            
+            if provider == "openai":
+                # OpenAI Vision 모델 지원
+                if images:
+                    # 마지막 메시지에 이미지 추가
+                    if messages and messages[-1]["role"] == "user":
+                        content = [{"type": "text", "text": messages[-1]["content"]}]
+                        
+                        # 이미지 경로들을 Vision 콘텐츠로 변환
+                        for image_path in images:
+                            image_content = create_vision_image_content(image_path)
+                            if image_content:
+                                content.append(image_content)
+                                print(f"🖼️ Vision 이미지 추가: {image_path}")
+                        
+                        # 마지막 메시지 업데이트
+                        messages[-1]["content"] = content
+                
+                response = llm_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                return response.choices[0].message.content
+            
+            else:
+                # 다른 제공업체는 일반 LLM으로 폴백
+                print(f"⚠️ {provider}는 Vision 모델을 지원하지 않습니다. 일반 LLM으로 처리합니다.")
+                return await self._call_llm(messages)
+                
+        except Exception as e:
+            print(f"Vision LLM 호출 실패: {e}")
+            # 실패 시 일반 LLM으로 폴백
+            return await self._call_llm(messages)
     
     async def _call_llm(self, messages: List[Dict[str, Any]]) -> str:
         """설정된 LLM으로 메시지를 전송하고 응답을 받습니다."""
@@ -205,25 +257,42 @@ class ChatService:
                         for i, result in enumerate(search_results):
                             metadata = result.get("metadata", {})
                             filename = metadata.get("filename", "") or metadata.get("file_name", "") or metadata.get("source", "")
+                            content = result.get("text", "") or result.get("content", "")
                             
                             doc = {
                                 "file_id": metadata.get("file_id", ""),
                                 "filename": filename,
                                 "category_id": metadata.get("category_id", ""),
                                 "category_name": metadata.get("category_name", ""),
-                                "content": result.get("text", "") or result.get("content", ""),
+                                "content": content,
                                 "score": result.get("score", 1.0),
                                 "distance": result.get("distance", 1.0)
                             }
+                            
+                            # 이미지 청크 감지 및 메타데이터 추가
+                            if is_image_chunk(content):
+                                image_path = extract_image_path_from_chunk(content)
+                                if image_path:
+                                    doc["image_path"] = image_path
+                                    doc["is_image_chunk"] = True
+                                    print(f"🖼️ 검색 결과에서 이미지 청크 발견: {image_path}")
+                                else:
+                                    doc["is_image_chunk"] = False
+                            else:
+                                doc["is_image_chunk"] = False
+                            
                             relevant_documents.append(doc)
                             
-                            print(f"변환된 문서 {i+1}: file_id={doc['file_id']}, filename='{doc['filename']}', score={doc['score']:.3f}, distance={doc['distance']:.3f}")
+                            print(f"변환된 문서 {i+1}: file_id={doc['file_id']}, filename='{doc['filename']}', score={doc['score']:.3f}, distance={doc['distance']:.3f}, 이미지={doc.get('is_image_chunk', False)}")
                         
                         # 점수 순으로 정렬 (높은 점수가 먼저)
                         relevant_documents.sort(key=lambda x: x['score'], reverse=True)
                         print(f"점수순 정렬 후 첫 3개 문서:")
                         for i, doc in enumerate(relevant_documents[:3]):
                             print(f"  {i+1}위: {doc['filename']} (점수: {doc['score']:.3f})")
+                        
+                        # 이미지가 포함된 검색 결과가 있는지 확인
+                        has_image_chunks = any(doc.get("is_image_chunk", False) for doc in relevant_documents)
                         
                         # LangFlow를 통해 응답 생성 (Flow 기반 모델 사용)
                         if request.images and len(request.images) > 0:
@@ -235,6 +304,14 @@ class ChatService:
                                 relevant_documents, 
                                 final_system_message,
                                 search_flow_id
+                            )
+                        elif has_image_chunks:
+                            # 검색 결과에 이미지가 포함된 경우 Vision 모델 사용
+                            print(f"🖼️ 검색 결과에 이미지가 포함되어 Vision 모델로 처리합니다.")
+                            response_text = await self.generate_response_with_vision(
+                                request.message, 
+                                relevant_documents, 
+                                final_system_message
                             )
                         else:
                             # 기존 텍스트 전용 처리
@@ -370,14 +447,29 @@ class ChatService:
                         relevant_chunks = await self._search_chunks(query, vector_content.get("chunks", []))
                         
                         for chunk in relevant_chunks[:3]:  # 파일당 최대 3개 청크
-                            documents.append({
+                            # 이미지 청크인지 확인
+                            chunk_data = {
                                 "file_id": file_info.file_id,
                                 "filename": file_info.filename,
                                 "category_id": file_info.category_id,
                                 "category_name": file_info.category_name,
                                 "content": chunk,
                                 "score": 0.8
-                            })
+                            }
+                            
+                            # 이미지 캡션 청크인 경우 이미지 경로 추출
+                            if is_image_chunk(chunk):
+                                image_path = extract_image_path_from_chunk(chunk)
+                                if image_path:
+                                    chunk_data["image_path"] = image_path
+                                    chunk_data["is_image_chunk"] = True
+                                    print(f"🖼️ 이미지 청크 감지: {image_path}")
+                                else:
+                                    chunk_data["is_image_chunk"] = False
+                            else:
+                                chunk_data["is_image_chunk"] = False
+                            
+                            documents.append(chunk_data)
                 else:
                     # 벡터화되지 않은 파일은 메타데이터만 제공
                     documents.append({
@@ -394,6 +486,86 @@ class ChatService:
         except Exception as e:
             print(f"문서 검색 중 오류: {str(e)}")
             return []
+    
+    async def generate_response_with_vision(self, query: str, context: List[Dict[str, Any]], system_message: str = None) -> str:
+        """이미지가 포함된 컨텍스트에 대해 Vision 모델로 응답을 생성합니다."""
+        try:
+            context_sections = []
+            sources_info = []
+            image_paths = []
+            
+            print(f"=== Vision 모델 기반 응답 생성 시작 ===")
+            print(f"전달받은 문서 수: {len(context)}")
+            
+            for i, doc in enumerate(context, 1):
+                source_name = doc.get("filename", f"문서{i}")
+                content = doc.get("content", "")
+                
+                # 이미지 청크인지 확인
+                if doc.get("is_image_chunk", False) and doc.get("image_path"):
+                    image_path = doc.get("image_path")
+                    image_paths.append(image_path)
+                    
+                    # 이미지 캡션에서 경로 부분 제거한 순수 캡션만 추출
+                    clean_caption = content
+                    if content.startswith("[이미지:") and "]" in content:
+                        clean_caption = content[content.find("]") + 1:].strip()
+                    
+                    context_sections.append(f"=== 이미지 {i}: {source_name} ===\n이미지 설명: {clean_caption}\n")
+                    sources_info.append(f"[{i}] {source_name} (이미지)")
+                    print(f"🖼️ 이미지 문서 {i}: {source_name} -> {image_path}")
+                else:
+                    # 일반 텍스트 문서
+                    context_sections.append(f"=== 문서 {i}: {source_name} ===\n{content}\n")
+                    sources_info.append(f"[{i}] {source_name}")
+                    print(f"📄 텍스트 문서 {i}: {source_name} (길이: {len(content)} 글자)")
+            
+            # 컨텍스트 구성
+            context_text = "\n".join(context_sections)
+            sources_text = "\n".join(sources_info) if sources_info else "참고 문서 없음"
+            
+            print(f"=== Vision 컨텍스트 구성 완료 ===")
+            print(f"이미지 수: {len(image_paths)}")
+            print(f"소스 정보: {sources_text}")
+            print(f"전체 컨텍스트 길이: {len(context_text)} 글자")
+            
+            # 시스템 메시지 구성
+            if not system_message:
+                system_message = "당신은 문서와 이미지를 분석하여 정확한 답변을 제공하는 AI 어시스턴트입니다."
+            
+            vision_system_message = f"""{system_message}
+
+다음 규칙을 따르세요:
+1. 제공된 문서와 이미지를 바탕으로 정확하고 유용한 답변을 제공하세요.
+2. 이미지가 포함된 경우, 이미지의 내용을 자세히 분석하고 설명하세요.
+3. 답변에 사용한 소스를 명시하세요.
+4. 확실하지 않은 정보는 추측하지 마세요.
+
+참고 자료:
+{sources_text}
+
+컨텍스트:
+{context_text}"""
+            
+            # Vision 모델로 응답 생성
+            messages = [
+                {"role": "system", "content": vision_system_message},
+                {"role": "user", "content": f"질문: {query}"}
+            ]
+            
+            # Vision 모델 호출
+            if image_paths:
+                response = await self._call_vision_llm(messages, image_paths)
+            else:
+                response = await self._call_llm(messages)
+            
+            print(f"✅ Vision 모델 응답 생성 완료")
+            return response
+            
+        except Exception as e:
+            print(f"❌ Vision 모델 응답 생성 실패: {str(e)}")
+            # 실패 시 일반 모델로 폴백
+            return await self.generate_response_with_flow(query, context, system_message, None)
     
     async def generate_response_with_flow(self, query: str, context: List[Dict[str, Any]], system_message: str = None, flow_id: str = None) -> str:
         """LangFlow를 통해 동적으로 선택된 LLM 모델로 응답을 생성합니다."""
@@ -550,21 +722,10 @@ class ChatService:
             return f"응답 생성 중 오류가 발생했습니다: {str(e)}"
     
     async def _load_vector_data(self, file_id: str) -> Dict[str, Any]:
-        """벡터 데이터를 로드합니다."""
-        try:
-            vector_file_path = os.path.join(
-                settings.DATA_DIR, 
-                f"vectors_{file_id}.json"
-            )
-            
-            if os.path.exists(vector_file_path):
-                with open(vector_file_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return None
-            
-        except Exception as e:
-            print(f"벡터 데이터 로드 중 오류: {str(e)}")
-            return None
+        """벡터 데이터를 로드합니다. (DEPRECATED: ChromaDB와 SQLite 메타데이터 사용)"""
+        # 레거시 함수 - 더 이상 사용되지 않음
+        print(f"경고: _load_vector_data는 deprecated 함수입니다. ChromaDB를 직접 사용하세요.")
+        return None
     
     async def _search_chunks(self, query: str, chunks: List[str]) -> List[str]:
         """간단한 키워드 기반 청크 검색 (실제로는 임베딩 유사도 계산)"""

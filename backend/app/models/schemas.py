@@ -236,8 +236,8 @@ class SystemSettings(BaseModel):
     allowedFileTypes: List[str] = Field(default=["pdf", "docx", "pptx", "xlsx"], description="허용된 파일 형식")
     uploadDirectory: str = Field("uploads/", description="업로드 디렉토리")
     
-    # 벡터화 설정
-    vectorDimension: int = Field(1536, description="벡터 차원 수")
+    # 벡터화 설정 (vectorDimension은 deprecated - 모델 설정의 embedding_dimension 사용)
+    vectorDimension: int = Field(1536, description="벡터 차원 수 (사용하지 않음 - 모델 설정 참조)")
     chunkSize: int = Field(1000, description="청크 크기")
     chunkOverlap: int = Field(200, description="청크 오버랩")
     
@@ -257,8 +257,8 @@ class SystemSettingsUpdateRequest(BaseModel):
     allowedFileTypes: Optional[List[str]] = Field(None, description="허용된 파일 형식")
     uploadDirectory: Optional[str] = Field(None, description="업로드 디렉토리")
     
-    # 벡터화 설정
-    vectorDimension: Optional[int] = Field(None, description="벡터 차원 수")
+    # 벡터화 설정 (vectorDimension은 deprecated - 모델 설정의 embedding_dimension 사용)
+    vectorDimension: Optional[int] = Field(None, description="벡터 차원 수 (사용하지 않음 - 모델 설정 참조)")
     chunkSize: Optional[int] = Field(None, description="청크 크기")
     chunkOverlap: Optional[int] = Field(None, description="청크 오버랩")
     

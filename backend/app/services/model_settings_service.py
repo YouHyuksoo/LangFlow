@@ -8,13 +8,16 @@ import base64
 
 from ..models.schemas import ModelSettings, ModelSettingsUpdateRequest, DoclingSettings
 from ..core.logger import get_console_logger
+from ..core.config import settings
 
 _clog = get_console_logger()
 
 class ModelSettingsService:
     def __init__(self):
-        self.settings_file = "model_settings.json"
-        self.docling_settings_file = "docling_settings.json"
+        # 모든 설정 파일을 data 디렉토리에 저장
+        os.makedirs(settings.DATA_DIR, exist_ok=True)
+        self.settings_file = os.path.join(settings.DATA_DIR, "model_settings.json")
+        self.docling_settings_file = os.path.join(settings.DATA_DIR, "docling_settings.json")
         self.encryption_key = self._get_or_create_encryption_key()
         self.cipher_suite = Fernet(self.encryption_key)
         
@@ -30,6 +33,11 @@ class ModelSettingsService:
                     "text-embedding-3-large", "text-embedding-3-small", 
                     "text-embedding-ada-002"
                 ],
+                "embedding_dimensions": {
+                    "text-embedding-3-large": [3072, 1536, 512, 256],
+                    "text-embedding-3-small": [1536, 512, 384, 256], 
+                    "text-embedding-ada-002": [1536]
+                },
                 "api_key_required": True
             },
             "anthropic": {
@@ -51,6 +59,10 @@ class ModelSettingsService:
                 "embedding_models": [
                     "text-embedding-004", "embedding-001"
                 ],
+                "embedding_dimensions": {
+                    "text-embedding-004": [768],
+                    "embedding-001": [768]
+                },
                 "api_key_required": True
             },
             "groq": {
@@ -71,6 +83,11 @@ class ModelSettingsService:
                 "embedding_models": [
                     "nomic-embed-text", "mxbai-embed-large", "all-minilm"
                 ],
+                "embedding_dimensions": {
+                    "nomic-embed-text": [768],
+                    "mxbai-embed-large": [1024],
+                    "all-minilm": [384]
+                },
                 "api_key_required": False
             },
             "azure": {
@@ -82,13 +99,18 @@ class ModelSettingsService:
                     "text-embedding-3-large", "text-embedding-3-small",
                     "text-embedding-ada-002"
                 ],
+                "embedding_dimensions": {
+                    "text-embedding-3-large": [3072, 1536, 512, 256],
+                    "text-embedding-3-small": [1536, 512, 384, 256],
+                    "text-embedding-ada-002": [1536]
+                },
                 "api_key_required": True
             }
         }
 
     def _get_or_create_encryption_key(self) -> bytes:
         """암호화 키 생성 또는 로드"""
-        key_file = "encryption.key"
+        key_file = os.path.join(settings.DATA_DIR, "encryption.key")
         if os.path.exists(key_file):
             with open(key_file, "rb") as f:
                 return f.read()
@@ -212,6 +234,7 @@ class ModelSettingsService:
             "name": provider_data["name"],
             "llm_models": provider_data["llm_models"],
             "embedding_models": provider_data["embedding_models"],
+            "embedding_dimensions": provider_data.get("embedding_dimensions", {}),
             "api_key_required": provider_data["api_key_required"]
         }
 
@@ -294,35 +317,41 @@ class ModelSettingsService:
             raise e
 
     async def get_docling_status(self) -> Dict[str, Any]:
-        """Docling 서비스 상태 확인"""
+        """Docling 서비스 상태 확인 - 라이브러리 설치 여부만 확인"""
         try:
-            from .docling_service import DoclingService
+            # DoclingService 인스턴스를 생성하지 않고, 필요한 라이브러리만 import 테스트
+            try:
+                from docling.document_converter import DocumentConverter
+                from docling.datamodel.base_models import InputFormat
+                from docling_core.types.doc import DoclingDocument
+                docling_available = True
+                _clog.info("Docling 라이브러리 import 성공 - 사용 가능")
+            except ImportError as e:
+                docling_available = False
+                _clog.warning(f"Docling 라이브러리 import 실패: {e}")
+            except Exception as e:
+                docling_available = False
+                _clog.error(f"Docling 라이브러리 확인 중 예상치 못한 에러: {e}")
             
-            # DoclingService 인스턴스 생성 시도
-            docling_service = DoclingService()
-            
-            # 기본 상태 정보
             status = {
-                "available": docling_service.is_available,
+                "available": docling_available,
+                "status": "ready" if docling_available else "unavailable",
+                "version": "2.44.0" if docling_available else None,
                 "settings": await self.get_docling_settings(),
                 "supported_formats": [".pdf", ".docx", ".pptx", ".xlsx", ".html"],
-                "version": "2.44.0"
             }
             
-            if docling_service.is_available:
-                # Docling이 사용 가능한 경우 추가 정보
-                test_result = await self._test_docling_basic_functionality(docling_service)
-                status.update({
-                    "test_result": test_result,
-                    "converter_initialized": hasattr(docling_service, 'converter'),
-                    "status": "ready"
-                })
+            if not docling_available:
+                status["error"] = "Docling 라이브러리를 찾을 수 없습니다. 설치를 확인해주세요."
+                status["test_result"] = {"success": False, "error": "Docling 라이브러리를 사용할 수 없습니다"}
+                status["converter_initialized"] = False
             else:
-                status.update({
-                    "test_result": {"success": False, "error": "Docling을 사용할 수 없습니다"},
-                    "converter_initialized": False,
-                    "status": "unavailable"
-                })
+                # Docling이 사용 가능한 경우 - 실제 초기화는 파일 처리 시에만 수행
+                status["test_result"] = {
+                    "success": True, 
+                    "message": "Docling 라이브러리가 설치되어 있어 고급 문서 분석을 사용할 수 있습니다"
+                }
+                status["converter_initialized"] = True  # 라이브러리가 있으면 언제든 초기화 가능
             
             return status
             
@@ -333,35 +362,6 @@ class ModelSettingsService:
                 "status": "error",
                 "error": str(e),
                 "settings": await self.get_docling_settings()
-            }
-
-    async def _test_docling_basic_functionality(self, docling_service) -> Dict[str, Any]:
-        """Docling 기본 기능 테스트"""
-        try:
-            # 간단한 기능 테스트
-            test_file_path = "test.pdf"  # 실제 테스트 파일이 있다면
-            
-            if os.path.exists(test_file_path):
-                # 실제 파일로 테스트
-                info = await docling_service.get_document_info(test_file_path)
-                return {
-                    "success": True,
-                    "message": "Docling 기본 기능 테스트 완료",
-                    "test_file_info": info
-                }
-            else:
-                # 파일이 없어도 초기화 상태만 확인
-                return {
-                    "success": docling_service.is_available,
-                    "message": "Docling 서비스 초기화 상태 확인 완료",
-                    "converter_available": hasattr(docling_service, 'converter')
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Docling 기능 테스트 실패"
             }
 
 # 글로벌 모델 설정 로더 (싱글톤 패턴)

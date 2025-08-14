@@ -3,6 +3,8 @@ import uuid
 import aiofiles
 import json
 import time
+import logging
+import asyncio
 from typing import List, Optional, Dict, Any
 from fastapi import UploadFile, HTTPException
 from ..models.schemas import FileUploadResponse, FileInfo, FileProcessingOptions, DoclingResult
@@ -17,6 +19,8 @@ class FileService:
     def __init__(self):
         self.upload_dir = settings.UPLOAD_DIR
         self.max_file_size = settings.MAX_FILE_SIZE
+        # 로거 설정
+        self.logger = logging.getLogger(__name__)
         # 동적으로 설정에서 허용 확장자 로드
         from ..api.settings import load_settings
         current_settings = load_settings()
@@ -409,13 +413,14 @@ class FileService:
                     
                     print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
                     
-                    # 통합 벡터화 파이프라인 실행
+                    # 통합 벡터화 파이프라인 실행 (병렬 처리 활성화)
                     vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
                         file_path=file_info.file_path,
                         file_id=file_id,
                         metadata=vector_metadata,
                         enable_docling=enable_docling,
-                        docling_options=docling_options
+                        docling_options=docling_options,
+                        use_parallel=True  # 고성능 병렬 처리 활성화
                     )
                     
                     if vectorization_result["success"]:
@@ -608,13 +613,14 @@ class FileService:
                     
                     print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
                     
-                    # 통합 벡터화 파이프라인 실행
+                    # 통합 벡터화 파이프라인 실행 (병렬 처리 활성화)
                     vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
                         file_path=file_info.file_path,
                         file_id=file_id,
                         metadata=vector_metadata,
                         enable_docling=enable_docling,
-                        docling_options=docling_options
+                        docling_options=docling_options,
+                        use_parallel=True  # 고성능 병렬 처리 활성화
                     )
                     
                     if vectorization_result["success"]:
@@ -778,14 +784,18 @@ class FileService:
                             print(f"FileInfo 생성 실패 - 파일 ID: {file_id}, 오류: {str(e)}")
                             continue
                         
+                    except (KeyError, ValueError, TypeError) as e:
+                        self.logger.warning(f"파일 메타데이터 형식 오류 (파일 ID: {file_id}): {str(e)}")
+                        continue
                     except Exception as e:
-                        print(f"파일 정보 변환 중 오류 (파일 ID: {file_id}): {str(e)}")
-                        import traceback
-                        traceback.print_exc()
+                        self.logger.error(f"파일 정보 변환 중 예상치 못한 오류 (파일 ID: {file_id}): {str(e)}")
                         continue
                         
+                except (FileNotFoundError, PermissionError) as file_error:
+                    self.logger.warning(f"파일 시스템 오류 (파일 ID: {file_id}): {str(file_error)}")
+                    continue
                 except Exception as file_error:
-                    print(f"개별 파일 처리 중 오류 (파일 ID: {file_id}): {str(file_error)}")
+                    self.logger.error(f"개별 파일 처리 중 예상치 못한 오류 (파일 ID: {file_id}): {str(file_error)}")
                     continue
             
             # 고아 메타데이터 정리 (선택사항)
@@ -801,11 +811,18 @@ class FileService:
             # 완료 로그 제거
             return files
             
+        except FileNotFoundError as e:
+            self.logger.warning(f"메타데이터 파일을 찾을 수 없음: {str(e)}")
+            return []
+        except PermissionError as e:
+            self.logger.error(f"메타데이터 파일 권한 오류: {str(e)}")
+            raise HTTPException(status_code=500, detail="파일 시스템 권한 오류")
+        except json.JSONDecodeError as e:
+            self.logger.error(f"메타데이터 JSON 파싱 오류: {str(e)}")
+            raise HTTPException(status_code=500, detail="메타데이터 파일 손상")
         except Exception as e:
-            print(f"list_files에서 예외 발생: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            raise
+            self.logger.error(f"list_files에서 예상치 못한 오류: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="파일 목록 조회 중 오류 발생")
     
     async def get_files_by_categories(self, category_ids: List[str] = None, categories: List[str] = None) -> List[FileInfo]:
         """특정 카테고리들의 파일 목록을 조회합니다."""
@@ -907,21 +924,7 @@ class FileService:
                 print(error_msg)
                 deletion_errors.append(error_msg)
             
-            # 벡터 데이터 파일 삭제 (실패해도 계속 진행)
-            try:
-                vector_file_path = os.path.join(
-                    settings.DATA_DIR, 
-                    f"vectors_{file_id}.json"
-                )
-                if os.path.exists(vector_file_path):
-                    os.remove(vector_file_path)
-                    print(f"벡터 데이터 파일 삭제 완료: {vector_file_path}")
-                else:
-                    print(f"벡터 데이터 파일이 이미 존재하지 않음: {vector_file_path}")
-            except Exception as e:
-                error_msg = f"벡터 데이터 파일 삭제 실패: {str(e)}"
-                print(error_msg)
-                deletion_errors.append(error_msg)
+            # 레거시 벡터 파일 삭제 코드 제거됨 - ChromaDB와 SQLite 메타데이터 사용
             
             # 벡터 서비스에서 벡터 데이터 삭제 (실패해도 계속 진행)
             try:
