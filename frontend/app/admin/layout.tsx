@@ -16,7 +16,8 @@ import {
   ShieldIcon,
   AlertTriangleIcon,
   UploadIcon,
-  LayoutDashboardIcon
+  LayoutDashboardIcon,
+  ZapIcon
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
@@ -26,6 +27,7 @@ const navigation = [
   { name: '카테고리 관리', href: '/admin/categories', icon: FolderIcon },
   { name: '파일 업로드', href: '/admin/upload', icon: UploadIcon },
   { name: '벡터화 관리', href: '/admin/vectorization', icon: DatabaseIcon },
+  { name: '벡터 분석', href: '/admin/vectors', icon: ZapIcon },
   { name: '채팅 기록', href: '/admin/chat-history', icon: MessageSquareIcon },
   { name: '설정', href: '/admin/settings', icon: SettingsIcon },
 ]

@@ -585,4 +585,36 @@ async def delete_chat_history(
         raise
     except Exception as e:
         print(f"채팅 기록 삭제 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/admin/history/all")
+async def delete_all_chat_history(
+    admin_user = Depends(get_admin_user)
+):
+    """관리자용 채팅 기록 전체 삭제"""
+    try:
+        # 관리자 권한은 get_admin_user에서 이미 확인됨
+        
+        db_path = os.path.join(settings.DATA_DIR, "users.db")
+        
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            
+            # 삭제 전 총 개수 확인
+            cursor.execute("SELECT COUNT(*) FROM chat_history")
+            total_count = cursor.fetchone()[0]
+            
+            # 전체 삭제
+            cursor.execute("DELETE FROM chat_history")
+            conn.commit()
+            
+            return {
+                "message": "모든 채팅 기록이 삭제되었습니다",
+                "deleted_count": total_count
+            }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"채팅 기록 전체 삭제 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

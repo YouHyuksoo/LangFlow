@@ -35,6 +35,7 @@ import { chatAPI, categoryAPI, personaAPI } from "@/lib/api";
 import { CategorySelector } from "@/components/category-selector";
 import { ContentPreview } from "@/components/content-preview";
 import { FloatingNavigation } from "@/components/floating-navigation";
+import { MessageWithImages, hasImageReferences } from "@/components/message-with-images";
 import { useAuthContext } from "@/context/auth-context";
 
 // --- 데이터 인터페이스 ---
@@ -156,7 +157,12 @@ const ChatMessage = memo(
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
-            <ContentPreview content={message.content} />
+            // Assistant 메시지에서 이미지 참조가 있으면 MessageWithImages 사용
+            hasImageReferences(message.content) ? (
+              <MessageWithImages content={message.content} />
+            ) : (
+              <ContentPreview content={message.content} />
+            )
           )}
 
           {!isUser && (

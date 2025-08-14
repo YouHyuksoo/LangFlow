@@ -11,6 +11,14 @@ export const getAvatarUrl = (avatarPath?: string): string => {
 };
 
 /**
+ * 문서 이미지 URL을 완전한 URL로 변환
+ */
+export const getImageUrl = (imagePath?: string): string => {
+  if (!imagePath) return "";
+  return `${API_BASE_URL}${imagePath}`;
+};
+
+/**
  * API 엔드포인트 URL 생성
  */
 export const getApiUrl = (path: string): string => {

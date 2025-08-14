@@ -137,10 +137,7 @@ export default function UploadPage() {
       });
       
       // 파일 삭제 이벤트 발송
-      emitFileDeleted({
-        fileId: deleteModal.file.fileId!,
-        filename: deleteModal.file.name,
-      });
+      emitFileDeleted(deleteModal.file.fileId!);
       
       toast({
         title: "파일 삭제 완료",

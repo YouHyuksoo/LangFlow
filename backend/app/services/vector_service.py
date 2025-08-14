@@ -20,8 +20,79 @@ except ImportError:
     CHROMADB_AVAILABLE = False
     print("ChromaDB 패키지가 설치되지 않았습니다. pip install chromadb 로 설치해주세요.")
 
-async def _create_embedding_function():
-    """현재 모델 설정에 따라 임베딩 함수를 생성합니다."""
+from typing import List, Union, Callable, Any
+import numpy as np
+
+class EmbeddingFunction:
+    """임베딩 함수의 일관된 인터페이스를 제공하는 래퍼 클래스"""
+    
+    def __init__(self, base_function: Any, expected_dimension: int):
+        """
+        Args:
+            base_function: 실제 임베딩 함수 (OpenAI, Google 등)
+            expected_dimension: 예상되는 임베딩 차원
+        """
+        self.base_function = base_function
+        self.expected_dimension = expected_dimension
+    
+    def __call__(self, text: str) -> List[float]:
+        """
+        텍스트를 임베딩으로 변환하고 일관된 형식으로 반환
+        
+        Args:
+            text: 변환할 텍스트
+            
+        Returns:
+            List[float]: 정규화된 임베딩 벡터
+            
+        Raises:
+            ValueError: 임베딩 차원이 예상과 다를 때
+        """
+        try:
+            # 기본 함수로 임베딩 생성
+            result = self.base_function(text)
+            
+            # 타입별 정규화
+            normalized_embedding = self._normalize_embedding(result)
+            
+            # 차원 검증
+            if len(normalized_embedding) != self.expected_dimension:
+                raise ValueError(
+                    f"임베딩 차원 불일치: 예상 {self.expected_dimension}, "
+                    f"실제 {len(normalized_embedding)}"
+                )
+            
+            return normalized_embedding
+            
+        except Exception as e:
+            print(f"임베딩 생성 실패: {e}")
+            # 예외 시 0벡터 반환
+            return [0.0] * self.expected_dimension
+    
+    def _normalize_embedding(self, embedding: Any) -> List[float]:
+        """다양한 타입의 임베딩을 List[float]로 정규화"""
+        
+        # numpy array 처리
+        if hasattr(embedding, 'tolist'):
+            return embedding.tolist()
+        
+        # 중첩된 리스트/배열 처리 [[...]] -> [...]
+        if isinstance(embedding, (list, tuple)) and len(embedding) == 1:
+            inner = embedding[0]
+            if hasattr(inner, 'tolist'):
+                return inner.tolist()
+            elif isinstance(inner, (list, tuple)):
+                return [float(x) for x in inner]
+        
+        # 단순 리스트/튜플 처리
+        if isinstance(embedding, (list, tuple)):
+            return [float(x) for x in embedding]
+        
+        # 그 외의 경우 오류 발생
+        raise TypeError(f"지원하지 않는 임베딩 타입: {type(embedding)}")
+
+async def _create_embedding_function() -> Union[EmbeddingFunction, None]:
+    """현재 모델 설정에 따라 표준화된 임베딩 함수를 생성합니다."""
     try:
         # 비동기적으로 모델 설정 로드
         model_config = await get_current_model_config()
@@ -31,23 +102,29 @@ async def _create_embedding_function():
         provider = embedding_config.get("provider", "openai")
         model = embedding_config.get("model", "text-embedding-3-small")
         api_key = embedding_config.get("api_key", "")
+        dimension = embedding_config.get("dimension", 384)
         
-        print(f"임베딩 함수 생성: {provider} - {model}")
+        print(f"임베딩 함수 생성: {provider} - {model} ({dimension}차원)")
         
         if provider == "openai" and api_key:
             from chromadb.utils import embedding_functions
-            return embedding_functions.OpenAIEmbeddingFunction(
+            base_function = embedding_functions.OpenAIEmbeddingFunction(
                 api_key=api_key,
-                model_name=model
+                model_name=model,
+                dimensions=dimension  # OpenAI 차원 설정
             )
+            return EmbeddingFunction(base_function, dimension)
+            
         elif provider == "google" and api_key:
             # Google 임베딩 함수 (향후 확장)
-            from chromadb.utils import embedding_functions
-            # Google용 임베딩 함수가 있다면 여기에 추가
+            print("Google 임베딩은 아직 구현되지 않았습니다")
             return None
+            
         elif provider == "ollama":
-            # Ollama 임베딩 함수 (향후 확장)
+            # Ollama 임베딩 함수 (향후 확장)  
+            print("Ollama 임베딩은 아직 구현되지 않았습니다")
             return None
+            
         else:
             print(f"지원하지 않는 임베딩 제공업체이거나 API 키가 없음: {provider}")
             return None
@@ -318,13 +395,9 @@ class VectorService:
                         chunk_embeddings = []
                         
                         for chunk_text in chunk_texts:
-                            try:
-                                embedding = await asyncio.to_thread(embedding_function, chunk_text.strip())
-                                chunk_embeddings.append(embedding)
-                            except Exception as emb_error:
-                                print(f"임베딩 생성 실패: {emb_error}")
-                                # 기본 임베딩으로 대체 (차원수는 OpenAI 기본값)
-                                chunk_embeddings.append([0.0] * 1536)
+                            # EmbeddingFunction 래퍼가 모든 타입 변환과 오류 처리를 담당
+                            embedding = await asyncio.to_thread(embedding_function, chunk_text.strip())
+                            chunk_embeddings.append(embedding)
                         
                         # ChromaDB에 배치 추가 (임베딩 포함)
                         VectorService._collection.add(

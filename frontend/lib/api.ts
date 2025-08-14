@@ -920,6 +920,83 @@ export const chatAPI = {
     const response = await api.delete(`/api/v1/chat/admin/history/${historyId}`);
     return response.data;
   },
+
+  // 관리자용 채팅 기록 전체 삭제
+  deleteAllChatHistory: async () => {
+    const response = await api.delete("/api/v1/chat/admin/history/all");
+    return response.data;
+  },
+};
+
+// 벡터 분석 API
+export const vectorAPI = {
+  // 벡터 메타데이터 조회
+  getMetadata: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category_id?: string;
+    processing_method?: string;
+  }) => {
+    const response = await api.get("/api/v1/admin/vectors/metadata", { params });
+    return response.data;
+  },
+
+  // 벡터 메타데이터 통계
+  getMetadataStats: async () => {
+    const response = await api.get("/api/v1/admin/vectors/metadata/stats");
+    return response.data;
+  },
+
+  // ChromaDB 컬렉션 정보
+  getChromaCollections: async () => {
+    const response = await api.get("/api/v1/admin/vectors/chromadb/collections");
+    return response.data;
+  },
+
+  // ChromaDB 컬렉션 데이터
+  getCollectionData: async (
+    collectionName: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+    }
+  ) => {
+    const response = await api.get(
+      `/api/v1/admin/vectors/chromadb/collection/${collectionName}`,
+      { params }
+    );
+    return response.data;
+  },
+
+  // 벡터 검색
+  searchVectors: async (params: {
+    query: string;
+    collection_name?: string;
+    top_k?: number;
+  }) => {
+    const response = await api.get("/api/v1/admin/vectors/search", { params });
+    return response.data;
+  },
+
+  // 벡터 메타데이터 삭제
+  deleteMetadata: async (fileId: string) => {
+    const response = await api.delete(`/api/v1/admin/vectors/metadata/${fileId}`);
+    return response.data;
+  },
+
+  // 메타데이터와 ChromaDB 동기화
+  syncMetadata: async () => {
+    const response = await api.post("/api/v1/admin/vectors/sync");
+    return response.data;
+  },
+
+  // 동기화 상태 확인
+  getSyncStatus: async () => {
+    const response = await api.get("/api/v1/admin/vectors/sync/status");
+    return response.data;
+  },
 };
 
 export default api;

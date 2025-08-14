@@ -13,6 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Settings,
   Database,
   Bot,
@@ -39,7 +48,7 @@ import {
   FileSearch,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { fileAPI, settingsAPI, modelSettingsAPI } from "@/lib/api";
+import { fileAPI, settingsAPI, modelSettingsAPI, chatAPI } from "@/lib/api";
 import { personaAPI } from "@/lib/api";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
@@ -63,6 +72,17 @@ interface SystemSettings {
   // 추가: 시스템 메시지 및 기본 페르소나
   default_system_message?: string;
   default_persona_id?: string;
+
+  // 성능 최적화 설정
+  maxConcurrentEmbeddings?: number;
+  maxConcurrentChunks?: number;
+  embeddingPoolSize?: number;
+  chunkStreamBufferSize?: number;
+  connectionPoolSize?: number;
+  cacheTtlSeconds?: number;
+  enableParallelProcessing?: boolean;
+  enableStreamingChunks?: boolean;
+  enableSmartCaching?: boolean;
 }
 
 interface ModelSettings {
@@ -107,6 +127,16 @@ export default function SettingsPage() {
     enableAutoVectorization: true,
     enableNotifications: true,
     debugMode: false,
+    // 성능 최적화 기본값
+    maxConcurrentEmbeddings: 5,
+    maxConcurrentChunks: 20,
+    embeddingPoolSize: 3,
+    chunkStreamBufferSize: 100,
+    connectionPoolSize: 10,
+    cacheTtlSeconds: 3600,
+    enableParallelProcessing: true,
+    enableStreamingChunks: true,
+    enableSmartCaching: true,
   });
   const [modelSettings, setModelSettings] = useState<ModelSettings>({
     llm_provider: "openai",
@@ -143,6 +173,7 @@ export default function SettingsPage() {
     supported_formats: [".pdf", ".docx", ".pptx", ".xlsx", ".html"]
   });
   const [doclingStatus, setDoclingStatus] = useState<any>(null);
+  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
 
   // 설정 로드
   useEffect(() => {
@@ -277,11 +308,16 @@ export default function SettingsPage() {
         llm_model: availableModels[provider]?.llm_models?.[0] || ""
       }));
     } else {
+      const firstModel = availableModels[provider]?.embedding_models?.[0] || "";
+      const dimensions = availableModels[provider]?.embedding_dimensions?.[firstModel];
+      const defaultDimension = dimensions ? dimensions[0] : 1536;
+      
       setModelSettings(prev => ({
         ...prev,
         embedding_provider: provider,
         // 첫 번째 모델로 기본 설정
-        embedding_model: availableModels[provider]?.embedding_models?.[0] || ""
+        embedding_model: firstModel,
+        embedding_dimension: defaultDimension
       }));
     }
   };
@@ -408,7 +444,18 @@ export default function SettingsPage() {
               <select
                 className="mt-1 w-full border rounded-md p-2 text-sm"
                 value={modelSettings.embedding_model}
-                onChange={(e) => setModelSettings(prev => ({...prev, embedding_model: e.target.value}))}
+                onChange={(e) => {
+                  const selectedModel = e.target.value;
+                  const provider = modelSettings.embedding_provider;
+                  const dimensions = availableModels[provider]?.embedding_dimensions?.[selectedModel];
+                  const defaultDimension = dimensions ? dimensions[0] : modelSettings.embedding_dimension;
+                  
+                  setModelSettings(prev => ({
+                    ...prev, 
+                    embedding_model: selectedModel,
+                    embedding_dimension: defaultDimension
+                  }));
+                }}
               >
                 {(availableModels[modelSettings.embedding_provider]?.embedding_models || []).map((model: string) => (
                   <option key={model} value={model}>
@@ -436,13 +483,20 @@ export default function SettingsPage() {
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <label className="text-sm font-medium">벡터 차원</label>
-              <Input
-                type="number"
-                min="1"
+              <select
+                className="mt-1 w-full border rounded-md p-2 text-sm"
                 value={modelSettings.embedding_dimension}
-                onChange={(e) => setModelSettings(prev => ({...prev, embedding_dimension: parseInt(e.target.value) || 1536}))}
-                className="mt-1"
-              />
+                onChange={(e) => setModelSettings(prev => ({...prev, embedding_dimension: parseInt(e.target.value)}))}
+              >
+                {(availableModels[modelSettings.embedding_provider]?.embedding_dimensions?.[modelSettings.embedding_model] || [modelSettings.embedding_dimension]).map((dimension: number) => (
+                  <option key={dimension} value={dimension}>
+                    {dimension}차원 {dimension === 384 ? "(빠름, 권장)" : dimension === 1536 ? "(표준)" : dimension >= 3072 ? "(최고 품질)" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                높은 차원일수록 정확하지만 느리고 비용이 많이 듭니다.
+              </p>
             </div>
             
             <div>
@@ -710,7 +764,7 @@ export default function SettingsPage() {
                   default_system_message: value || "",
                 })
               }
-              height={300}
+              height={450}
               data-color-mode="light"
               preview="edit"
               hideToolbar={false}
@@ -824,6 +878,29 @@ export default function SettingsPage() {
     }
   };
 
+  // 채팅 기록 전체 삭제 함수
+  const handleDeleteAllChatHistory = async () => {
+    try {
+      setMaintenanceLoading("delete-all-chats");
+      const result = await chatAPI.deleteAllChatHistory();
+      
+      toast({
+        title: "채팅 기록 삭제 완료",
+        description: `총 ${result.deleted_count}개의 채팅 기록이 삭제되었습니다.`,
+      });
+      setShowDeleteChatModal(false);
+    } catch (error: any) {
+      console.error("채팅 기록 전체 삭제 실패:", error);
+      toast({
+        title: "채팅 기록 삭제 실패",
+        description: error.response?.data?.detail || "채팅 기록 삭제 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setMaintenanceLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -841,14 +918,17 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 시스템 메시지 및 기본 페르소나 설정 (최상단 단독 섹션) */}
-      {renderSystemMessageCard()}
-
       {/* 모델 설정 카드 (전체 폭) */}
       {renderModelSettingsCard()}
 
-      {/* Docling 고급 문서 분석 설정 */}
-      {renderDoclingSettingsCard()}
+      {/* 시스템 메시지와 Docling 설정을 좌우 배치 */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* 시스템 메시지 및 기본 페르소나 설정 */}
+        {renderSystemMessageCard()}
+
+        {/* Docling 고급 문서 분석 설정 */}
+        {renderDoclingSettingsCard()}
+      </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* 파일 업로드 설정 */}
@@ -910,23 +990,21 @@ export default function SettingsPage() {
               벡터화 설정
             </CardTitle>
             <CardDescription>
-              문서 벡터화 처리에 관한 설정을 관리합니다.
+              문서 벡터화 처리에 관한 설정을 관리합니다. 벡터 차원은 임베딩 모델 설정에서 관리됩니다.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">벡터 차원 수</label>
-              <Input
-                type="number"
-                value={settings.vectorDimension}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    vectorDimension: parseInt(e.target.value) || 1536,
-                  })
-                }
-                className="mt-1"
-              />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-1">벡터 차원 설정</p>
+                  <p className="text-xs">
+                    현재 벡터 차원: <strong>{modelSettings.embedding_dimension}차원</strong><br/>
+                    벡터 차원을 변경하려면 위의 임베딩 모델 설정에서 수정하세요.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -966,7 +1044,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <HardDrive className="h-5 w-5" />
-              ChromaDB 데이터베이스 관리
+              데이터베이스 관리
             </CardTitle>
             <CardDescription>
               벡터 데이터베이스의 유지보수 및 관리 작업을 수행합니다.
@@ -1008,6 +1086,79 @@ export default function SettingsPage() {
                     동기화를 한 번에 처리합니다.
                   </p>
                 </div>
+
+                {/* 채팅 기록 전체 삭제 */}
+                <div className="space-y-2 border-t pt-3">
+                  <Dialog open={showDeleteChatModal} onOpenChange={setShowDeleteChatModal}>
+                    <DialogTrigger asChild>
+                      <Button
+                        disabled={maintenanceLoading !== null}
+                        variant="destructive"
+                        className="w-full justify-start"
+                        size="sm"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        모든 채팅 기록 삭제
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-red-600" />
+                          채팅 기록 전체 삭제
+                        </DialogTitle>
+                        <DialogDescription>
+                          정말로 모든 채팅 기록을 삭제하시겠습니까?
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4">
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                            <div className="text-sm text-red-800">
+                              <p className="font-medium mb-2">주의사항</p>
+                              <ul className="list-disc list-inside space-y-1">
+                                <li>모든 사용자의 채팅 기록이 영구적으로 삭제됩니다</li>
+                                <li>삭제된 데이터는 복구할 수 없습니다</li>
+                                <li>채팅 통계 및 히스토리가 초기화됩니다</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowDeleteChatModal(false)}
+                          disabled={maintenanceLoading === "delete-all-chats"}
+                        >
+                          취소
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeleteAllChatHistory}
+                          disabled={maintenanceLoading === "delete-all-chats"}
+                        >
+                          {maintenanceLoading === "delete-all-chats" ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              삭제 중...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              삭제 확인
+                            </>
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <p className="text-xs text-muted-foreground px-3">
+                    시스템의 모든 채팅 기록을 영구적으로 삭제합니다. 
+                    이 작업은 되돌릴 수 없으므로 신중하게 진행하세요.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1025,6 +1176,251 @@ export default function SettingsPage() {
                     <li>벡터화 상태 동기화: 메타데이터와 실제 상태 동기화</li>
                     <li>ChromaDB 상태 확인: 데이터베이스 연결 및 상태 진단</li>
                     <li>모든 작업이 순차적으로 자동 실행됩니다.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 성능 최적화 설정 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              성능 최적화 설정
+            </CardTitle>
+            <CardDescription>
+              벡터화 처리 성능과 시스템 리소스 사용량을 최적화하는 설정입니다.
+              시스템 사양에 맞게 조정하세요.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* 병렬 처리 설정 */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <Cpu className="h-4 w-4" />
+                병렬 처리 설정
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 동시 임베딩 처리 수 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">동시 임베딩 처리 수</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={settings.maxConcurrentEmbeddings || 5}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        maxConcurrentEmbeddings: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    동시에 처리할 수 있는 임베딩 배치 수 (권장: 3-10)
+                  </p>
+                </div>
+
+                {/* 동시 청크 처리 수 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">동시 청크 처리 수</label>
+                  <Input
+                    type="number"
+                    min="5"
+                    max="100"
+                    value={settings.maxConcurrentChunks || 20}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        maxConcurrentChunks: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    동시에 처리할 수 있는 텍스트 청크 수 (권장: 10-50)
+                  </p>
+                </div>
+
+                {/* 임베딩 풀 크기 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">임베딩 함수 풀 크기</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.embeddingPoolSize || 3}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        embeddingPoolSize: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    재사용할 임베딩 함수 인스턴스 수 (권장: 2-5)
+                  </p>
+                </div>
+
+                {/* 연결 풀 크기 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">연결 풀 크기</label>
+                  <Input
+                    type="number"
+                    min="5"
+                    max="50"
+                    value={settings.connectionPoolSize || 10}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        connectionPoolSize: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ChromaDB 연결 풀 최대 크기 (권장: 5-20)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 캐싱 설정 */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <HardDrive className="h-4 w-4" />
+                캐싱 설정
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 캐시 TTL */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">캐시 만료 시간 (초)</label>
+                  <Input
+                    type="number"
+                    min="300"
+                    max="86400"
+                    value={settings.cacheTtlSeconds || 3600}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        cacheTtlSeconds: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    임베딩 캐시 유지 시간 (기본: 3600초 = 1시간)
+                  </p>
+                </div>
+
+                {/* 스트림 버퍼 크기 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">스트림 버퍼 크기</label>
+                  <Input
+                    type="number"
+                    min="50"
+                    max="1000"
+                    value={settings.chunkStreamBufferSize || 100}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        chunkStreamBufferSize: parseInt(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    스트리밍 청크 처리 버퍼 크기 (권장: 50-200)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 기능 활성화 토글 */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                성능 기능 활성화
+              </h4>
+              
+              <div className="space-y-3">
+                {/* 병렬 처리 */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">병렬 벡터화 처리</label>
+                    <p className="text-xs text-muted-foreground">
+                      대용량 파일에 대해 병렬 처리로 2-5배 빠른 벡터화
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableParallelProcessing}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        enableParallelProcessing: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                {/* 스트리밍 청크 */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">스트리밍 청크 처리</label>
+                    <p className="text-xs text-muted-foreground">
+                      메모리 효율적인 대용량 파일 처리 (70-80% 메모리 절약)
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableStreamingChunks}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        enableStreamingChunks: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                {/* 스마트 캐싱 */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">스마트 캐싱</label>
+                    <p className="text-xs text-muted-foreground">
+                      임베딩 결과 캐싱으로 반복 처리 시 90% 시간 단축
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableSmartCaching}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        enableSmartCaching: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 성능 권장 사항 */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <Zap className="h-4 w-4 text-green-600 mt-0.5" />
+                <div className="text-sm text-green-800">
+                  <p className="font-medium mb-2">성능 최적화 권장 사항</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li><strong>낮은 사양 (4GB RAM 이하):</strong> 동시 임베딩 3개, 동시 청크 10개</li>
+                    <li><strong>중간 사양 (8GB RAM):</strong> 동시 임베딩 5개, 동시 청크 20개</li>
+                    <li><strong>높은 사양 (16GB+ RAM):</strong> 동시 임베딩 8개, 동시 청크 50개</li>
+                    <li><strong>모든 성능 기능 활성화 권장:</strong> 최대 5배 성능 향상 가능</li>
+                    <li><strong>캐시 TTL:</strong> 자주 처리하는 문서가 많으면 길게 설정</li>
                   </ul>
                 </div>
               </div>
