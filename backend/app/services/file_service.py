@@ -11,7 +11,6 @@ from ..models.schemas import FileUploadResponse, FileInfo, FileProcessingOptions
 from ..core.config import settings
 from datetime import datetime
 from .category_service import CategoryService
-from ..api.settings import load_settings
 # LangflowService는 지연 로딩으로 처리 (순환 import 방지)
 # VectorService는 지연 로딩으로 처리
 
@@ -21,12 +20,8 @@ class FileService:
         self.max_file_size = settings.MAX_FILE_SIZE
         # 로거 설정
         self.logger = logging.getLogger(__name__)
-        # 동적으로 설정에서 허용 확장자 로드
-        from ..api.settings import load_settings
-        current_settings = load_settings()
-        # 설정에서 허용된 파일 형식을 가져와서 확장자로 변환 (.pdf -> .pdf)
-        allowed_file_types = current_settings.get("allowedFileTypes", ["pdf"])
-        self.allowed_extensions = {f".{ext}" if not ext.startswith('.') else ext for ext in allowed_file_types}
+        # 동적으로 설정에서 허용 확장자 로드 (지연 로딩)
+        self._load_allowed_extensions()
         self.category_service = CategoryService()
         # 벡터 서비스는 지연 로딩으로 처리 - 벡터화 관련 작업에서만 초기화
         self._vector_service = None
@@ -68,6 +63,334 @@ class FileService:
                 print(f"DoclingService 초기화 실패: {str(e)}")
                 self._docling_service = None
         return self._docling_service
+    
+    def _load_allowed_extensions(self):
+        """허용 확장자를 동적으로 로드합니다 (순환 import 방지)."""
+        try:
+            from ..api.settings import load_settings
+            current_settings = load_settings()
+            allowed_file_types = current_settings.get("allowedFileTypes", ["pdf"])
+            self.allowed_extensions = {f".{ext}" if not ext.startswith('.') else ext for ext in allowed_file_types}
+        except Exception as e:
+            self.logger.warning(f"설정 로드 실패, 기본 확장자 사용: {str(e)}")
+            self.allowed_extensions = {".pdf", ".docx", ".pptx", ".xlsx", ".txt"}
+    
+    def _load_unstructured_settings(self) -> Dict[str, Any]:
+        """unstructured 설정을 로드합니다."""
+        try:
+            from ..api.unstructured_settings import load_unstructured_settings
+            return load_unstructured_settings()
+        except Exception as e:
+            self.logger.warning(f"Unstructured 설정 로드 실패: {str(e)}")
+            # 기본 설정 반환
+            return {
+                "enabled": True,
+                "use_as_primary": True,
+                "strategy": "auto",
+                "hi_res_model_name": None,
+                "infer_table_structure": True,
+                "extract_images_in_pdf": False,
+                "include_page_breaks": True,
+                "ocr_languages": ["kor", "eng"],
+                "skip_infer_table_types": [],
+                "chunking_strategy": "by_title",
+                "max_characters": 1500,
+                "combine_text_under_n_chars": 150,
+                "new_after_n_chars": 1200,
+                "max_file_size_mb": 100,
+                "supported_formats": [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".txt", ".md", ".csv"],
+                "enable_fallback": True,
+                "fallback_order": ["pymupdf", "pypdf", "pdfminer"]
+            }
+    
+    async def extract_text_with_unstructured(self, file_path: str, file_extension: str) -> str:
+        """unstructured를 사용하여 다양한 문서 형식에서 텍스트를 추출합니다."""
+        settings = self._load_unstructured_settings()
+        
+        # unstructured가 비활성화된 경우 폴백
+        if not settings.get("enabled", True):
+            self.logger.info("Unstructured가 비활성화됨 - 폴백 처리")
+            if file_extension.lower() == '.pdf':
+                return await self._extract_pdf_fallback(file_path, settings)
+            else:
+                return await self._extract_text_traditional(file_path, file_extension)
+        
+        try:
+            # 파일 크기 확인
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            max_size_mb = settings.get("max_file_size_mb", 100)
+            
+            if file_size_mb > max_size_mb:
+                self.logger.warning(f"파일 크기 {file_size_mb:.1f}MB가 제한 {max_size_mb}MB를 초과 - 폴백 처리")
+                if file_extension.lower() == '.pdf':
+                    return await self._extract_pdf_fallback(file_path, settings)
+                else:
+                    return await self._extract_text_traditional(file_path, file_extension)
+            
+            # 지원 형식 확인
+            supported_formats = settings.get("supported_formats", [".pdf", ".docx", ".pptx", ".xlsx"])
+            if file_extension.lower() not in [fmt.lower() for fmt in supported_formats]:
+                self.logger.info(f"지원하지 않는 형식 {file_extension} - 기존 처리 방식 사용")
+                return await self._extract_text_traditional(file_path, file_extension)
+            
+            self.logger.info(f"📄 unstructured로 {file_extension} 파일 처리 시도...")
+            
+            # unstructured 라이브러리 사용
+            from unstructured.partition.auto import partition
+            
+            # 처리 옵션 설정
+            partition_kwargs = {
+                "filename": file_path,
+                "strategy": settings.get("strategy", "auto"),
+                "infer_table_structure": settings.get("infer_table_structure", True),
+                "include_page_breaks": settings.get("include_page_breaks", True),
+            }
+            
+            # PDF 특화 옵션
+            if file_extension.lower() == '.pdf':
+                partition_kwargs["extract_images_in_pdf"] = settings.get("extract_images_in_pdf", False)
+            
+            # 고해상도 모델 설정
+            if settings.get("strategy") == "hi_res" and settings.get("hi_res_model_name"):
+                partition_kwargs["model_name"] = settings.get("hi_res_model_name")
+            
+            # OCR 언어 설정
+            ocr_languages = settings.get("ocr_languages", ["kor", "eng"])
+            if ocr_languages:
+                partition_kwargs["ocr_languages"] = ocr_languages
+            
+            # 파티션 실행
+            elements = partition(**partition_kwargs)
+            
+            # 청킹 설정을 모델 설정에서 가져오기 (통합 설정 사용)
+            try:
+                from .model_settings_service import get_current_model_config
+                model_config = await get_current_model_config()
+                settings_config = model_config.get("settings", {})
+                
+                chunking_strategy = settings_config.get("chunking_strategy", settings.get("chunking_strategy", "by_title"))
+                max_chars = settings_config.get("max_characters", settings.get("max_characters", 800))
+                combine_under_n_chars = settings_config.get("combine_text_under_n_chars", settings.get("combine_text_under_n_chars", 120))
+                new_after_n_chars = settings_config.get("new_after_n_chars", settings.get("new_after_n_chars", 600))
+            except:
+                # 폴백: 기존 설정 사용
+                chunking_strategy = settings.get("chunking_strategy", "by_title")
+                max_chars = settings.get("max_characters", 800)
+                combine_under_n_chars = settings.get("combine_text_under_n_chars", 120)
+                new_after_n_chars = settings.get("new_after_n_chars", 600)
+            
+            if chunking_strategy == "by_title":
+                # 제목별로 그룹화
+                extracted_text = self._group_elements_by_title(elements, max_chars, combine_under_n_chars)
+            else:
+                # 기본 청킹
+                extracted_text = self._combine_elements_basic(elements, max_chars, new_after_n_chars)
+            
+            if extracted_text.strip():
+                self.logger.info(f"✅ unstructured로 {file_extension} 텍스트 추출 성공")
+                return extracted_text.strip()
+            else:
+                self.logger.warning("unstructured 추출 결과가 비어있음 - 폴백 처리")
+                
+        except ImportError as e:
+            import sys
+            self.logger.error(f"unstructured 라이브러리 import 실패: {str(e)}")
+            self.logger.error(f"Python 경로: {sys.executable}")
+            self.logger.error(f"site-packages 경로: {[p for p in sys.path if 'site-packages' in p]}")
+            self.logger.warning("unstructured 라이브러리가 설치되지 않음 - 폴백 처리")
+        except Exception as e:
+            self.logger.error(f"unstructured 추출 실패: {str(e)} - 폴백 처리")
+        
+        # 폴백 처리
+        if settings.get("enable_fallback", True):
+            if file_extension.lower() == '.pdf':
+                return await self._extract_pdf_fallback(file_path, settings)
+            else:
+                return await self._extract_text_traditional(file_path, file_extension)
+        else:
+            raise Exception(f"unstructured 처리 실패 및 폴백이 비활성화됨")
+    
+    def _group_elements_by_title(self, elements, max_chars: int, combine_under_n_chars: int) -> str:
+        """제목별로 요소들을 그룹화하여 텍스트를 조합합니다."""
+        grouped_text = []
+        current_section = []
+        current_length = 0
+        
+        for element in elements:
+            element_text = str(element).strip()
+            if not element_text:
+                continue
+            
+            # 제목 요소인지 확인
+            is_title = hasattr(element, 'category') and element.category in ['Title', 'Header']
+            
+            # 현재 섹션이 너무 길거나 새 제목을 만났을 때 섹션 종료
+            if (is_title and current_section) or current_length > max_chars:
+                section_text = "\n".join(current_section)
+                if len(section_text) >= combine_under_n_chars:
+                    grouped_text.append(section_text)
+                current_section = []
+                current_length = 0
+            
+            current_section.append(element_text)
+            current_length += len(element_text)
+        
+        # 마지막 섹션 추가
+        if current_section:
+            section_text = "\n".join(current_section)
+            if len(section_text) >= combine_under_n_chars:
+                grouped_text.append(section_text)
+        
+        return "\n\n".join(grouped_text)
+    
+    def _combine_elements_basic(self, elements, max_chars: int, new_after_n_chars: int) -> str:
+        """기본 방식으로 요소들을 조합합니다."""
+        combined_text = []
+        current_chunk = []
+        current_length = 0
+        
+        for element in elements:
+            element_text = str(element).strip()
+            if not element_text:
+                continue
+            
+            # 청크 크기 확인
+            if current_length + len(element_text) > new_after_n_chars:
+                if current_chunk:
+                    chunk_text = "\n".join(current_chunk)
+                    combined_text.append(chunk_text)
+                current_chunk = []
+                current_length = 0
+            
+            current_chunk.append(element_text)
+            current_length += len(element_text)
+        
+        # 마지막 청크 추가
+        if current_chunk:
+            chunk_text = "\n".join(current_chunk)
+            combined_text.append(chunk_text)
+        
+        return "\n\n".join(combined_text)
+    
+    async def _extract_pdf_fallback(self, file_path: str, settings: Dict[str, Any]) -> str:
+        """PDF 파일에 대한 폴백 처리"""
+        fallback_order = settings.get("fallback_order", ["pymupdf", "pypdf", "pdfminer"])
+        
+        for processor in fallback_order:
+            try:
+                if processor == "pymupdf":
+                    return await self._extract_pdf_with_pymupdf(file_path)
+                elif processor == "pypdf":
+                    return await self._extract_pdf_with_pypdf(file_path)
+                elif processor == "pdfminer":
+                    return await self._extract_pdf_with_pdfminer(file_path)
+            except Exception as e:
+                self.logger.warning(f"{processor} 처리 실패: {str(e)}")
+                continue
+        
+        raise Exception("모든 PDF 처리 방법이 실패했습니다")
+    
+    async def _extract_pdf_with_pymupdf(self, file_path: str) -> str:
+        """pymupdf를 사용하여 PDF 텍스트 추출"""
+        import fitz  # pymupdf
+        self.logger.info("📄 pymupdf로 PDF 텍스트 추출 시도...")
+        
+        doc = fitz.open(file_path)
+        extracted_text = ""
+        
+        for page_num in range(len(doc)):
+            try:
+                page = doc.load_page(page_num)
+                
+                # 텍스트 추출 (레이아웃 보존)
+                text_dict = page.get_text("dict")
+                page_text = ""
+                
+                for block in text_dict["blocks"]:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            line_text = ""
+                            for span in line["spans"]:
+                                span_text = span.get("text", "")
+                                if span_text.strip():
+                                    line_text += span_text
+                            if line_text.strip():
+                                page_text += line_text + "\n"
+                        page_text += "\n"
+                
+                if not page_text.strip():
+                    page_text = page.get_text()
+                
+                if page_text.strip() and "(cid:" not in page_text.lower():
+                    extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
+                    
+            except Exception as e:
+                self.logger.warning(f"페이지 {page_num + 1} 처리 실패: {str(e)}")
+        
+        doc.close()
+        
+        if extracted_text.strip():
+            self.logger.info("✅ pymupdf로 PDF 텍스트 추출 성공")
+            return extracted_text.strip()
+        else:
+            raise Exception("pymupdf 텍스트 추출 결과가 비어있음")
+    
+    async def _extract_pdf_with_pypdf(self, file_path: str) -> str:
+        """pypdf를 사용하여 PDF 텍스트 추출"""
+        import pypdf
+        self.logger.info("📄 pypdf로 PDF 텍스트 추출 시도...")
+        
+        extracted_text = ""
+        
+        with open(file_path, 'rb') as file:
+            pdf_reader = pypdf.PdfReader(file)
+            
+            for page_num, page in enumerate(pdf_reader.pages):
+                try:
+                    page_text = page.extract_text()
+                    if page_text.strip():
+                        extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
+                except Exception as e:
+                    self.logger.warning(f"페이지 {page_num + 1} 처리 실패: {str(e)}")
+        
+        if extracted_text.strip():
+            self.logger.info("✅ pypdf로 PDF 텍스트 추출 성공")
+            return extracted_text.strip()
+        else:
+            raise Exception("pypdf 텍스트 추출 결과가 비어있음")
+    
+    async def _extract_pdf_with_pdfminer(self, file_path: str) -> str:
+        """pdfminer를 사용하여 PDF 텍스트 추출"""
+        from pdfminer.high_level import extract_text
+        self.logger.info("📄 pdfminer로 PDF 텍스트 추출 시도...")
+        
+        try:
+            extracted_text = extract_text(file_path)
+            if extracted_text.strip():
+                self.logger.info("✅ pdfminer로 PDF 텍스트 추출 성공")
+                return extracted_text.strip()
+            else:
+                raise Exception("pdfminer 텍스트 추출 결과가 비어있음")
+        except Exception as e:
+            self.logger.error(f"pdfminer 처리 실패: {str(e)}")
+            raise
+    
+    async def _extract_text_traditional(self, file_path: str, file_extension: str) -> str:
+        """기존 방식으로 텍스트 추출 (비PDF 파일)"""
+        if file_extension.lower() == '.txt':
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as file:
+                return await file.read()
+        elif file_extension.lower() in ['.docx', '.pptx', '.xlsx']:
+            # 기존 Office 문서 처리 로직
+            return await self._extract_office_text(file_path, file_extension)
+        else:
+            raise Exception(f"지원하지 않는 파일 형식: {file_extension}")
+    
+    async def _extract_office_text(self, file_path: str, file_extension: str) -> str:
+        """Office 문서에서 텍스트 추출 (기존 방식)"""
+        # 기존 Office 문서 처리 로직을 여기에 구현
+        # 현재는 간단한 구현으로 대체
+        return f"{file_extension} 파일 처리가 필요합니다."
     
     def _ensure_data_dir(self):
         """데이터 디렉토리 생성"""
@@ -137,6 +460,7 @@ class FileService:
                 )
             
             # 파일 크기 검증 (동적 설정 사용)
+            from ..api.settings import load_settings
             current_settings = load_settings()
             max_file_size_mb = current_settings.get("maxFileSize", 10)
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
@@ -1068,123 +1392,42 @@ class FileService:
             return {"error": str(e)}
     
     async def extract_text_from_pdf(self, file_path: str) -> str:
-        """PDF에서 텍스트를 추출합니다 (pymupdf 사용 - 한글 폰트 매핑 최적화)."""
+        """PDF에서 텍스트를 추출합니다 (unstructured 설정 기반 처리)."""
         try:
-            extracted_text = ""
+            # unstructured 설정 로드
+            settings = self._load_unstructured_settings()
             
-            # 1) pymupdf 우선 사용 (한글 폰트 매핑에 가장 강력)
-            try:
-                import fitz  # pymupdf
-                print("📄 pymupdf로 PDF 텍스트 추출 시도...")
+            # unstructured가 기본 처리기로 설정되어 있고 활성화된 경우
+            if settings.get("enabled", True) and settings.get("use_as_primary", True):
+                self.logger.info("📄 unstructured + pymupdf 폴백 방식으로 PDF 텍스트 추출")
+                return await self.extract_text_with_unstructured(file_path, '.pdf')
+            else:
+                # unstructured가 비활성화된 경우 폴백 처리
+                self.logger.info("📄 unstructured가 비활성화됨 - 폴백 방식으로 PDF 텍스트 추출")
+                return await self._extract_pdf_fallback(file_path, settings)
                 
-                doc = fitz.open(file_path)
-                
-                for page_num in range(len(doc)):
-                    try:
-                        page = doc.load_page(page_num)
-                        
-                        # 텍스트 추출 (다양한 옵션으로 한글 처리 최적화)
-                        text_dict = page.get_text("dict")
-                        page_text = ""
-                        
-                        # 블록별로 텍스트 추출 (레이아웃 보존)
-                        for block in text_dict["blocks"]:
-                            if "lines" in block:  # 텍스트 블록
-                                for line in block["lines"]:
-                                    line_text = ""
-                                    for span in line["spans"]:
-                                        # 폰트 정보와 함께 텍스트 추출
-                                        span_text = span.get("text", "")
-                                        if span_text.strip():
-                                            line_text += span_text
-                                    if line_text.strip():
-                                        page_text += line_text + "\n"
-                                page_text += "\n"
-                        
-                        # 대체 방법: 간단한 텍스트 추출
-                        if not page_text.strip():
-                            page_text = page.get_text()
-                        
-                        # CID 코드 확인 및 처리
-                        if page_text.strip():
-                            if "(cid:" not in page_text.lower():
-                                extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
-                                print(f"✅ 페이지 {page_num + 1} 텍스트 추출 성공")
-                            else:
-                                print(f"⚠️ 페이지 {page_num + 1}에서 CID 코드 감지 - OCR 방법 필요")
-                        
-                    except Exception as e:
-                        print(f"pymupdf 페이지 {page_num + 1} 추출 실패: {str(e)}")
-                        continue
-                
-                doc.close()
-                
-                # pymupdf로 성공적으로 추출된 경우
-                if extracted_text.strip():
-                    print("✅ pymupdf로 텍스트 추출 성공")
-                    return extracted_text.strip()
-                else:
-                    print("⚠️ pymupdf 추출 결과가 비어있음 - 다른 방법 시도")
-                    
-            except ImportError:
-                print("❌ pymupdf 라이브러리가 설치되지 않음 - pip install pymupdf 필요")
-            except Exception as e:
-                print(f"pymupdf 추출 실패: {str(e)}")
-
-            # 2) pypdf 폴백
-            try:
-                from pypdf import PdfReader
-                print("📄 pypdf로 PDF 텍스트 추출 시도...")
-                
-                with open(file_path, 'rb') as file:
-                    pdf_reader = PdfReader(file)
-                    for page_num, page in enumerate(pdf_reader.pages):
-                        try:
-                            page_text = page.extract_text() or ""
-                            if page_text.strip() and "(cid:" not in page_text.lower():
-                                extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
-                        except Exception as e:
-                            print(f"pypdf 페이지 {page_num + 1} 추출 실패: {str(e)}")
-                            continue
-                
-                if extracted_text.strip():
-                    print("✅ pypdf로 텍스트 추출 성공")
-                    return extracted_text.strip()
-                    
-            except Exception as e:
-                print(f"pypdf 추출 실패: {str(e)}")
-
-            # 3) pdfminer.six 마지막 폴백
-            try:
-                from pdfminer.high_level import extract_text as pdf_extract_text
-                print("📄 pdfminer.six로 PDF 텍스트 추출 시도...")
-                
-                text = pdf_extract_text(file_path) or ""
-                if text.strip():
-                    # CID 패턴 제거 및 대체
-                    import re
-                    # CID 코드를 적절한 텍스트로 대체
-                    text = re.sub(r'\(cid:\d+\)', '', text)
-                    text = re.sub(r'\s+', ' ', text)  # 공백 정리
-                    
-                    if text.strip():
-                        print("✅ pdfminer.six로 텍스트 추출 성공")
-                        return text.strip()
-                        
-            except Exception as e:
-                print(f"pdfminer.six 추출 실패: {str(e)}")
-
-            # 모든 방법 실패
-            print("❌ 모든 PDF 텍스트 추출 방법 실패")
-            return "⚠️ PDF에서 텍스트를 추출할 수 없습니다.\n\n이 PDF는 다음 중 하나일 수 있습니다:\n1. 이미지 기반 PDF (OCR 필요)\n2. 특수 폰트 인코딩 사용\n3. 보안 설정으로 텍스트 추출 제한\n\n해결책: Docling을 활성화하거나 OCR 처리를 사용해보세요."
-            
         except Exception as e:
-            print(f"PDF 텍스트 추출 중 오류: {str(e)}")
-            return f"⚠️ PDF 텍스트 추출 중 오류: {str(e)}"
+            self.logger.error(f"PDF 텍스트 추출 중 오류: {str(e)}")
+            raise Exception(f"PDF 텍스트 추출 실패: {str(e)}")
 
     async def extract_text_from_office(self, file_path: str) -> str:
-        """Office 파일(DOC, PPT, XLS)에서 텍스트를 추출합니다."""
+        """Office 파일(DOC, PPT, XLS)에서 텍스트를 추출합니다 (unstructured 설정 기반 처리)."""
         try:
+            # 파일 확장자 확인
+            file_extension = os.path.splitext(file_path)[1].lower()
+            
+            # unstructured 설정 로드
+            settings = self._load_unstructured_settings()
+            
+            # unstructured가 기본 처리기로 설정되어 있고 활성화된 경우
+            if settings.get("enabled", True) and settings.get("use_as_primary", True):
+                try:
+                    self.logger.info(f"📄 unstructured로 {file_extension} 파일 처리 시도...")
+                    return await self.extract_text_with_unstructured(file_path, file_extension)
+                except Exception as e:
+                    self.logger.warning(f"unstructured 처리 실패: {str(e)} - 기존 방식으로 폴백")
+            
+            # 기존 방식 처리
             file_extension = os.path.splitext(file_path)[1].lower()
             text = ""
             
@@ -1257,41 +1500,53 @@ class FileService:
             return f"⚠️ 파일 처리 중 오류가 발생했습니다: {str(e)}"
 
     async def extract_text_from_file(self, file_path: str) -> str:
-        """파일 확장자에 따라 적절한 텍스트 추출 방법을 선택합니다 (Docling 비활성화 시 사용)."""
+        """파일 확장자에 따라 적절한 텍스트 추출 방법을 선택합니다 (unstructured 우선 + 폴백)."""
         try:
             file_extension = os.path.splitext(file_path)[1].lower()
             filename = os.path.basename(file_path)
             
             print(f"📄 FileService 텍스트 추출 시작: {filename} ({file_extension})")
             
+            # 먼저 unstructured로 통합 처리 시도
+            try:
+                text = await self.extract_text_with_unstructured(file_path, file_extension)
+                if text and text.strip() and not text.startswith("⚠️"):
+                    print("✅ unstructured로 통합 텍스트 추출 성공")
+                    return text.strip()
+                else:
+                    print("⚠️ unstructured 통합 추출 실패 - 개별 처리기로 폴백")
+            except Exception as e:
+                print(f"unstructured 통합 추출 실패: {str(e)} - 개별 처리기로 폴백")
+            
+            # 개별 처리기로 폴백
             # PDF 파일
             if file_extension == '.pdf':
-                print("📄 PDF 처리 - pymupdf + 다중 폴백 방식")
+                print("📄 PDF 처리 - 개별 처리기 (pymupdf + 기타 폴백)")
                 return await self.extract_text_from_pdf(file_path)
             
             # Office 파일들
             elif file_extension in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']:
-                print(f"📄 Office 파일 처리 - {file_extension}")
+                print(f"📄 Office 파일 처리 - 개별 처리기 ({file_extension})")
                 return await self.extract_text_from_office(file_path)
             
             # 텍스트 파일들
             elif file_extension in ['.txt', '.md', '.csv']:
-                print(f"📝 텍스트 파일 처리 - {file_extension}")
+                print(f"📝 텍스트 파일 처리 - 개별 처리기 ({file_extension})")
                 return await self.extract_text_from_text_file(file_path)
             
             # HTML 파일들
             elif file_extension in ['.html', '.htm']:
-                print(f"🌐 HTML 파일 처리 - {file_extension}")
+                print(f"🌐 HTML 파일 처리 - 개별 처리기 ({file_extension})")
                 return await self.extract_text_from_html(file_path)
             
             # JSON 파일
             elif file_extension == '.json':
-                print("📋 JSON 파일 처리")
+                print("📋 JSON 파일 처리 - 개별 처리기")
                 return await self.extract_text_from_json(file_path)
             
             # XML 파일
             elif file_extension == '.xml':
-                print("🏷️ XML 파일 처리")
+                print("🏷️ XML 파일 처리 - 개별 처리기")
                 return await self.extract_text_from_xml(file_path)
             
             # 기타 텍스트로 읽기 시도
@@ -1302,6 +1557,117 @@ class FileService:
         except Exception as e:
             print(f"❌ FileService 텍스트 추출 실패: {str(e)}")
             return f"⚠️ 텍스트 추출 실패: {str(e)}"
+    
+    async def extract_text_with_unstructured(self, file_path: str, file_extension: str) -> str:
+        """unstructured를 사용한 통합 문서 처리"""
+        try:
+            print(f"📄 unstructured 통합 처리 시도: {file_extension}")
+            print("⏳ unstructured 라이브러리 import 중...")
+            from unstructured.partition.auto import partition
+            print("✅ unstructured 라이브러리 import 성공")
+            
+            import os
+            print(f"⏳ 파일 분석 중: {os.path.basename(file_path)}")
+            print("📊 unstructured 파티션 실행 중... (시간이 걸릴 수 있습니다)")
+            
+            # unstructured 설정 로드
+            settings = self._load_unstructured_settings()
+            
+            # unstructured로 자동 파티션
+            elements = partition(
+                filename=file_path,
+                strategy=settings.get("strategy", "auto"),
+                include_page_breaks=settings.get("include_page_breaks", True),
+                infer_table_structure=settings.get("infer_table_structure", True),
+                extract_images_in_pdf=settings.get("extract_images_in_pdf", False),
+            )
+            
+            print(f"✅ 파티션 완료 - {len(elements)}개 요소 추출됨")
+            
+            if not elements:
+                print("⚠️ 추출된 요소가 없음")
+                return "⚠️ 내용 없음"
+            
+            print("⏳ 텍스트 요소 조합 중...")
+            # 텍스트 요소들 결합
+            page_texts = {}
+            current_page = 1
+            processed_elements = 0
+            
+            for element in elements:
+                processed_elements += 1
+                if processed_elements % 10 == 0:  # 10개마다 진행 상황 출력
+                    print(f"📝 요소 처리 중: {processed_elements}/{len(elements)}")
+                # 페이지 정보 추출
+                if hasattr(element, 'metadata') and element.metadata:
+                    page_num = getattr(element.metadata, 'page_number', current_page)
+                else:
+                    page_num = current_page
+                
+                # 텍스트 추출
+                text = str(element).strip()
+                if text:
+                    if page_num not in page_texts:
+                        page_texts[page_num] = []
+                    page_texts[page_num].append(text)
+                
+                # 페이지 브레이크 처리
+                if hasattr(element, 'category') and element.category == "PageBreak":
+                    current_page += 1
+            
+            # 결과 조합
+            print(f"📄 페이지별 텍스트 조합 중... (총 {len(page_texts)}페이지)")
+            if page_texts:
+                extracted_text = ""
+                for page_num in sorted(page_texts.keys()):
+                    page_content = "\n".join(page_texts[page_num])
+                    if page_content.strip():
+                        extracted_text += f"[페이지 {page_num}]\n{page_content}\n\n"
+                        print(f"✅ 페이지 {page_num} 처리 완료 ({len(page_content)}자)")
+                
+                final_text = extracted_text.strip()
+                if final_text:
+                    print(f"🎉 unstructured 텍스트 추출 완료 - 총 {len(final_text)}자")
+                    return final_text
+                else:
+                    print("⚠️ 최종 텍스트가 비어있음")
+                    return "⚠️ 빈 내용"
+            else:
+                return "⚠️ 내용 없음"
+                
+        except ImportError as e:
+            import sys
+            print(f"❌ unstructured 라이브러리 import 실패: {str(e)}")
+            print(f"Python 경로: {sys.executable}")
+            print(f"sys.path 확인:")
+            for i, path in enumerate(sys.path[:5]):
+                print(f"  {i+1}. {path}")
+            print(f"site-packages 확인: {[p for p in sys.path if 'site-packages' in p]}")
+            
+            # 패키지 존재 여부 직접 확인
+            try:
+                for site_pkg in [p for p in sys.path if 'site-packages' in p]:
+                    unstructured_path = os.path.join(site_pkg, 'unstructured')
+                    if os.path.exists(unstructured_path):
+                        print(f"✅ unstructured 패키지 발견: {unstructured_path}")
+                        # __init__.py 확인
+                        init_file = os.path.join(unstructured_path, '__init__.py')
+                        if os.path.exists(init_file):
+                            print(f"✅ __init__.py 존재: {init_file}")
+                        else:
+                            print(f"❌ __init__.py 없음: {init_file}")
+                    else:
+                        print(f"❌ unstructured 패키지 없음: {unstructured_path}")
+            except Exception as check_e:
+                print(f"패키지 확인 중 오류: {check_e}")
+            
+            return "⚠️ unstructured 라이브러리 import 실패"
+        except Exception as e:
+            print(f"unstructured 통합 처리 실패: {str(e)}")
+            import traceback
+            print(f"상세 오류:")
+            traceback.print_exc()
+            return f"⚠️ unstructured 처리 실패: {str(e)}"
     
     async def extract_text_from_text_file(self, file_path: str) -> str:
         """텍스트 파일에서 텍스트를 추출합니다 (한글 인코딩 처리 포함)."""

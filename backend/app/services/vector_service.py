@@ -57,6 +57,27 @@ class EmbeddingFunction:
             if not input or len(input) == 0:
                 raise ValueError("입력 텍스트가 비어있습니다")
             
+            # 토큰 수 체크 및 제한 (8,192 토큰 한계 고려)
+            MAX_TOKENS = 6000  # 안전 마진 남기기
+            filtered_input = []
+            
+            for i, text in enumerate(input):
+                # 대략적인 토큰 수 계산 (영어 기준 1 토큰 = 4문자, 한글은 더 적음)
+                estimated_tokens = len(text) // 3  # 한글 고려 보수적 계산
+                
+                if estimated_tokens > MAX_TOKENS:
+                    print(f"⚠️ 텍스트 {i} 토큰 초과 감지: {estimated_tokens} > {MAX_TOKENS}")
+                    # 토큰 한계에 맞게 텍스트 잘라내기
+                    max_chars = MAX_TOKENS * 3  # 안전한 문자 수
+                    truncated_text = text[:max_chars] + "... [토큰 제한으로 인한 자른 내용]"
+                    filtered_input.append(truncated_text)
+                    print(f"✂️ 텍스트 자른 내용: {len(text)} -> {len(truncated_text)} 문자")
+                else:
+                    filtered_input.append(text)
+            
+            print(f"✅ 토큰 체크 완료 - 원본: {len(input)}개, 필터링: {len(filtered_input)}개")
+            input = filtered_input  # 필터링된 입력 사용
+            
             # 배치로 임베딩 생성 (더 효율적)
             if len(input) > 1:
                 print(f"📦 배치 임베딩 생성 중... ({len(input)}개)")
@@ -408,12 +429,13 @@ class VectorService:
             return False
         
         try:
-            # 메모리 부족을 방지하기 위해 청크를 배치로 처리
-            initial_batch_size = settings.BATCH_SIZE  # 설정에서 배치 크기 가져오기
+            # 모델 설정에서 배치 크기 가져오기
+            model_config = await get_current_model_config()
+            dynamic_batch_size = model_config.get("settings", {}).get("batch_size", settings.BATCH_SIZE)
             total_chunks = len(chunks)
             
-            # 임베딩 생성 시에는 더 작은 배치 크기 사용 (안정성 향상)
-            batch_size = min(initial_batch_size, 5)  # 최대 5개씩 처리
+            # 임베딩 생성 시에는 설정된 배치 크기 사용 (토큰 제한 고려)
+            batch_size = dynamic_batch_size
             
             print(f"ChromaDB에 {total_chunks}개 청크를 {batch_size}개씩 배치 처리합니다. (임베딩 안정성을 위해 배치 크기 조정)")
             
@@ -1304,9 +1326,10 @@ class VectorService:
             
             print(f"📝 {content_type} 형식으로 청킹 시작 (길이: {len(main_content)}자)")
             
-            # 기본 청킹 (설정값 사용)
-            chunk_size = settings.DEFAULT_CHUNK_SIZE
-            overlap_size = settings.DEFAULT_CHUNK_OVERLAP
+            # 모델 설정에서 청킹 설정 가져오기
+            model_config = await get_current_model_config()
+            chunk_size = model_config.get("settings", {}).get("chunk_size", settings.DEFAULT_CHUNK_SIZE)
+            overlap_size = model_config.get("settings", {}).get("chunk_overlap", settings.DEFAULT_CHUNK_OVERLAP)
             
             # 문단 기반 스마트 청킹
             if content_type == "markdown":
@@ -1561,12 +1584,13 @@ class VectorService:
             
             print(f"✅ 텍스트 추출 완료: {len(content):,}자 ({processing_time:.2f}초 소요)")
             
-            # 스마트 청킹 (설정값 사용)
-            chunks = await self._smart_text_chunking(
-                content, 
-                settings.DEFAULT_CHUNK_SIZE, 
-                settings.DEFAULT_CHUNK_OVERLAP
-            )
+            # 모델 설정에서 청킹 설정 가져오기
+            model_config = await get_current_model_config()
+            chunk_size = model_config.get("settings", {}).get("chunk_size", settings.DEFAULT_CHUNK_SIZE)
+            overlap_size = model_config.get("settings", {}).get("chunk_overlap", settings.DEFAULT_CHUNK_OVERLAP)
+            
+            # 스마트 청킹 (동적 설정값 사용)
+            chunks = await self._smart_text_chunking(content, chunk_size, overlap_size)
             
             if not chunks:
                 return {

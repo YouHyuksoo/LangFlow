@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import setup_logging, get_console_logger
-from app.api import chat, files, flows, stats, categories, langflow, users, personas, system_settings, sse, model_settings, vectors
+from app.api import chat, files, flows, stats, categories, langflow, users, personas, system_settings, sse, model_settings, vectors, unstructured_settings
 from app.api import settings as settings_api
 from app.db.init_db import initialize_database
 import uvicorn
@@ -94,6 +94,18 @@ if hasattr(signal, 'SIGTERM'):
 # 데이터베이스 초기화
 initialize_database()
 
+# unstructured 라이브러리 사전 로딩 테스트
+try:
+    import unstructured
+    print(f"✅ unstructured 라이브러리 사전 로딩 성공 - 버전: {getattr(unstructured, '__version__', 'unknown')}")
+except ImportError as e:
+    print(f"❌ unstructured 라이브러리 사전 로딩 실패: {e}")
+    import sys
+    print(f"Python 경로: {sys.executable}")
+    print(f"site-packages: {[p for p in sys.path if 'site-packages' in p]}")
+except Exception as e:
+    print(f"❌ unstructured 라이브러리 로딩 중 예상치 못한 오류: {e}")
+
 # FastAPI 애플리케이션 생성
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -130,6 +142,7 @@ app.include_router(personas.router, prefix=settings.API_V1_STR)
 app.include_router(system_settings.router, prefix=settings.API_V1_STR)
 app.include_router(model_settings.router, prefix=settings.API_V1_STR)
 app.include_router(vectors.router, prefix=settings.API_V1_STR)
+app.include_router(unstructured_settings.router, prefix=settings.API_V1_STR)
 app.include_router(sse.router)  # SSE는 별도 prefix 사용
 
 # 정적 파일 서빙 설정 (아바타 이미지 및 문서 이미지용)

@@ -283,6 +283,15 @@ class ModelSettingsService:
             "settings": {
                 "chunk_size": settings.chunk_size,
                 "chunk_overlap": settings.chunk_overlap,
+                "batch_size": settings.batch_size,
+                "max_concurrent_embeddings": settings.max_concurrent_embeddings,
+                "max_concurrent_chunks": settings.max_concurrent_chunks,
+                "embedding_pool_size": settings.embedding_pool_size,
+                "connection_pool_size": settings.connection_pool_size,
+                "chunking_strategy": settings.chunking_strategy,
+                "max_characters": settings.max_characters,
+                "combine_text_under_n_chars": settings.combine_text_under_n_chars,
+                "new_after_n_chars": settings.new_after_n_chars,
                 "top_k": settings.top_k
             }
         }

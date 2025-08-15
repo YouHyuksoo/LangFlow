@@ -69,3 +69,6 @@ __pycache__/
 backend/data/
 frontend/tsconfig.tsbuildinfo
 frontend/nul
+
+poppler-24.08.0
+nul

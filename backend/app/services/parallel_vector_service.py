@@ -78,12 +78,30 @@ class ParallelVectorService:
             from ..api.settings import load_settings
             system_settings = load_settings()
             
-            # 성능 설정 적용 (설정 값이 있으면 사용, 없으면 기본값 사용)
-            self.max_concurrent_embeddings = system_settings.get("maxConcurrentEmbeddings", settings.MAX_CONCURRENT_EMBEDDINGS)
-            self.max_concurrent_chunks = system_settings.get("maxConcurrentChunks", settings.MAX_CONCURRENT_CHUNKS)
-            self.embedding_pool_size = system_settings.get("embeddingPoolSize", settings.EMBEDDING_POOL_SIZE)
+            # 벡터화 성능 설정을 모델 설정에서 가져오기 (통합 설정 사용)
+            try:
+                from .model_settings_service import get_current_model_config
+                model_config = await get_current_model_config()
+                model_settings_config = model_config.get("settings", {})
+                
+                # 모델 설정 우선, 시스템 설정 폴백, 기본값 최종 폴백
+                self.max_concurrent_embeddings = model_settings_config.get("max_concurrent_embeddings", 
+                                                  system_settings.get("maxConcurrentEmbeddings", settings.MAX_CONCURRENT_EMBEDDINGS))
+                self.max_concurrent_chunks = model_settings_config.get("max_concurrent_chunks", 
+                                            system_settings.get("maxConcurrentChunks", settings.MAX_CONCURRENT_CHUNKS))
+                self.embedding_pool_size = model_settings_config.get("embedding_pool_size", 
+                                          system_settings.get("embeddingPoolSize", settings.EMBEDDING_POOL_SIZE))
+                self.connection_pool_size = model_settings_config.get("connection_pool_size", 
+                                           system_settings.get("connectionPoolSize", settings.CONNECTION_POOL_SIZE))
+            except:
+                # 폴백: 시스템 설정 사용
+                self.max_concurrent_embeddings = system_settings.get("maxConcurrentEmbeddings", settings.MAX_CONCURRENT_EMBEDDINGS)
+                self.max_concurrent_chunks = system_settings.get("maxConcurrentChunks", settings.MAX_CONCURRENT_CHUNKS)
+                self.embedding_pool_size = system_settings.get("embeddingPoolSize", settings.EMBEDDING_POOL_SIZE)
+                self.connection_pool_size = system_settings.get("connectionPoolSize", settings.CONNECTION_POOL_SIZE)
+            
+            # 시스템 전반 성능 설정 (통합하지 않음)
             self.chunk_buffer_size = system_settings.get("chunkStreamBufferSize", settings.CHUNK_STREAM_BUFFER_SIZE)
-            self.connection_pool_size = system_settings.get("connectionPoolSize", settings.CONNECTION_POOL_SIZE)
             self.cache_ttl_seconds = system_settings.get("cacheTtlSeconds", settings.CACHE_TTL_SECONDS)
             self.enable_parallel = system_settings.get("enableParallelProcessing", True)
             self.enable_streaming = system_settings.get("enableStreamingChunks", True)

@@ -102,11 +102,32 @@ async def execute_langflow_flow(flow_json, inputs):
             # 모든 임포트 시도가 실패한 경우: API 폴백 시도
             if load_flow_from_json is None:
                 try:
-                    from langflow.api.v1.endpoints import run_flow
-                    print("load_flow_from_json 없음 -> API run_flow로 실행")
-                    result = await run_flow(flow_json, input_data)
-                    print("langflow.api.v1.endpoints.run_flow로 실행 성공")
-                    return FlowResult(result=result, execution_time=0.5)
+                    # 다양한 LangFlow API 경로 시도
+                    run_flow = None
+                    api_imports = [
+                        ("langflow.api.v1.endpoints", "run_flow"),
+                        ("langflow.api.endpoints", "run_flow"),
+                        ("langflow.api", "run_flow"),
+                        ("langflow", "run_flow")
+                    ]
+                    
+                    for module_name, function_name in api_imports:
+                        try:
+                            module = __import__(module_name, fromlist=[function_name])
+                            if hasattr(module, function_name):
+                                run_flow = getattr(module, function_name)
+                                print(f"LangFlow {function_name} 함수를 {module_name}에서 임포트 성공")
+                                break
+                        except ImportError:
+                            continue
+                    
+                    if run_flow:
+                        result = await run_flow(flow_json, input_data)
+                        print("LangFlow API run_flow로 실행 성공")
+                        return FlowResult(result=result, execution_time=0.5)
+                    else:
+                        raise ImportError("run_flow 함수를 찾을 수 없습니다")
+                        
                 except Exception as api_error:
                     print(f"API 실행 실패: {api_error}")
                     try:
@@ -232,9 +253,31 @@ async def execute_langflow_flow(flow_json, inputs):
                     
                     # 최신 LangFlow API 시도
                     try:
-                        from langflow.api.v1.endpoints import run_flow
-                        result = await run_flow(flow_json, input_data)
-                        print("langflow.api.v1.endpoints.run_flow로 실행 성공")
+                        # 다양한 LangFlow API 경로 시도
+                        run_flow = None
+                        api_imports = [
+                            ("langflow.api.v1.endpoints", "run_flow"),
+                            ("langflow.api.endpoints", "run_flow"),
+                            ("langflow.api", "run_flow"),
+                            ("langflow", "run_flow")
+                        ]
+                        
+                        for module_name, function_name in api_imports:
+                            try:
+                                module = __import__(module_name, fromlist=[function_name])
+                                if hasattr(module, function_name):
+                                    run_flow = getattr(module, function_name)
+                                    print(f"LangFlow {function_name} 함수를 {module_name}에서 임포트 성공")
+                                    break
+                            except ImportError:
+                                continue
+                        
+                        if run_flow:
+                            result = await run_flow(flow_json, input_data)
+                            print("LangFlow API run_flow로 실행 성공")
+                        else:
+                            raise ImportError("run_flow 함수를 찾을 수 없습니다")
+                            
                     except Exception as api_error:
                         print(f"API 실행 실패: {api_error}")
                         

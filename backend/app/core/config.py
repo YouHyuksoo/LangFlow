@@ -44,9 +44,9 @@ class Settings(BaseSettings):
     VECTOR_DB_PATH: str = "./vector_db"
     
     # 벡터화 설정
-    DEFAULT_CHUNK_SIZE: int = 1500
-    DEFAULT_CHUNK_OVERLAP: int = 200
-    BATCH_SIZE: int = 10
+    DEFAULT_CHUNK_SIZE: int = 800   # OpenAI 8192 토큰 제한 고려 (배치 처리 시)
+    DEFAULT_CHUNK_OVERLAP: int = 120
+    BATCH_SIZE: int = 2             # 임베딩 배치 크기 축소 (안정성 최우선)
     DISTANCE_NORMALIZATION_FACTOR: float = 2.0  # OpenAI 임베딩용
     
     # 성능 최적화 설정

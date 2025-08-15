@@ -188,9 +188,23 @@ class ModelSettings(BaseModel):
     embedding_api_key: Optional[str] = Field(None, description="임베딩 API 키")
     embedding_dimension: int = Field(1536, description="임베딩 차원", ge=1)
     
-    # 기타 설정
-    chunk_size: int = Field(1000, description="청크 크기", ge=100)
-    chunk_overlap: int = Field(200, description="청크 오버랩", ge=0)
+    # 문서 처리 및 벡터화 설정 (통합)
+    chunk_size: int = Field(800, description="청크 크기 (글자 수)", ge=100, le=2000)
+    chunk_overlap: int = Field(120, description="청크 오버랩 (글자 수)", ge=0)
+    
+    # 벡터화 성능 설정 (통합)
+    batch_size: int = Field(2, description="임베딩 배치 크기", ge=1, le=10)
+    max_concurrent_embeddings: int = Field(5, description="동시 임베딩 처리 수", ge=1, le=20)
+    max_concurrent_chunks: int = Field(20, description="동시 청크 처리 수", ge=5, le=100)
+    embedding_pool_size: int = Field(3, description="임베딩 함수 풀 크기", ge=1, le=10)
+    connection_pool_size: int = Field(10, description="ChromaDB 연결 풀 크기", ge=1, le=50)
+    
+    # Unstructured 청킹 설정 (chunk_size와 자동 동기화)
+    chunking_strategy: str = Field("by_title", description="Unstructured 청킹 전략")
+    max_characters: int = Field(800, description="Unstructured 최대 문자 수 (chunk_size와 동일)", ge=100, le=2000)
+    combine_text_under_n_chars: int = Field(120, description="텍스트 결합 기준 (chunk_overlap과 동일)", ge=0)
+    new_after_n_chars: int = Field(600, description="새 청크 생성 기준 (chunk_size * 0.75)", ge=300, le=1500)
+    
     top_k: int = Field(5, description="검색 결과 수", ge=1, le=50)
     
     # Docling 설정
@@ -325,6 +339,66 @@ class FileProcessingOptions(BaseModel):
     use_docling: bool = Field(False, description="Docling 전처리 사용")
     docling_options: Optional[DoclingOptions] = Field(None, description="Docling 상세 옵션")
     traditional_processing: bool = Field(True, description="기존 처리 방식도 함께 사용")
+
+class UnstructuredSettings(BaseModel):
+    """Unstructured 라이브러리 설정"""
+    enabled: bool = Field(True, description="Unstructured 기능 활성화")
+    use_as_primary: bool = Field(True, description="기본 텍스트 추출기로 사용")
+    
+    # 처리 전략 설정
+    strategy: str = Field("auto", description="처리 전략 (auto, hi_res, fast)")
+    hi_res_model_name: Optional[str] = Field(None, description="고해상도 모델명")
+    
+    # 문서 구조 분석
+    infer_table_structure: bool = Field(True, description="테이블 구조 추론")
+    extract_images_in_pdf: bool = Field(False, description="PDF 내 이미지 추출")
+    include_page_breaks: bool = Field(True, description="페이지 브레이크 포함")
+    
+    # OCR 설정
+    ocr_languages: List[str] = Field(["kor", "eng"], description="OCR 언어 (한글: kor, 영어: eng)")
+    skip_infer_table_types: List[str] = Field(default=[], description="테이블 추론 제외 타입")
+    
+    # 청킹 설정
+    chunking_strategy: str = Field("by_title", description="청킹 전략 (by_title, basic)")
+    max_characters: int = Field(1500, description="최대 문자 수")
+    combine_text_under_n_chars: int = Field(150, description="n자 이하 텍스트 결합")
+    new_after_n_chars: int = Field(1200, description="n자 후 새 청크 생성")
+    
+    # 파일 크기 제한
+    max_file_size_mb: int = Field(100, description="Unstructured 처리 최대 파일 크기(MB)")
+    
+    # 지원 형식
+    supported_formats: List[str] = Field(
+        default=[".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".txt", ".md", ".csv"],
+        description="지원하는 파일 형식"
+    )
+    
+    # 폴백 설정
+    enable_fallback: bool = Field(True, description="실패 시 개별 처리기로 폴백")
+    fallback_order: List[str] = Field(
+        default=["pymupdf", "pypdf", "pdfminer"],
+        description="PDF 폴백 순서"
+    )
+
+class UnstructuredSettingsUpdateRequest(BaseModel):
+    """Unstructured 설정 업데이트 요청"""
+    enabled: Optional[bool] = Field(None, description="Unstructured 기능 활성화")
+    use_as_primary: Optional[bool] = Field(None, description="기본 텍스트 추출기로 사용")
+    strategy: Optional[str] = Field(None, description="처리 전략")
+    hi_res_model_name: Optional[str] = Field(None, description="고해상도 모델명")
+    infer_table_structure: Optional[bool] = Field(None, description="테이블 구조 추론")
+    extract_images_in_pdf: Optional[bool] = Field(None, description="PDF 내 이미지 추출")
+    include_page_breaks: Optional[bool] = Field(None, description="페이지 브레이크 포함")
+    ocr_languages: Optional[List[str]] = Field(None, description="OCR 언어")
+    skip_infer_table_types: Optional[List[str]] = Field(None, description="테이블 추론 제외 타입")
+    chunking_strategy: Optional[str] = Field(None, description="청킹 전략")
+    max_characters: Optional[int] = Field(None, description="최대 문자 수")
+    combine_text_under_n_chars: Optional[int] = Field(None, description="n자 이하 텍스트 결합")
+    new_after_n_chars: Optional[int] = Field(None, description="n자 후 새 청크 생성")
+    max_file_size_mb: Optional[int] = Field(None, description="최대 파일 크기(MB)")
+    supported_formats: Optional[List[str]] = Field(None, description="지원하는 파일 형식")
+    enable_fallback: Optional[bool] = Field(None, description="폴백 활성화")
+    fallback_order: Optional[List[str]] = Field(None, description="폴백 순서")
 
 class DocumentAnalysis(BaseModel):
     """문서 분석 결과"""

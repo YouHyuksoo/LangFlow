@@ -1085,4 +1085,37 @@ export const vectorAPI = {
   },
 };
 
+// Unstructured 설정 API
+export const unstructuredAPI = {
+  // Unstructured 설정 조회
+  getSettings: async () => {
+    const response = await api.get("/api/v1/unstructured-settings/");
+    return response.data;
+  },
+
+  // Unstructured 설정 업데이트
+  updateSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/unstructured-settings/", settings);
+    return response.data;
+  },
+
+  // Unstructured 설정 초기화
+  resetSettings: async () => {
+    const response = await api.post("/api/v1/unstructured-settings/reset");
+    return response.data;
+  },
+
+  // Unstructured 라이브러리 상태 확인
+  getStatus: async () => {
+    const response = await api.get("/api/v1/unstructured-settings/status");
+    return response.data;
+  },
+
+  // Unstructured 처리 테스트
+  testProcessing: async () => {
+    const response = await api.post("/api/v1/unstructured-settings/test");
+    return response.data;
+  },
+};
+
 export default api;
