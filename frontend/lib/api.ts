@@ -325,6 +325,27 @@ export const fileAPI = {
     return response.data;
   },
 
+  // Docling 통합 벡터화
+  vectorizeWithDocling: async (
+    fileId: string, 
+    options: {
+      enable_docling?: boolean;
+      extract_tables?: boolean;
+      extract_images?: boolean;
+      ocr_enabled?: boolean;
+      output_format?: string;
+    } = {}
+  ) => {
+    const response = await api.post(`/api/v1/files/${fileId}/vectorize-with-docling`, {
+      enable_docling: options.enable_docling ?? true,
+      extract_tables: options.extract_tables ?? true,
+      extract_images: options.extract_images ?? true,
+      ocr_enabled: options.ocr_enabled ?? false,
+      output_format: options.output_format ?? "markdown"
+    });
+    return response.data;
+  },
+
   // ChromaDB 상태 조회
   getChromaDBStatus: async () => {
     const response = await api.get("/api/v1/files/chromadb/status/");
@@ -409,6 +430,24 @@ export const fileAPI = {
     const response = await api.post(
       "/api/v1/files/maintenance/diagnose-and-fix"
     );
+    return response.data;
+  },
+
+  // 벡터 데이터만 초기화 (DB 구조 유지, 데이터만 삭제)
+  resetVectorData: async () => {
+    const response = await api.post("/api/v1/files/maintenance/reset-vector-data");
+    return response.data;
+  },
+
+  // 전체 데이터 완전 삭제 (파일, 벡터, 메타데이터 모두 삭제)
+  wipeAllData: async () => {
+    const response = await api.post("/api/v1/files/maintenance/wipe-all");
+    return response.data;
+  },
+
+  // 파일 메타데이터(JSON) 초기화
+  resetFileMetadata: async () => {
+    const response = await api.post("/api/v1/files/metadata/files/reset");
     return response.data;
   },
 };
@@ -597,7 +636,10 @@ export const userAPI = {
     currentPassword: string;
     newPassword: string;
   }) => {
-    const response = await api.post("/api/v1/users/me/change-password", passwordData);
+    const response = await api.post(
+      "/api/v1/users/me/change-password",
+      passwordData
+    );
     return response.data;
   },
 
@@ -606,11 +648,15 @@ export const userAPI = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await api.post("/api/v1/users/me/upload-avatar", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    const response = await api.post(
+      "/api/v1/users/me/upload-avatar",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
     return response.data;
   },
 };
@@ -803,13 +849,13 @@ export const chatAPI = {
       system_message: systemMessage || null,
       persona_id: personaId || null,
     };
-    
+
     // 이미지가 있는 경우에만 추가
     if (images && images.length > 0) {
       payload.images = images;
       console.log(`멀티모달 채팅 요청: ${images.length}개 이미지 포함`);
     }
-    
+
     const response = await api.post("/api/v1/chat/", payload);
     return response.data;
   },
@@ -917,7 +963,9 @@ export const chatAPI = {
 
   // 관리자용 채팅 기록 삭제
   deleteChatHistory: async (historyId: number) => {
-    const response = await api.delete(`/api/v1/chat/admin/history/${historyId}`);
+    const response = await api.delete(
+      `/api/v1/chat/admin/history/${historyId}`
+    );
     return response.data;
   },
 
@@ -938,7 +986,9 @@ export const vectorAPI = {
     category_id?: string;
     processing_method?: string;
   }) => {
-    const response = await api.get("/api/v1/admin/vectors/metadata", { params });
+    const response = await api.get("/api/v1/admin/vectors/metadata", {
+      params,
+    });
     return response.data;
   },
 
@@ -950,7 +1000,15 @@ export const vectorAPI = {
 
   // ChromaDB 컬렉션 정보
   getChromaCollections: async () => {
-    const response = await api.get("/api/v1/admin/vectors/chromadb/collections");
+    const response = await api.get(
+      "/api/v1/admin/vectors/chromadb/collections"
+    );
+    return response.data;
+  },
+
+  // 메타데이터 DB 완전 초기화
+  resetMetadataDB: async () => {
+    const response = await api.post("/api/v1/admin/vectors/metadata/reset");
     return response.data;
   },
 
@@ -982,7 +1040,9 @@ export const vectorAPI = {
 
   // 벡터 메타데이터 삭제
   deleteMetadata: async (fileId: string) => {
-    const response = await api.delete(`/api/v1/admin/vectors/metadata/${fileId}`);
+    const response = await api.delete(
+      `/api/v1/admin/vectors/metadata/${fileId}`
+    );
     return response.data;
   },
 
@@ -995,6 +1055,32 @@ export const vectorAPI = {
   // 동기화 상태 확인
   getSyncStatus: async () => {
     const response = await api.get("/api/v1/admin/vectors/sync/status");
+    return response.data;
+  },
+
+  // 고아 메타데이터 조회 (청크 0개)
+  getOrphanedMetadata: async () => {
+    const response = await api.get("/api/v1/admin/vectors/cleanup/orphaned");
+    return response.data;
+  },
+
+  // 고아 메타데이터 일괄 삭제
+  cleanupOrphanedMetadata: async () => {
+    const response = await api.delete("/api/v1/admin/vectors/cleanup/orphaned");
+    return response.data;
+  },
+
+  // flow_id 누락 레코드 업데이트
+  updateMissingFlowIds: async () => {
+    const response = await api.post("/api/v1/admin/vectors/update-flow-ids");
+    return response.data;
+  },
+
+  // Flow 결정 로직 디버깅 (테스트용)
+  debugFlowDetection: async () => {
+    const response = await api.get(
+      "/api/v1/admin/vectors/debug/flow-detection"
+    );
     return response.data;
   },
 };

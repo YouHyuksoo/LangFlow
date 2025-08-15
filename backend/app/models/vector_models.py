@@ -173,3 +173,75 @@ class VectorMetadataService:
                 "processing_methods": {},
                 "database_path": self.db_path
             }
+
+    def reset_database(self) -> bool:
+        """메타데이터 데이터베이스를 완전히 초기화합니다."""
+        try:
+            # 엔진 연결 해제
+            try:
+                self.engine.dispose()
+            except Exception:
+                pass
+
+            # DB 파일 삭제 (잠금 회피를 위해 재시도)
+            if os.path.exists(self.db_path):
+                import time
+                for attempt in range(6):  # 최대 약 3초 대기 (0.5s * 6)
+                    try:
+                        os.remove(self.db_path)
+                        break
+                    except PermissionError:
+                        time.sleep(0.5)
+                    except Exception:
+                        # 기타 예외도 동일 재시도 (Windows 잠금 변형 케이스)
+                        time.sleep(0.5)
+            # WAL/SHM 사이드카 파일도 삭제 (Windows 잠금 이슈 방지)
+            wal_path = f"{self.db_path}-wal"
+            shm_path = f"{self.db_path}-shm"
+            for side_file in (wal_path, shm_path):
+                try:
+                    if os.path.exists(side_file):
+                        os.remove(side_file)
+                except Exception:
+                    # 사이드카가 없거나 이미 닫혔으면 무시
+                    pass
+
+            # 디렉터리 보장 후 엔진 재생성 및 테이블 재생성
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            self.engine = create_engine(
+                f"sqlite:///{self.db_path}",
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30.0
+                }
+            )
+            with self.engine.connect() as conn:
+                conn.execute(text("PRAGMA journal_mode=WAL"))
+                conn.execute(text("PRAGMA synchronous=NORMAL"))
+                conn.execute(text("PRAGMA cache_size=-64000"))
+                conn.execute(text("PRAGMA foreign_keys=ON"))
+                conn.commit()
+
+            SQLModel.metadata.create_all(self.engine)
+            print("Vector metadata database reset completed")
+            return True
+        except Exception as e:
+            print(f"메타데이터 데이터베이스 초기화 실패: {e}")
+            return False
+
+    def clear_all(self) -> int:
+        """데이터 파일은 유지하고 모든 메타데이터 레코드만 삭제합니다."""
+        try:
+            with Session(self.engine) as session:
+                # 삭제 전 레코드 수 확인
+                count = session.query(VectorMetadata).count()
+                
+                # 모든 레코드 삭제
+                session.query(VectorMetadata).delete()
+                session.commit()
+                
+                print(f"메타데이터 레코드 {count}개 삭제 완료")
+                return count
+        except Exception as e:
+            print(f"메타데이터 데이터 삭제 실패: {e}")
+            return 0

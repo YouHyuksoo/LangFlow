@@ -145,6 +145,18 @@ export default function VectorAnalysisPage() {
     filename: ''
   });
 
+  // Cleanup states
+  const [orphanedData, setOrphanedData] = useState<any>({});
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [orphanedLoading, setOrphanedLoading] = useState(false);
+
+  // Flow ID update states
+  const [showFlowIdUpdateModal, setShowFlowIdUpdateModal] = useState(false);
+  const [flowIdUpdateLoading, setFlowIdUpdateLoading] = useState(false);
+  const [debugLoading, setDebugLoading] = useState(false);
+  const [debugResult, setDebugResult] = useState<any>(null);
+
   // Load initial data
   useEffect(() => {
     loadInitialData();
@@ -171,7 +183,8 @@ export default function VectorAnalysisPage() {
         loadMetadataStats(),
         loadMetadata(),
         loadCollections(),
-        loadSyncStatus()
+        loadSyncStatus(),
+        loadOrphanedData()
       ]);
     } catch (error) {
       console.error("초기 데이터 로드 오류:", error);
@@ -354,6 +367,102 @@ export default function VectorAnalysisPage() {
     }
   };
 
+  const loadOrphanedData = async () => {
+    try {
+      setOrphanedLoading(true);
+      const data = await vectorAPI.getOrphanedMetadata();
+      setOrphanedData(data);
+    } catch (error) {
+      console.error("고아 메타데이터 로드 오류:", error);
+    } finally {
+      setOrphanedLoading(false);
+    }
+  };
+
+  const handleCleanupOrphaned = async () => {
+    try {
+      setCleanupLoading(true);
+      const result = await vectorAPI.cleanupOrphanedMetadata();
+      
+      toast({
+        title: "정리 완료",
+        description: `${result.deleted_count}개의 고아 메타데이터가 삭제되었습니다.`,
+      });
+
+      // 데이터 새로고침
+      await Promise.all([
+        loadMetadataStats(),
+        loadMetadata(),
+        loadOrphanedData(),
+        loadSyncStatus()
+      ]);
+
+      setShowCleanupModal(false);
+    } catch (error: any) {
+      console.error("고아 메타데이터 정리 오류:", error);
+      toast({
+        title: "정리 실패",
+        description: error.response?.data?.detail || "고아 메타데이터 정리 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setCleanupLoading(false);
+    }
+  };
+
+  const handleUpdateFlowIds = async () => {
+    try {
+      setFlowIdUpdateLoading(true);
+      const result = await vectorAPI.updateMissingFlowIds();
+      
+      toast({
+        title: "Flow ID 업데이트 완료",
+        description: `${result.updated_count}개 레코드의 flow_id가 업데이트되었습니다.`,
+      });
+
+      // 데이터 새로고침
+      await Promise.all([
+        loadMetadataStats(),
+        loadMetadata(),
+        loadSyncStatus()
+      ]);
+
+      setShowFlowIdUpdateModal(false);
+    } catch (error: any) {
+      console.error("Flow ID 업데이트 오류:", error);
+      toast({
+        title: "업데이트 실패",
+        description: error.response?.data?.detail || "Flow ID 업데이트 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setFlowIdUpdateLoading(false);
+    }
+  };
+
+  const handleDebugFlowDetection = async () => {
+    try {
+      setDebugLoading(true);
+      const result = await vectorAPI.debugFlowDetection();
+      setDebugResult(result);
+      
+      toast({
+        title: "Flow 결정 테스트 완료",
+        description: result.success ? `Flow ID: ${result.detected_flow_id}` : "Flow를 찾을 수 없습니다",
+        variant: result.success ? "default" : "destructive",
+      });
+    } catch (error: any) {
+      console.error("Flow 디버깅 오류:", error);
+      toast({
+        title: "디버깅 실패", 
+        description: error.response?.data?.detail || "Flow 디버깅 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -396,18 +505,16 @@ export default function VectorAnalysisPage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             새로고침
           </Button>
-          <Button 
-            onClick={() => setShowSyncModal(true)} 
-            disabled={syncLoading}
-            variant={syncStatus.sync_needed ? "default" : "outline"}
-          >
-            {syncLoading ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Database className="h-4 w-4 mr-2" />
-            )}
-            {syncLoading ? "동기화 중..." : "DB 동기화"}
-          </Button>
+          {syncStatus.sync_needed && (
+            <Button 
+              onClick={() => setActiveTab("sync")} 
+              variant="default"
+              className="animate-pulse"
+            >
+              <AlertCircle className="h-4 w-4 mr-2" />
+              동기화 필요
+            </Button>
+          )}
         </div>
       </div>
 
@@ -431,13 +538,9 @@ export default function VectorAnalysisPage() {
                     <AlertCircle className="h-5 w-5 text-orange-600" />
                     동기화 필요
                   </CardTitle>
-                  <Button onClick={() => setShowSyncModal(true)} disabled={syncLoading} size="sm">
-                    {syncLoading ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Database className="h-4 w-4 mr-2" />
-                    )}
-                    {syncLoading ? "동기화 중..." : "지금 동기화"}
+                  <Button onClick={() => setActiveTab("sync")} size="sm">
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    동기화 탭으로 이동
                   </Button>
                 </div>
               </CardHeader>
@@ -857,12 +960,29 @@ export default function VectorAnalysisPage() {
                   {collectionData.map((doc, index) => (
                     <div key={index} className="border rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {doc.id && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* 파일명 표시 (우선순위: filename > file_id) */}
+                          {doc.metadata?.filename ? (
+                            <Badge variant="default" className="text-xs">
+                              📄 {doc.metadata.filename}
+                            </Badge>
+                          ) : doc.metadata?.file_id && (
                             <Badge variant="outline" className="text-xs">
-                              {doc.id.substring(0, 8)}...
+                              ID: {doc.metadata.file_id.substring(0, 8)}...
                             </Badge>
                           )}
+                          
+                          {/* 카테고리명 표시 (우선순위: category_name > category_id) */}
+                          {doc.metadata?.category_name ? (
+                            <Badge variant="secondary" className="text-xs">
+                              📁 {doc.metadata.category_name}
+                            </Badge>
+                          ) : doc.metadata?.category_id && (
+                            <Badge variant="outline" className="text-xs">
+                              카테고리: {doc.metadata.category_id.substring(0, 8)}...
+                            </Badge>
+                          )}
+                          
                           {doc.full_document_length && (
                             <span className="text-xs text-muted-foreground">
                               {doc.full_document_length} 문자
@@ -880,13 +1000,16 @@ export default function VectorAnalysisPage() {
                       
                       {doc.metadata && Object.keys(doc.metadata).length > 0 && (
                         <div>
-                          <p className="text-xs font-medium mb-1">메타데이터:</p>
+                          <p className="text-xs font-medium mb-1">기타 메타데이터:</p>
                           <div className="flex flex-wrap gap-1">
-                            {Object.entries(doc.metadata).slice(0, 5).map(([key, value]) => (
-                              <Badge key={key} variant="outline" className="text-xs">
-                                {key}: {String(value).substring(0, 20)}
-                              </Badge>
-                            ))}
+                            {Object.entries(doc.metadata)
+                              .filter(([key]) => !['filename', 'category_name', 'file_id', 'category_id'].includes(key))
+                              .slice(0, 5)
+                              .map(([key, value]) => (
+                                <Badge key={key} variant="outline" className="text-xs">
+                                  {key}: {String(value).substring(0, 20)}
+                                </Badge>
+                              ))}
                           </div>
                         </div>
                       )}
@@ -1007,8 +1130,31 @@ export default function VectorAnalysisPage() {
                   {searchResults.map((result, index) => (
                     <div key={index} className="border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{result.collection}</Badge>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline">📊 {result.collection}</Badge>
+                          
+                          {/* 파일명 표시 (우선순위: filename > file_id) */}
+                          {result.metadata?.filename ? (
+                            <Badge variant="default" className="text-xs">
+                              📄 {result.metadata.filename}
+                            </Badge>
+                          ) : result.metadata?.file_id && (
+                            <Badge variant="outline" className="text-xs">
+                              ID: {result.metadata.file_id.substring(0, 8)}...
+                            </Badge>
+                          )}
+                          
+                          {/* 카테고리명 표시 (우선순위: category_name > category_id) */}
+                          {result.metadata?.category_name ? (
+                            <Badge variant="secondary" className="text-xs">
+                              📁 {result.metadata.category_name}
+                            </Badge>
+                          ) : result.metadata?.category_id && (
+                            <Badge variant="outline" className="text-xs">
+                              카테고리: {result.metadata.category_id.substring(0, 8)}...
+                            </Badge>
+                          )}
+                          
                           {result.similarity && (
                             <Badge variant="default">
                               유사도: {(result.similarity * 100).toFixed(1)}%
@@ -1026,13 +1172,16 @@ export default function VectorAnalysisPage() {
                       
                       {result.metadata && Object.keys(result.metadata).length > 0 && (
                         <div>
-                          <p className="text-xs font-medium mb-1">메타데이터:</p>
+                          <p className="text-xs font-medium mb-1">기타 메타데이터:</p>
                           <div className="flex flex-wrap gap-1">
-                            {Object.entries(result.metadata).slice(0, 5).map(([key, value]) => (
-                              <Badge key={key} variant="outline" className="text-xs">
-                                {key}: {String(value).substring(0, 20)}
-                              </Badge>
-                            ))}
+                            {Object.entries(result.metadata)
+                              .filter(([key]) => !['filename', 'category_name', 'file_id', 'category_id'].includes(key))
+                              .slice(0, 5)
+                              .map(([key, value]) => (
+                                <Badge key={key} variant="outline" className="text-xs">
+                                  {key}: {String(value).substring(0, 20)}
+                                </Badge>
+                              ))}
                           </div>
                         </div>
                       )}
@@ -1046,7 +1195,7 @@ export default function VectorAnalysisPage() {
 
         {/* 동기화 탭 */}
         <TabsContent value="sync" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-3">
             {/* 동기화 상태 */}
             <Card>
               <CardHeader>
@@ -1113,9 +1262,167 @@ export default function VectorAnalysisPage() {
               </CardContent>
             </Card>
 
+            {/* 고아 데이터 정리 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  고아 데이터 정리
+                </CardTitle>
+                <CardDescription>
+                  청크가 0개인 고아 메타데이터를 정리합니다
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">고아 메타데이터</p>
+                      <p className="text-sm text-muted-foreground">
+                        {orphanedLoading ? "로딩 중..." : `${orphanedData.total_count || 0}개 파일`}
+                      </p>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full ${
+                      orphanedLoading ? 'bg-gray-400' : 
+                      (orphanedData.total_count > 0 ? 'bg-orange-500' : 'bg-green-500')
+                    }`}></div>
+                  </div>
+
+                  {orphanedData.total_count > 0 && (
+                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="text-sm text-orange-800">
+                        <p className="font-medium mb-2">정리 대상 파일 ({orphanedData.total_count}개)</p>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {orphanedData.orphaned_files?.slice(0, 5).map((file: any, index: number) => (
+                            <div key={index} className="text-xs p-2 bg-white rounded border">
+                              <p className="font-medium">{file.filename}</p>
+                              <p className="text-muted-foreground">
+                                카테고리: {file.category_name || '없음'}
+                              </p>
+                            </div>
+                          ))}
+                          {orphanedData.total_count > 5 && (
+                            <div className="text-xs text-center text-muted-foreground">
+                              외 {orphanedData.total_count - 5}개 파일...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={loadOrphanedData}
+                      variant="outline"
+                      size="sm"
+                      disabled={orphanedLoading}
+                    >
+                      {orphanedLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      다시 확인
+                    </Button>
+                    
+                    {orphanedData.total_count > 0 && (
+                      <Button 
+                        onClick={() => setShowCleanupModal(true)}
+                        variant="destructive"
+                        size="sm"
+                        disabled={cleanupLoading}
+                      >
+                        {cleanupLoading ? (
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 mr-2" />
+                        )}
+                        정리하기
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Flow ID 업데이트 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-blue-600" />
+                  Flow ID 업데이트
+                </CardTitle>
+                <CardDescription>
+                  누락된 flow_id를 현재 기본 Flow로 업데이트합니다
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-2">Flow ID 누락 문제</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>기존 벡터화된 파일에 flow_id가 없음</li>
+                        <li>현재 활성 Flow로 일괄 업데이트 가능</li>
+                        <li>벡터화 이력 추적 개선</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* 디버깅 결과 표시 */}
+                  {debugResult && (
+                    <div className={`p-3 border rounded-lg ${debugResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className={`text-sm ${debugResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                        <p className="font-medium mb-1">
+                          {debugResult.success ? '✅ Flow 결정 성공' : '❌ Flow 결정 실패'}
+                        </p>
+                        <p>{debugResult.message}</p>
+                        {debugResult.error && (
+                          <p className="text-xs mt-1 opacity-75">오류: {debugResult.error}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={handleDebugFlowDetection}
+                      variant="outline"
+                      size="sm"
+                      disabled={debugLoading}
+                      className="flex-1"
+                    >
+                      {debugLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Flow 테스트
+                    </Button>
+
+                    <Button 
+                      onClick={() => setShowFlowIdUpdateModal(true)}
+                      variant="default"
+                      size="sm"
+                      disabled={flowIdUpdateLoading || (debugResult && !debugResult.success)}
+                      className="flex-1"
+                    >
+                      {flowIdUpdateLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Zap className="h-4 w-4 mr-2" />
+                      )}
+                      업데이트
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* 동기화 결과 */}
             {syncResults && (
-              <Card>
+              <Card className="md:col-span-3">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -1297,6 +1604,150 @@ export default function VectorAnalysisPage() {
             >
               <Trash2 className="h-4 w-4 mr-2" />
               삭제 확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 고아 데이터 정리 확인 모달 */}
+      <Dialog open={showCleanupModal} onOpenChange={setShowCleanupModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              고아 데이터 정리 확인
+            </DialogTitle>
+            <DialogDescription>
+              청크가 0개인 고아 메타데이터를 삭제하시겠습니까?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <div className="text-sm text-red-800">
+                  <p className="font-medium mb-2">정리 대상</p>
+                  <p className="mb-3">{orphanedData.total_count || 0}개의 고아 메타데이터</p>
+                  <p className="font-medium mb-1">주의사항</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>청크가 0개인 메타데이터만 삭제됩니다</li>
+                    <li>실제 파일이나 ChromaDB 벡터는 영향을 받지 않습니다</li>
+                    <li>삭제된 메타데이터는 복구할 수 없습니다</li>
+                    <li>처리가 실패한 파일의 기록이 제거됩니다</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            {orphanedData.orphaned_files && orphanedData.orphaned_files.length > 0 && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm font-medium text-yellow-800 mb-2">삭제될 파일 목록 (상위 5개)</p>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {orphanedData.orphaned_files.slice(0, 5).map((file: any, index: number) => (
+                    <div key={index} className="text-xs p-2 bg-white rounded border">
+                      <p className="font-medium">{file.filename}</p>
+                      <p className="text-muted-foreground">
+                        파일 ID: {file.file_id} | 카테고리: {file.category_name || '없음'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {orphanedData.total_count > 5 && (
+                  <p className="text-xs text-center text-yellow-700 mt-2">
+                    외 {orphanedData.total_count - 5}개 파일이 더 있습니다.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCleanupModal(false)}
+              disabled={cleanupLoading}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCleanupOrphaned}
+              disabled={cleanupLoading}
+            >
+              {cleanupLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  정리 중...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {orphanedData.total_count || 0}개 파일 정리
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Flow ID 업데이트 확인 모달 */}
+      <Dialog open={showFlowIdUpdateModal} onOpenChange={setShowFlowIdUpdateModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-blue-600" />
+              Flow ID 업데이트 확인
+            </DialogTitle>
+            <DialogDescription>
+              누락된 flow_id를 현재 기본 Flow로 업데이트하시겠습니까?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-2">업데이트 내용</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>flow_id가 NULL이거나 빈 값인 모든 메타데이터 레코드</li>
+                    <li>현재 시스템에서 사용 중인 기본 벡터화 Flow ID로 설정</li>
+                    <li>벡터화 이력 추적 및 관리 개선</li>
+                    <li>기존 벡터 데이터는 변경되지 않음</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                <strong>참고:</strong> 이 작업은 메타데이터에만 영향을 미치며, 
+                실제 ChromaDB의 벡터 데이터는 변경되지 않습니다.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowFlowIdUpdateModal(false)}
+              disabled={flowIdUpdateLoading}
+            >
+              취소
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleUpdateFlowIds}
+              disabled={flowIdUpdateLoading}
+            >
+              {flowIdUpdateLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  업데이트 중...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Flow ID 업데이트
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

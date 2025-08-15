@@ -19,6 +19,16 @@ class SystemSettingsService:
         default_settings = {
             "default_system_message": "당신은 도움이 되는 AI 어시스턴트입니다. 정확하고 유용한 정보를 제공하며, 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요.",
             "default_persona_id": "default",
+            # 성능 최적화 설정
+            "maxConcurrentEmbeddings": 5,
+            "maxConcurrentChunks": 20,
+            "embeddingPoolSize": 3,
+            "chunkStreamBufferSize": 100,
+            "connectionPoolSize": 10,
+            "cacheTtlSeconds": 3600,
+            "enableParallelProcessing": True,
+            "enableStreamingChunks": True,
+            "enableSmartCaching": True,
             "updated_at": datetime.now().isoformat()
         }
         

@@ -5,6 +5,7 @@ from ..core.logger import get_user_logger, get_console_logger
 from ..models.schemas import FileUploadResponse, FileInfo, DoclingOptions, FileProcessingOptions
 from ..services import get_file_service
 from ..services.docling_service import DoclingService
+from ..services.model_settings_service import ModelSettingsService
 from .settings import load_settings
 import os
 import json
@@ -65,28 +66,51 @@ async def upload_file(
         # 파일 크기 로깅 (검증은 FileService에서 처리)
         _clog.info(f"파일 크기: {file.size} bytes")
         
-        # Docling 사용 여부 결정 (설정 우선, Form 파라미터는 오버라이드용)
-        docling_enabled = current_settings.get("docling", {}).get("enabled", False)
-        
-        # Form 파라미터가 명시적으로 전달된 경우 설정값 오버라이드
+        # Docling 사용 여부 및 옵션 구성: ModelSettingsService의 Docling 설정을 단일 소스로 사용
+        settings_service = ModelSettingsService()
+        svc_docling_settings = await settings_service.get_docling_settings()
+
+        # 기본 사용 여부는 서비스 설정을 따르고, Form 파라미터가 있으면 오버라이드
+        docling_enabled = svc_docling_settings.enabled
         if use_docling is not None:
             docling_enabled = use_docling
-        
-        _clog.info(f"Docling 사용 결정: 설정값={current_settings.get('docling', {}).get('enabled', False)}, 최종 결정={docling_enabled}")
-        
-        # Docling 전처리 옵션 구성 (설정값 우선, Form 파라미터로 오버라이드 가능)
+
+        _clog.info(
+            f"Docling 사용 결정: 서비스설정={svc_docling_settings.enabled}, 최종 결정={docling_enabled}"
+        )
+
+        # Docling 전처리 옵션 구성 (서비스 설정 우선, Form 파라미터로 오버라이드 가능)
         docling_options = None
         if docling_enabled:
-            docling_settings = current_settings.get("docling", {})
-            
+            # OCR 기본값 설정: PDF인 경우 True, 그 외에는 서비스 설정값 따름
+            is_pdf = file.filename.lower().endswith('.pdf')
+            default_ocr_enabled = svc_docling_settings.default_ocr_enabled
+            if is_pdf:
+                # PDF의 경우, 사용자가 명시적으로 False로 설정하지 않는 한 OCR을 기본으로 활성화
+                final_ocr_enabled = docling_ocr_enabled if docling_ocr_enabled is not None else True
+            else:
+                final_ocr_enabled = docling_ocr_enabled if docling_ocr_enabled is not None else default_ocr_enabled
+
             docling_options = DoclingOptions(
                 enabled=True,
-                extract_tables=docling_extract_tables if docling_extract_tables is not None else docling_settings.get("extractTables", True),
-                extract_images=docling_extract_images if docling_extract_images is not None else docling_settings.get("extractImages", True),
-                ocr_enabled=docling_ocr_enabled if docling_ocr_enabled is not None else docling_settings.get("ocrEnabled", False),
-                output_format=docling_output_format if docling_output_format is not None else docling_settings.get("outputFormat", "markdown")
+                extract_tables=(
+                    docling_extract_tables
+                    if docling_extract_tables is not None
+                    else svc_docling_settings.default_extract_tables
+                ),
+                extract_images=(
+                    docling_extract_images
+                    if docling_extract_images is not None
+                    else svc_docling_settings.default_extract_images
+                ),
+                ocr_enabled=final_ocr_enabled,
+                output_format=(
+                    docling_output_format
+                    if docling_output_format is not None
+                    else svc_docling_settings.default_output_format
+                ),
             )
-            _clog.info(f"Docling 전처리 활성화: {docling_options} (설정 기반)")
+            _clog.info(f"Docling 전처리 활성화: {docling_options} (모델 설정 기반)")
         
         # 파일 처리 옵션 구성
         processing_options = FileProcessingOptions(
@@ -567,6 +591,20 @@ async def execute_vectorization(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/metadata/files/reset")
+async def reset_files_metadata():
+    """파일 메타데이터(JSON) 완전 초기화"""
+    try:
+        result = get_file_service_instance().reset_files_metadata()
+        if result.get("status") == "success":
+            return {"message": "파일 메타데이터가 초기화되었습니다.", **result}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "초기화 실패"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/langflow/status/")
 async def get_langflow_status():
     """LangFlow 등록 현황 조회"""
@@ -874,73 +912,169 @@ async def migrate_chromadb():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/chromadb/reset")
-async def reset_chromadb():
-    """ChromaDB 데이터베이스를 완전히 리셋 (스키마 오류 해결용)"""
+@router.post("/maintenance/reset-vector-data")
+async def reset_vector_data():
+    """벡터 데이터와 메타데이터만 초기화 (파일과 DB 구조는 유지)"""
     try:
-        # VectorService를 안전하게 가져오기
+        _clog.info("벡터 데이터 초기화 시작")
+        
+        file_service = get_file_service_instance()
+        vector_service = file_service.vector_service
+        
+        results = {
+            "message": "벡터 데이터 초기화 완료",
+            "status": "success",
+            "chromadb_cleared": False,
+            "metadata_cleared": False,
+            "vector_count_before": 0,
+            "vector_count_after": 0
+        }
+        
+        # 1. ChromaDB 벡터 데이터 초기화 (컬렉션 구조는 유지)
+        try:
+            # 초기화 전 벡터 수 확인
+            try:
+                await vector_service._ensure_client()
+                if vector_service._collection:
+                    results["vector_count_before"] = vector_service._collection.count()
+            except Exception:
+                results["vector_count_before"] = 0
+            
+            # 벡터 데이터만 삭제
+            clear_result = await vector_service.clear_chromadb_documents_only()
+            results["chromadb_cleared"] = clear_result.get("success", False)
+            
+            # 초기화 후 벡터 수 확인
+            try:
+                if vector_service._collection:
+                    results["vector_count_after"] = vector_service._collection.count()
+            except Exception:
+                results["vector_count_after"] = 0
+                
+            _clog.info(f"ChromaDB 벡터 삭제: {results['vector_count_before']}개 → {results['vector_count_after']}개")
+            
+        except Exception as e:
+            _clog.error(f"ChromaDB 초기화 실패: {e}")
+            results["chromadb_error"] = str(e)
+        
+        # 2. metadata.db 테이블 데이터 초기화
+        try:
+            from ..models.vector_models import VectorMetadataService
+            metadata_service = VectorMetadataService()
+            
+            cleared_count = metadata_service.clear_all()
+            results["metadata_cleared"] = True
+            results["metadata_records_cleared"] = cleared_count
+            
+            _clog.info(f"메타데이터 레코드 {cleared_count}개 삭제 완료")
+            
+        except Exception as e:
+            _clog.error(f"메타데이터 초기화 실패: {e}")
+            results["metadata_error"] = str(e)
+        
+        # 파일 메타데이터는 건드리지 않음 (파일 정보는 유지)
+        _clog.info("벡터 데이터 초기화 완료")
+        return results
+        
+    except Exception as e:
+        _clog.error(f"벡터 데이터 초기화 전체 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
+
+
+@router.post("/maintenance/wipe-all")  
+async def wipe_all_data():
+    """모든 데이터 완전 삭제 (파일, 벡터, 메타데이터 모두 삭제)"""
+    try:
+        _clog.info("전체 데이터 삭제 시작")
+        
+        import shutil
         file_service = get_file_service_instance()
         
-        # 현재 상태 확인 (오류가 있어도 계속 진행)
-        current_status = None
-        reset_needed = False
+        results = {
+            "message": "모든 데이터가 삭제되었습니다.",
+            "status": "success",
+            "files_deleted": 0,
+            "vector_data_cleared": False,
+            "metadata_cleared": False
+        }
         
+        # 1. 업로드된 파일들 삭제
         try:
-            vector_service = file_service.vector_service
-            if vector_service:
-                current_status = vector_service.get_chromadb_status()
-                reset_needed = (current_status.get("requires_migration") or 
-                               current_status.get("error") or
-                               current_status.get("status") == "schema_error")
-            else:
-                reset_needed = True
-                current_status = {"error": "VectorService 초기화 실패"}
-        except Exception as status_error:
-            print(f"상태 조회 실패, 강제 리셋 진행: {str(status_error)}")
-            reset_needed = True
-            current_status = {"error": str(status_error)}
-        
-        if reset_needed:
-            print("ChromaDB 리셋 실행 중...")
-            try:
-                # 직접 VectorService 인스턴스를 생성하여 리셋
-                from ..services.vector_service import VectorService
-                vector_service = VectorService()
-                await vector_service.reset_chromadb()
+            uploads_dir = file_service.upload_dir
+            if os.path.exists(uploads_dir):
+                file_count = len([f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))])
+                results["files_deleted"] = file_count
                 
-                # 리셋 후 새로운 상태 확인
-                try:
-                    new_status = vector_service.get_chromadb_status()
-                except Exception as new_status_error:
-                    new_status = {"error": f"리셋 후 상태 조회 실패: {str(new_status_error)}"}
-                
-                return {
-                    "message": "ChromaDB 데이터베이스 리셋이 완료되었습니다. 기존 벡터 데이터는 백업되었습니다.",
-                    "old_status": current_status,
-                    "new_status": new_status,
-                    "reset_performed": True
-                }
-                
-            except Exception as reset_error:
-                return {
-                    "message": f"ChromaDB 리셋 중 오류가 발생했습니다: {str(reset_error)}",
-                    "old_status": current_status,
-                    "reset_performed": False,
-                    "error": str(reset_error)
-                }
-        else:
-            return {
-                "message": "ChromaDB가 정상 상태입니다. 리셋이 필요하지 않습니다.",
-                "status": current_status,
-                "reset_performed": False
-            }
+                # 폴더 내용 삭제
+                for item in os.listdir(uploads_dir):
+                    item_path = os.path.join(uploads_dir, item)
+                    try:
+                        if os.path.isfile(item_path):
+                            os.remove(item_path)
+                        elif os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                    except Exception as e:
+                        _clog.error(f"파일 삭제 실패: {item_path}, 오류: {e}")
+                        
+                _clog.info(f"업로드 파일 {file_count}개 삭제 완료")
             
+        except Exception as e:
+            _clog.error(f"파일 삭제 실패: {e}")
+            results["file_deletion_error"] = str(e)
+        
+        # 2. 벡터 데이터 초기화
+        try:
+            vector_reset_result = await reset_vector_data()
+            results["vector_data_cleared"] = vector_reset_result.get("chromadb_cleared", False)
+            results["metadata_cleared"] = vector_reset_result.get("metadata_cleared", False)
+            
+        except Exception as e:
+            _clog.error(f"벡터 데이터 삭제 실패: {e}")
+            results["vector_deletion_error"] = str(e)
+        
+        # 3. 파일 메타데이터 초기화
+        try:
+            file_service.files_metadata = {}
+            file_service._save_files_metadata()
+            _clog.info("파일 메타데이터 초기화 완료")
+            
+        except Exception as e:
+            _clog.error(f"파일 메타데이터 초기화 실패: {e}")
+            results["metadata_deletion_error"] = str(e)
+        
+        _clog.info("전체 데이터 삭제 완료")
+        return results
+        
     except Exception as e:
+        _clog.error(f"전체 데이터 삭제 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"삭제 실패: {str(e)}")
+
+@router.post("/chromadb/reset")
+async def reset_chromadb():
+    """ChromaDB 스키마 오류 해결을 위한 완전 리셋"""
+    try:
+        _clog.info("ChromaDB 리셋 시작")
+        
+        file_service = get_file_service_instance()
+        vector_service = file_service.vector_service
+        
+        # ChromaDB 리셋 실행
+        await vector_service.reset_chromadb()
+        
+        # 리셋 후 상태 확인
+        status = vector_service.get_chromadb_status()
+        
+        _clog.info("ChromaDB 리셋 완료")
+        
         return {
-            "message": f"ChromaDB 리셋 요청 처리 중 오류: {str(e)}",
-            "reset_performed": False,
-            "error": str(e)
-        } 
+            "message": "ChromaDB 데이터베이스 리셋 완료",
+            "status": "success",
+            "new_status": status
+        }
+        
+    except Exception as e:
+        _clog.error(f"ChromaDB 리셋 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"리셋 실패: {str(e)}") 
 
 
 

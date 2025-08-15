@@ -28,9 +28,12 @@ import {
 import { FileUpload } from "@/components/file-upload";
 import { DuplicateFileModal } from "@/components/duplicate-file-modal";
 import { DeleteFileModal } from "@/components/delete-file-modal";
-import { DoclingStatusBadge, DoclingDetailCard } from "@/components/docling-status-badge";
+import {
+  DoclingStatusBadge,
+  DoclingDetailCard,
+} from "@/components/docling-status-badge";
 import { DoclingSettingsInfo } from "@/components/docling-settings-info";
-import { fileAPI } from "@/lib/api";
+import { fileAPI, doclingAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { emitFileUploaded, emitFileDeleted } from "@/lib/file-events";
 
@@ -79,7 +82,7 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(true);
   const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  
+
   // Docling 설정 상태
   const [currentSettings, setCurrentSettings] = useState<any>(null);
 
@@ -110,21 +113,28 @@ export default function UploadPage() {
   const handleDeleteConfirm = async () => {
     if (!deleteModal.file) return;
 
-    setDeleteModal(prev => ({ ...prev, isDeleting: true }));
+    setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
 
     try {
       await fileAPI.deleteFile(deleteModal.file.fileId!);
-      
+
       // UI에서 즉시 해당 파일 제거
-      setUploadedFiles(prevFiles => 
-        prevFiles.filter(file => file.fileId !== deleteModal.file!.fileId)
+      setUploadedFiles((prevFiles) =>
+        prevFiles.filter((file) => file.fileId !== deleteModal.file!.fileId)
       );
-      
+
       // 통계 재계산
-      const remainingFiles = uploadedFiles.filter(file => file.fileId !== deleteModal.file!.fileId);
-      const totalSize = remainingFiles.reduce((sum, file) => sum + file.size, 0);
-      const vectorizedCount = remainingFiles.filter(file => file.status === "success").length;
-      const recentCount = remainingFiles.filter(file => {
+      const remainingFiles = uploadedFiles.filter(
+        (file) => file.fileId !== deleteModal.file!.fileId
+      );
+      const totalSize = remainingFiles.reduce(
+        (sum, file) => sum + file.size,
+        0
+      );
+      const vectorizedCount = remainingFiles.filter(
+        (file) => file.status === "success"
+      ).length;
+      const recentCount = remainingFiles.filter((file) => {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         return file.uploadTime > oneDayAgo;
       }).length;
@@ -135,10 +145,10 @@ export default function UploadPage() {
         vectorizedFiles: vectorizedCount,
         recentUploads: recentCount,
       });
-      
+
       // 파일 삭제 이벤트 발송
       emitFileDeleted(deleteModal.file.fileId!);
-      
+
       toast({
         title: "파일 삭제 완료",
         description: `${deleteModal.file.name} 파일이 성공적으로 삭제되었습니다.`,
@@ -159,113 +169,119 @@ export default function UploadPage() {
   };
 
   // 파일 목록 로드 함수 (개선된 에러 처리)
-  const loadUploadedFiles = useCallback(async (forceRefresh = false) => {
-    console.log("loadUploadedFiles 호출됨 - 개선된 files API 사용", forceRefresh ? "(강제 새로고침)" : "");
+  const loadUploadedFiles = useCallback(
+    async (forceRefresh = false) => {
+      console.log(
+        "loadUploadedFiles 호출됨 - 개선된 files API 사용",
+        forceRefresh ? "(강제 새로고침)" : ""
+      );
 
-    // 강화된 중복 호출 방지 (강제 새로고침 시에는 무시)
-    if (isLoadingRef && !forceRefresh) {
-      console.log("파일 목록 로드 중복 호출 방지 - isLoadingRef");
-      return;
-    }
+      // 강화된 중복 호출 방지 (강제 새로고침 시에는 무시)
+      if (isLoadingRef && !forceRefresh) {
+        console.log("파일 목록 로드 중복 호출 방지 - isLoadingRef");
+        return;
+      }
 
-    if (hasLoadedOnce && !forceRefresh) {
-      console.log("파일 목록 로드 중복 호출 방지 - hasLoadedOnce");
-      return;
-    }
+      if (hasLoadedOnce && !forceRefresh) {
+        console.log("파일 목록 로드 중복 호출 방지 - hasLoadedOnce");
+        return;
+      }
 
-    try {
-      setIsLoadingRef(true);
-      setLoading(true);
+      try {
+        setIsLoadingRef(true);
+        setLoading(true);
 
-      console.log("files API 호출 시작...");
-      const response = await fileAPI.getFiles();
-      console.log("files API 호출 성공:", response.length, "개 파일");
+        console.log("files API 호출 시작...");
+        const response = await fileAPI.getFiles();
+        console.log("files API 호출 성공:", response.length, "개 파일");
 
-      // API 응답을 UploadedFile 형태로 변환
-      const serverFiles: UploadedFile[] = response.map((file: any) => {
-        // 파일 상태 결정
-        let status:
-          | "success"
-          | "error"
-          | "processing"
-          | "uploading"
-          | "pending" = "pending";
+        // API 응답을 UploadedFile 형태로 변환
+        const serverFiles: UploadedFile[] = response.map((file: any) => {
+          // 파일 상태 결정
+          let status:
+            | "success"
+            | "error"
+            | "processing"
+            | "uploading"
+            | "pending" = "pending";
 
-        if (file.vectorized === true) {
-          status = "success";
-        } else if (
-          file.status === "processing" ||
-          file.status === "vectorizing"
-        ) {
-          status = "processing";
-        } else if (file.status === "error" || file.status === "failed") {
-          status = "error";
-        } else if (file.status === "uploading") {
-          status = "uploading";
-        } else {
-          // 업로드된 상태이지만 벡터화되지 않은 파일은 대기 상태로 표시
-          status = "pending";
-        }
+          if (file.vectorized === true) {
+            status = "success";
+          } else if (
+            file.status === "processing" ||
+            file.status === "vectorizing"
+          ) {
+            status = "processing";
+          } else if (file.status === "error" || file.status === "failed") {
+            status = "error";
+          } else if (file.status === "uploading") {
+            status = "uploading";
+          } else {
+            // 업로드된 상태이지만 벡터화되지 않은 파일은 대기 상태로 표시
+            status = "pending";
+          }
 
-        return {
-          name: file.filename,
-          size: file.file_size || file.size || 0,
-          progress: 100, // 이미 업로드된 파일이므로 100%
-          status: status,
-          category: file.category_name || "미분류",
-          uploadTime: file.upload_time
-            ? new Date(file.upload_time)
-            : new Date(),
-          fileId: file.file_id,
-          error: file.error_message || file.error || null,
-        };
-      });
+          return {
+            name: file.filename,
+            size: file.file_size || file.size || 0,
+            progress: 100, // 이미 업로드된 파일이므로 100%
+            status: status,
+            category: file.category_name || "미분류",
+            uploadTime: file.upload_time
+              ? new Date(file.upload_time)
+              : new Date(),
+            fileId: file.file_id,
+            error: file.error_message || file.error || null,
+          };
+        });
 
-      setUploadedFiles(serverFiles);
+        setUploadedFiles(serverFiles);
 
-      // 통계 계산
-      const totalSize = serverFiles.reduce((sum, file) => sum + file.size, 0);
-      const vectorizedCount = serverFiles.filter(
-        (file) => file.status === "success"
-      ).length;
-      const recentCount = serverFiles.filter((file) => {
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        return file.uploadTime > oneDayAgo;
-      }).length;
+        // 통계 계산
+        const totalSize = serverFiles.reduce((sum, file) => sum + file.size, 0);
+        const vectorizedCount = serverFiles.filter(
+          (file) => file.status === "success"
+        ).length;
+        const recentCount = serverFiles.filter((file) => {
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          return file.uploadTime > oneDayAgo;
+        }).length;
 
-      setStats({
-        totalFiles: serverFiles.length,
-        totalSize,
-        vectorizedFiles: vectorizedCount,
-        recentUploads: recentCount,
-      });
+        setStats({
+          totalFiles: serverFiles.length,
+          totalSize,
+          vectorizedFiles: vectorizedCount,
+          recentUploads: recentCount,
+        });
 
-      // 로드 완료 플래그 설정
-      setHasLoadedOnce(true);
-      console.log("파일 목록 로드 완료:", serverFiles.length, "개 파일");
-    } catch (error) {
-      console.error("업로드된 파일 목록 로드 실패:", error);
+        // 로드 완료 플래그 설정
+        setHasLoadedOnce(true);
+        console.log("파일 목록 로드 완료:", serverFiles.length, "개 파일");
+      } catch (error) {
+        console.error("업로드된 파일 목록 로드 실패:", error);
 
-      // 에러 발생 시 빈 목록으로 설정 (무한 호출 방지)
-      setUploadedFiles([]);
-      setStats({
-        totalFiles: 0,
-        totalSize: 0,
-        vectorizedFiles: 0,
-        recentUploads: 0,
-      });
-      setHasLoadedOnce(true); // 에러가 발생해도 재시도 방지
+        // 에러 발생 시 빈 목록으로 설정 (무한 호출 방지)
+        setUploadedFiles([]);
+        setStats({
+          totalFiles: 0,
+          totalSize: 0,
+          vectorizedFiles: 0,
+          recentUploads: 0,
+        });
+        setHasLoadedOnce(true); // 에러가 발생해도 재시도 방지
 
-      toast({
-        title: "로드 실패",
-        description: "업로드된 파일 목록을 불러오는 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-      setIsLoadingRef(false);
-    }
-  }, [toast, hasLoadedOnce]); // hasLoadedOnce도 의존성에 포함
+        toast({
+          title: "로드 실패",
+          description: "업로드된 파일 목록을 불러오는 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+        setIsLoadingRef(false);
+      }
+    },
+    [toast, hasLoadedOnce]
+  ); // hasLoadedOnce도 의존성에 포함
 
   // 컴포넌트 마운트 시 파일 목록 로드
   useEffect(() => {
@@ -276,20 +292,12 @@ export default function UploadPage() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        // 모델 설정 API에서 Docling 설정 직접 로드
-        const response = await fetch('http://localhost:8000/api/v1/model-settings/', {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const settings = await response.json();
-          console.log('로드된 모델 설정:', settings);
-          console.log('Docling 활성화 상태:', settings.docling_enabled);
-          setCurrentSettings(settings);
-        } else {
-          console.error('모델 설정 로드 실패:', response.status);
-        }
+        // Docling 전용 설정 로드 (단일 소스)
+        const settings = await doclingAPI.getDoclingSettings();
+        console.log("로드된 Docling 설정:", settings);
+        setCurrentSettings(settings);
       } catch (error) {
-        console.error('Docling 설정 로드 실패:', error);
+        console.error("Docling 설정 로드 실패:", error);
       }
     };
     loadSettings();
@@ -359,14 +367,14 @@ export default function UploadPage() {
       }
 
       // 기타 에러 처리
-      const errorMessage = 
-        error.response?.data?.detail || 
-        error.response?.data?.message || 
-        error.message || 
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
         "파일 업로드 중 오류가 발생했습니다.";
-      
+
       console.error("업로드 에러 상세:", error.response?.data);
-      
+
       toast({
         title: "업로드 실패",
         description: errorMessage,
@@ -427,15 +435,31 @@ export default function UploadPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "success":
-        return <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">완료</Badge>;
+        return (
+          <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+            완료
+          </Badge>
+        );
       case "error":
         return <Badge variant="destructive">오류</Badge>;
       case "processing":
-        return <Badge className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">처리중</Badge>;
+        return (
+          <Badge className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
+            처리중
+          </Badge>
+        );
       case "uploading":
-        return <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">업로드중</Badge>;
+        return (
+          <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+            업로드중
+          </Badge>
+        );
       case "pending":
-        return <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200">벡터화 대기</Badge>;
+        return (
+          <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200">
+            벡터화 대기
+          </Badge>
+        );
       default:
         return <Badge variant="secondary">알 수 없음</Badge>;
     }
@@ -574,9 +598,11 @@ export default function UploadPage() {
             <div className="space-y-4">
               {uploadedFiles.map((file, index) => {
                 const isVectorized = file.status === "success";
-                const isProcessing = ["processing", "uploading"].includes(file.status);
+                const isProcessing = ["processing", "uploading"].includes(
+                  file.status
+                );
                 const hasError = file.status === "error";
-                
+
                 return (
                   <div
                     key={`${file.fileId || index}-${file.name}`}
@@ -608,7 +634,7 @@ export default function UploadPage() {
                               docling_result={file.docling_result}
                             />
                           </div>
-                          
+
                           <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
                             <span>{formatFileSize(file.size)}</span>
                             <span className="flex items-center gap-1">
@@ -623,8 +649,13 @@ export default function UploadPage() {
                             <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-md mb-2">
                               <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                               <div className="text-sm text-green-700 dark:text-green-300">
-                                <span className="font-medium">벡터화 완료!</span>
-                                <span className="ml-2">원본 파일은 이제 안전하게 삭제할 수 있습니다. 검색/채팅 기능에 영향이 없습니다.</span>
+                                <span className="font-medium">
+                                  벡터화 완료!
+                                </span>
+                                <span className="ml-2">
+                                  원본 파일은 이제 안전하게 삭제할 수 있습니다.
+                                  검색/채팅 기능에 영향이 없습니다.
+                                </span>
                               </div>
                             </div>
                           )}
@@ -633,7 +664,8 @@ export default function UploadPage() {
                             <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-md mb-2">
                               <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 animate-pulse" />
                               <span className="text-sm text-blue-700 dark:text-blue-300">
-                                벡터화 진행 중... 완료될 때까지 파일을 삭제하지 마세요.
+                                벡터화 진행 중... 완료될 때까지 파일을 삭제하지
+                                마세요.
                               </span>
                             </div>
                           )}
@@ -642,7 +674,8 @@ export default function UploadPage() {
                             <div className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/50 border border-orange-200 dark:border-orange-800 rounded-md mb-2">
                               <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                               <span className="text-sm text-orange-700 dark:text-orange-300">
-                                벡터화 대기 중입니다. 벡터화 관리 페이지에서 벡터화를 시작해주세요.
+                                벡터화 대기 중입니다. 벡터화 관리 페이지에서
+                                벡터화를 시작해주세요.
                               </span>
                             </div>
                           )}
@@ -650,12 +683,16 @@ export default function UploadPage() {
                           {hasError && file.error && (
                             <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md mb-2">
                               <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
-                              <span className="text-sm text-red-700 dark:text-red-300">{file.error}</span>
+                              <span className="text-sm text-red-700 dark:text-red-300">
+                                {file.error}
+                              </span>
                             </div>
                           )}
 
                           {/* Docling 상세 정보 카드 추가 🆕 */}
-                          <DoclingDetailCard docling_result={file.docling_result} />
+                          <DoclingDetailCard
+                            docling_result={file.docling_result}
+                          />
 
                           {/* 진행률 표시 */}
                           {file.status === "uploading" && (
@@ -682,7 +719,9 @@ export default function UploadPage() {
                           size="sm"
                           onClick={async () => {
                             try {
-                              const response = await fileAPI.viewFile(file.fileId!);
+                              const response = await fileAPI.viewFile(
+                                file.fileId!
+                              );
                               const link = document.createElement("a");
                               link.href = `data:application/pdf;base64,${response.content}`;
                               link.target = "_blank";
@@ -690,7 +729,8 @@ export default function UploadPage() {
                             } catch (error) {
                               toast({
                                 title: "미리보기 실패",
-                                description: "파일 미리보기 중 오류가 발생했습니다.",
+                                description:
+                                  "파일 미리보기 중 오류가 발생했습니다.",
                                 variant: "destructive",
                               });
                             }
@@ -706,7 +746,9 @@ export default function UploadPage() {
                           size="sm"
                           onClick={async () => {
                             try {
-                              const response = await fileAPI.viewFile(file.fileId!);
+                              const response = await fileAPI.viewFile(
+                                file.fileId!
+                              );
                               const link = document.createElement("a");
                               link.href = `data:application/pdf;base64,${response.content}`;
                               link.download = response.filename;
@@ -714,7 +756,8 @@ export default function UploadPage() {
                             } catch (error) {
                               toast({
                                 title: "다운로드 실패",
-                                description: "파일 다운로드 중 오류가 발생했습니다.",
+                                description:
+                                  "파일 다운로드 중 오류가 발생했습니다.",
                                 variant: "destructive",
                               });
                             }
@@ -731,7 +774,11 @@ export default function UploadPage() {
                           onClick={() => handleDeleteClick(file)}
                           disabled={!file.fileId}
                           title={isVectorized ? "안전하게 삭제" : "파일 삭제"}
-                          className={isVectorized ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white" : ""}
+                          className={
+                            isVectorized
+                              ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white"
+                              : ""
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                           {isVectorized ? "안전 삭제" : "삭제"}
@@ -764,10 +811,15 @@ export default function UploadPage() {
 
       <DeleteFileModal
         open={deleteModal.isOpen}
-        onOpenChange={(open) => setDeleteModal(prev => ({ ...prev, isOpen: open }))}
+        onOpenChange={(open) =>
+          setDeleteModal((prev) => ({ ...prev, isOpen: open }))
+        }
         onConfirm={handleDeleteConfirm}
         fileName={deleteModal.file?.name || ""}
-        isVectorized={deleteModal.file?.status === "success" && deleteModal.file?.vectorized === true}
+        isVectorized={
+          deleteModal.file?.status === "success" &&
+          deleteModal.file?.vectorized === true
+        }
         isLoading={deleteModal.isDeleting}
       />
     </div>

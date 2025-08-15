@@ -74,6 +74,8 @@ class FileInfo(BaseModel):
     vectorization_status: Optional[str] = None
     error_message: Optional[str] = None
     chunk_count: Optional[int] = None
+    # 처리 옵션(존재할 수 있음). 런타임에 객체가 주입될 수 있어 Any 허용
+    processing_options: Optional[Any] = None
 
 # Flow 관련 스키마
 class FlowRequest(BaseModel):

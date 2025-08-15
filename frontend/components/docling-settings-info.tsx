@@ -1,31 +1,39 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { 
-  Zap, 
-  Settings, 
-  XCircle, 
-  CheckCircle, 
+import {
+  Zap,
+  Settings,
+  XCircle,
+  CheckCircle,
   Table,
   FileImage,
   Eye,
-  FileText
+  FileText,
 } from "lucide-react";
 
 interface DoclingSettingsInfoProps {
   settings?: {
+    // ModelSettings 형태
     docling_enabled?: boolean;
     docling_extract_tables?: boolean;
     docling_extract_images?: boolean;
     docling_ocr_enabled?: boolean;
     docling_output_format?: string;
+
+    // DoclingSettings 형태
+    enabled?: boolean;
+    default_extract_tables?: boolean;
+    default_extract_images?: boolean;
+    default_ocr_enabled?: boolean;
+    default_output_format?: string;
   };
 }
 
 export function DoclingSettingsInfo({ settings }: DoclingSettingsInfoProps) {
-  console.log('DoclingSettingsInfo - 받은 설정:', settings);
-  const isEnabled = settings?.docling_enabled || false;
-  console.log('DoclingSettingsInfo - Docling 활성화:', isEnabled);
+  console.log("DoclingSettingsInfo - 받은 설정:", settings);
+  const isEnabled = (settings?.docling_enabled ?? settings?.enabled) || false;
+  console.log("DoclingSettingsInfo - Docling 활성화:", isEnabled);
 
   if (!isEnabled) {
     return (
@@ -51,19 +59,21 @@ export function DoclingSettingsInfo({ settings }: DoclingSettingsInfoProps) {
         Docling 활성화
       </span>
       <div className="flex items-center gap-1">
-        {settings?.docling_extract_tables && (
+        {(settings?.docling_extract_tables ??
+          settings?.default_extract_tables) && (
           <Badge variant="secondary" className="text-xs gap-1">
             <Table className="h-3 w-3" />
             테이블
           </Badge>
         )}
-        {settings?.docling_extract_images && (
+        {(settings?.docling_extract_images ??
+          settings?.default_extract_images) && (
           <Badge variant="secondary" className="text-xs gap-1">
             <FileImage className="h-3 w-3" />
             이미지
           </Badge>
         )}
-        {settings?.docling_ocr_enabled && (
+        {(settings?.docling_ocr_enabled ?? settings?.default_ocr_enabled) && (
           <Badge variant="secondary" className="text-xs gap-1">
             <Eye className="h-3 w-3" />
             OCR

@@ -765,11 +765,13 @@ class LangflowService:
             node_data = llm_data.get("node", {})
             template_data = node_data.get("template", {})
             
+            api_key = None
             # 사용자 설정이 있으면 사용자 설정을 완전 우선시
             if model_config and model_config.get("llm", {}).get("model"):
                 provider = model_config["llm"].get("provider", "openai").title()
                 model_name = model_config["llm"]["model"]
                 temperature = model_config["llm"].get("temperature", 0.7)
+                api_key = model_config["llm"].get("api_key")
                 print(f"사용자 설정 사용: {provider} {model_name} (temp: {temperature})")
             elif template_data:
                 # 사용자 설정이 없으면 Flow 설정 사용
@@ -791,6 +793,7 @@ class LangflowService:
                     provider = model_config["llm"].get("provider", "openai").title()
                     model_name = model_config["llm"]["model"]
                     temperature = model_config["llm"].get("temperature", 0.7)
+                    api_key = model_config["llm"].get("api_key")
                     print(f"사용자 설정 기본값 사용: {provider} {model_name} (temp: {temperature})")
                 else:
                     provider = "OpenAI"
@@ -802,11 +805,11 @@ class LangflowService:
             
             # Provider별 LLM 실행 (대소문자 구분 없이)
             if provider.lower() == "google":
-                response_text = await self._execute_google_llm(model_name, prompt, system_message, temperature)
+                response_text = await self._execute_google_llm(model_name, prompt, system_message, temperature, api_key=api_key)
             elif provider.lower() == "openai":
-                response_text = await self._execute_openai_llm(model_name, prompt, system_message, temperature)
+                response_text = await self._execute_openai_llm(model_name, prompt, system_message, temperature, api_key=api_key)
             elif provider.lower() == "anthropic":
-                response_text = await self._execute_anthropic_llm(model_name, prompt, system_message, temperature)
+                response_text = await self._execute_anthropic_llm(model_name, prompt, system_message, temperature, api_key=api_key)
             else:
                 print(f"지원하지 않는 Provider: {provider}")
                 return {
@@ -836,7 +839,7 @@ class LangflowService:
                 "response": f"LLM 실행 중 오류가 발생했습니다: {str(e)}"
             }
     
-    async def _execute_google_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_google_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """Google Gemini 모델을 실행합니다."""
         try:
             # langchain_google_genai 사용
@@ -844,15 +847,15 @@ class LangflowService:
             from ..core.config import settings
             
             # Google API 키 확인
-            api_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
-            if not api_key:
+            final_api_key = api_key or settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
+            if not final_api_key:
                 raise ValueError("Google API 키가 설정되지 않았습니다. GOOGLE_API_KEY 또는 GEMINI_API_KEY를 설정해주세요.")
             
             # ChatGoogleGenerativeAI 인스턴스 생성 - 기본 설정 사용
             llm = ChatGoogleGenerativeAI(
                 model=model_name,
                 temperature=temperature,
-                google_api_key=api_key
+                google_api_key=final_api_key
             )
             
             # 메시지 구성 - Gemini의 경우 system 메시지를 다르게 처리
@@ -897,7 +900,7 @@ class LangflowService:
             traceback.print_exc()
             raise e
     
-    async def _execute_openai_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_openai_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """OpenAI 모델을 실행합니다."""
         try:
             # OpenAI 모델 실행
@@ -905,13 +908,14 @@ class LangflowService:
             from langchain_openai import ChatOpenAI
             from ..core.config import settings
             
-            if not settings.OPENAI_API_KEY:
+            final_api_key = api_key or settings.OPENAI_API_KEY
+            if not final_api_key:
                 raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
             
             llm = ChatOpenAI(
                 model=model_name,
                 temperature=temperature,
-                openai_api_key=settings.OPENAI_API_KEY
+                openai_api_key=final_api_key
             )
             
             messages = []
@@ -930,7 +934,7 @@ class LangflowService:
             print(f"OpenAI 실행 중 오류: {str(e)}")
             raise e
     
-    async def _execute_anthropic_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_anthropic_llm(self, model_name: str, prompt: str, system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """Anthropic Claude 모델을 실행합니다."""
         try:
             # Anthropic Claude 모델 실행
@@ -938,13 +942,14 @@ class LangflowService:
             from langchain_anthropic import ChatAnthropic
             from ..core.config import settings
             
-            if not settings.ANTHROPIC_API_KEY:
+            final_api_key = api_key or settings.ANTHROPIC_API_KEY
+            if not final_api_key:
                 raise ValueError("Anthropic API 키가 설정되지 않았습니다.")
             
             llm = ChatAnthropic(
                 model=model_name,
                 temperature=temperature,
-                anthropic_api_key=settings.ANTHROPIC_API_KEY
+                anthropic_api_key=final_api_key
             )
             
             messages = []
@@ -1082,11 +1087,13 @@ class LangflowService:
             node_data = llm_data.get("node", {})
             template_data = node_data.get("template", {})
             
+            api_key = None
             # 멀티모달: 사용자 설정이 있으면 사용자 설정을 완전 우선시
             if model_config and model_config.get("llm", {}).get("model"):
                 provider = model_config["llm"].get("provider", "openai").title()
                 model_name = model_config["llm"]["model"]
                 temperature = model_config["llm"].get("temperature", 0.7)
+                api_key = model_config["llm"].get("api_key")
                 print(f"멀티모달 사용자 설정 사용: {provider} {model_name} (temp: {temperature})")
             elif template_data:
                 # 사용자 설정이 없으면 Flow 설정 사용
@@ -1105,6 +1112,7 @@ class LangflowService:
                     provider = model_config["llm"].get("provider", "openai").title()
                     model_name = model_config["llm"]["model"]
                     temperature = model_config["llm"].get("temperature", 0.7)
+                    api_key = model_config["llm"].get("api_key")
                     print(f"멀티모달 사용자 설정 기본값 사용: {provider} {model_name} (temp: {temperature})")
                 else:
                     # 멀티모달 시스템 기본 설정
@@ -1117,11 +1125,11 @@ class LangflowService:
             
             # Provider별 멀티모달 LLM 실행 (대소문자 구분 없이)
             if provider.lower() == "google":
-                response_text = await self._execute_google_multimodal_llm(model_name, prompt, images, system_message, temperature)
+                response_text = await self._execute_google_multimodal_llm(model_name, prompt, images, system_message, temperature, api_key=api_key)
             elif provider.lower() == "openai":
-                response_text = await self._execute_openai_multimodal_llm(model_name, prompt, images, system_message, temperature)
+                response_text = await self._execute_openai_multimodal_llm(model_name, prompt, images, system_message, temperature, api_key=api_key)
             elif provider.lower() == "anthropic":
-                response_text = await self._execute_anthropic_multimodal_llm(model_name, prompt, images, system_message, temperature)
+                response_text = await self._execute_anthropic_multimodal_llm(model_name, prompt, images, system_message, temperature, api_key=api_key)
             else:
                 print(f"멀티모달을 지원하지 않는 Provider: {provider}")
                 # Fallback: 텍스트 전용 처리
@@ -1149,7 +1157,7 @@ class LangflowService:
                 "response": f"멀티모달 LLM 실행 중 오류가 발생했습니다: {str(e)}"
             }
     
-    async def _execute_google_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_google_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """Google Gemini 멀티모달 모델을 실행합니다."""
         try:
             print(f"=== Google Gemini 멀티모달 실행 ===")
@@ -1163,17 +1171,17 @@ class LangflowService:
             import base64
             
             # Google API 키 확인
-            api_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
-            if not api_key:
+            final_api_key = api_key or settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
+            if not final_api_key:
                 raise ValueError("Google API 키가 설정되지 않았습니다. GOOGLE_API_KEY 또는 GEMINI_API_KEY를 설정해주세요.")
             
-            print(f"Google API 키 확인됨: {api_key[:10]}...")
+            print(f"Google API 키 확인됨: {final_api_key[:10]}...")
             
             # ChatGoogleGenerativeAI 인스턴스 생성
             llm = ChatGoogleGenerativeAI(
                 model=model_name,
                 temperature=temperature,
-                google_api_key=api_key
+                google_api_key=final_api_key
             )
             
             # 멀티모달 메시지 구성
@@ -1256,7 +1264,7 @@ class LangflowService:
             except:
                 raise e
     
-    async def _execute_openai_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_openai_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """OpenAI 멀티모달 모델을 실행합니다."""
         try:
             print(f"=== OpenAI 멀티모달 실행 ===")
@@ -1267,7 +1275,8 @@ class LangflowService:
             from langchain_core.messages import HumanMessage, SystemMessage
             from ..core.config import settings
             
-            if not settings.OPENAI_API_KEY:
+            final_api_key = api_key or settings.OPENAI_API_KEY
+            if not final_api_key:
                 raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
             
             # OpenAI 비전 모델 확인 (gpt-4o, gpt-4-turbo, gpt-4-vision-preview 등)
@@ -1280,7 +1289,7 @@ class LangflowService:
             llm = ChatOpenAI(
                 model=model_name,
                 temperature=temperature,
-                openai_api_key=settings.OPENAI_API_KEY
+                openai_api_key=final_api_key
             )
             
             messages = []
@@ -1350,7 +1359,7 @@ class LangflowService:
             except:
                 raise e
     
-    async def _execute_anthropic_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1) -> str:
+    async def _execute_anthropic_multimodal_llm(self, model_name: str, prompt: str, images: List[str], system_message: str = None, temperature: float = 0.1, api_key: str = None) -> str:
         """Anthropic Claude 멀티모달 모델을 실행합니다."""
         try:
             print(f"=== Anthropic Claude 멀티모달 실행 ===")
@@ -1362,7 +1371,8 @@ class LangflowService:
             from ..core.config import settings
             import base64
             
-            if not settings.ANTHROPIC_API_KEY:
+            final_api_key = api_key or settings.ANTHROPIC_API_KEY
+            if not final_api_key:
                 raise ValueError("Anthropic API 키가 설정되지 않았습니다.")
             
             # Claude 모델에서 비전 지원하는지 확인
@@ -1378,7 +1388,7 @@ class LangflowService:
             llm = ChatAnthropic(
                 model=model_name,
                 temperature=temperature,
-                anthropic_api_key=settings.ANTHROPIC_API_KEY
+                anthropic_api_key=final_api_key
             )
             
             messages = []

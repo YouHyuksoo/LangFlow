@@ -285,6 +285,34 @@ async def get_chromadb_collection_data(
         # 페이징 처리
         offset = (page - 1) * limit
         
+        # UUID 매핑용 데이터 준비
+        file_id_to_name = {}
+        category_id_to_name = {}
+        
+        # 메타데이터 DB에서 파일명과 카테고리명 매핑 조회
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if os.path.exists(metadata_db_path):
+            with sqlite3.connect(metadata_db_path) as conn:
+                cursor = conn.cursor()
+                # 파일 매핑
+                cursor.execute("SELECT file_id, filename FROM vector_metadata")
+                for row in cursor.fetchall():
+                    file_id_to_name[row[0]] = row[1]
+                
+                # 카테고리 매핑 (중복 제거)
+                cursor.execute("SELECT DISTINCT category_id, category_name FROM vector_metadata WHERE category_id IS NOT NULL AND category_name IS NOT NULL")
+                for row in cursor.fetchall():
+                    category_id_to_name[row[0]] = row[1]
+
+        def enhance_metadata(metadata):
+            """메타데이터에 실제 이름 추가"""
+            enhanced = metadata.copy()
+            if 'file_id' in metadata and metadata['file_id'] in file_id_to_name:
+                enhanced['filename'] = file_id_to_name[metadata['file_id']]
+            if 'category_id' in metadata and metadata['category_id'] in category_id_to_name:
+                enhanced['category_name'] = category_id_to_name[metadata['category_id']]
+            return enhanced
+
         # 데이터 조회
         if search:
             # 검색 쿼리
@@ -297,9 +325,12 @@ async def get_chromadb_collection_data(
             documents = []
             if results['documents'] and len(results['documents']) > 0:
                 for i, doc in enumerate(results['documents'][0]):
+                    original_metadata = results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {}
+                    enhanced_metadata = enhance_metadata(original_metadata)
+                    
                     documents.append({
                         "document": doc,
-                        "metadata": results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {},
+                        "metadata": enhanced_metadata,
                         "distance": results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None
                     })
         else:
@@ -313,10 +344,13 @@ async def get_chromadb_collection_data(
             documents = []
             if results['documents']:
                 for i, doc in enumerate(results['documents']):
+                    original_metadata = results['metadatas'][i] if i < len(results['metadatas']) else {}
+                    enhanced_metadata = enhance_metadata(original_metadata)
+                    
                     documents.append({
                         "id": results['ids'][i] if i < len(results['ids']) else None,
                         "document": doc[:500] + "..." if len(doc) > 500 else doc,
-                        "metadata": results['metadatas'][i] if i < len(results['metadatas']) else {},
+                        "metadata": enhanced_metadata,
                         "full_document_length": len(doc)
                     })
         
@@ -365,6 +399,31 @@ async def search_vectors(
             all_collections = chroma_client.list_collections()
             collections = [chroma_client.get_collection(c.name) for c in all_collections]
         
+        # UUID 매핑용 데이터 준비 (검색용)
+        file_id_to_name = {}
+        category_id_to_name = {}
+        
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if os.path.exists(metadata_db_path):
+            with sqlite3.connect(metadata_db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT file_id, filename FROM vector_metadata")
+                for row in cursor.fetchall():
+                    file_id_to_name[row[0]] = row[1]
+                
+                cursor.execute("SELECT DISTINCT category_id, category_name FROM vector_metadata WHERE category_id IS NOT NULL AND category_name IS NOT NULL")
+                for row in cursor.fetchall():
+                    category_id_to_name[row[0]] = row[1]
+
+        def enhance_search_metadata(metadata):
+            """검색 결과 메타데이터에 실제 이름 추가"""
+            enhanced = metadata.copy()
+            if 'file_id' in metadata and metadata['file_id'] in file_id_to_name:
+                enhanced['filename'] = file_id_to_name[metadata['file_id']]
+            if 'category_id' in metadata and metadata['category_id'] in category_id_to_name:
+                enhanced['category_name'] = category_id_to_name[metadata['category_id']]
+            return enhanced
+
         # 각 컬렉션에서 검색 수행
         all_results = []
         for collection in collections:
@@ -377,10 +436,13 @@ async def search_vectors(
                 
                 if results['documents'] and len(results['documents']) > 0:
                     for i, doc in enumerate(results['documents'][0]):
+                        original_metadata = results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {}
+                        enhanced_metadata = enhance_search_metadata(original_metadata)
+                        
                         all_results.append({
                             "collection": collection.name,
                             "document": doc[:300] + "..." if len(doc) > 300 else doc,
-                            "metadata": results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {},
+                            "metadata": enhanced_metadata,
                             "distance": results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None,
                             "similarity": 1 - results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None
                         })
@@ -681,6 +743,87 @@ async def cleanup_orphaned_metadata(admin_user = Depends(get_admin_user)):
         _clog.error(f"고아 메타데이터 삭제 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/debug/flow-detection")
+async def debug_flow_detection(admin_user = Depends(get_admin_user)):
+    """Flow 결정 로직 디버깅 (테스트용)"""
+    try:
+        from ..services.file_service import FileService
+        file_service = FileService()
+        
+        print("=== Flow 결정 디버깅 시작 ===")
+        default_flow_id = await file_service._determine_vectorization_flow(None)
+        print(f"결정된 Flow ID: {default_flow_id}")
+        print("=== Flow 결정 디버깅 완료 ===")
+        
+        return {
+            "detected_flow_id": default_flow_id,
+            "success": default_flow_id is not None,
+            "message": f"Flow ID: {default_flow_id}" if default_flow_id else "Flow를 찾을 수 없습니다"
+        }
+    except Exception as e:
+        _clog.error(f"Flow 결정 디버깅 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "detected_flow_id": None,
+            "success": False,
+            "error": str(e)
+        }
+
+@router.post("/update-flow-ids")
+async def update_missing_flow_ids(admin_user = Depends(get_admin_user)):
+    """flow_id가 누락된 메타데이터를 업데이트"""
+    try:
+        # 현재 기본 벡터화 Flow ID 확인
+        from ..services.file_service import FileService
+        file_service = FileService()
+        
+        # 가장 적절한 Flow ID 결정
+        default_flow_id = await file_service._determine_vectorization_flow(None)
+        
+        if not default_flow_id:
+            raise HTTPException(status_code=404, detail="사용 가능한 벡터화 Flow를 찾을 수 없습니다")
+        
+        # 메타데이터 DB에서 flow_id가 없는 레코드들 조회 및 업데이트
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if not os.path.exists(metadata_db_path):
+            raise HTTPException(status_code=404, detail="메타데이터 데이터베이스를 찾을 수 없습니다")
+        
+        updated_count = 0
+        with sqlite3.connect(metadata_db_path) as conn:
+            cursor = conn.cursor()
+            
+            # flow_id가 NULL이거나 빈 문자열인 레코드 조회
+            cursor.execute("""
+                SELECT file_id, filename FROM vector_metadata 
+                WHERE flow_id IS NULL OR flow_id = ''
+            """)
+            
+            records_to_update = cursor.fetchall()
+            
+            # 각 레코드에 기본 flow_id 설정
+            for file_id, filename in records_to_update:
+                cursor.execute("""
+                    UPDATE vector_metadata 
+                    SET flow_id = ?, updated_at = ?
+                    WHERE file_id = ?
+                """, (default_flow_id, datetime.now().isoformat(), file_id))
+                updated_count += 1
+            
+            conn.commit()
+        
+        return {
+            "message": f"{updated_count}개 레코드의 flow_id가 업데이트되었습니다",
+            "updated_count": updated_count,
+            "used_flow_id": default_flow_id
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"flow_id 업데이트 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/metadata/{file_id}")
 async def delete_vector_metadata(
     file_id: str,
@@ -699,4 +842,33 @@ async def delete_vector_metadata(
         raise
     except Exception as e:
         _clog.error(f"벡터 메타데이터 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/metadata/reset")
+async def reset_vector_metadata_db(admin_user = Depends(get_admin_user)):
+    """벡터 메타데이터 SQLite 데이터베이스 완전 초기화"""
+    try:
+        # 가능한 연결 잠금을 줄이기 위해 GC 유도 및 지연
+        import gc, time
+        try:
+            # VectorService가 보유한 메타데이터 서비스도 해제 시도
+            if hasattr(vector_service, 'metadata_service') and vector_service.metadata_service:
+                try:
+                    vector_service.metadata_service.engine.dispose()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        gc.collect()
+        time.sleep(0.1)
+
+        success = metadata_service.reset_database()
+        if success:
+            return {"message": "메타데이터 데이터베이스가 초기화되었습니다.", "status": "success"}
+        else:
+            raise HTTPException(status_code=500, detail="메타데이터 데이터베이스 초기화에 실패했습니다.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"메타데이터 DB 초기화 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))

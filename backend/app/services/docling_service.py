@@ -120,19 +120,22 @@ class DoclingService:
         try:
             print(f"🔄 Docling 문서 처리 시작: {file_path}")
             print(f"📄 파일 크기: {file_size / 1024 / 1024:.2f} MB")
-            print(f"⚙️ OCR 활성화: {options.ocr_enabled}")
-            print(f"📊 테이블 추출: {options.extract_tables}")
-            print(f"🖼️ 이미지 추출: {options.extract_images}")
-            print(f"📝 출력 형식: {options.output_format}")
-            
-            # OCR 설정 업데이트
-            print("⚙️ Docling 변환기 설정 업데이트 중...")
-            if hasattr(self.converter, 'format_options') and InputFormat.PDF in self.converter.format_options:
-                pdf_options = self.converter.format_options[InputFormat.PDF]
-                pdf_options.do_ocr = options.ocr_enabled
-                print(f"✅ PDF 옵션 업데이트 완료 (OCR: {options.ocr_enabled})")
-            else:
-                print("⚠️ PDF 형식 옵션을 찾을 수 없음")
+            print(f"⚙️ 전달된 옵션: OCR={options.ocr_enabled}, 테이블={options.extract_tables}, 이미지={options.extract_images}")
+
+            # 각 작업에 맞는 새로운 변환기 동적 생성
+            print("⚙️ Docling 변환기 동적 생성 중...")
+            pipeline_options = PdfPipelineOptions(
+                do_ocr=options.ocr_enabled,
+                do_table_structure=options.extract_tables,
+                generate_parsed_pages=True
+            )
+            pdf_format_option = PdfFormatOption(pipeline_options=pipeline_options)
+            job_specific_converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: pdf_format_option
+                }
+            )
+            print(f"✅ 동적 변환기 생성 완료 (OCR: {options.ocr_enabled})")
             
             # 문서 변환 실행 (타임아웃 설정과 비동기 처리)
             print("🚀 Docling 문서 변환 실행 중...")
@@ -146,7 +149,8 @@ class DoclingService:
                     loop.run_in_executor(
                         None, 
                         self._convert_document_with_progress, 
-                        file_path
+                        file_path,
+                        job_specific_converter # 동적으로 생성된 변환기 사용
                     ),
                     timeout=300.0  # 5분 타임아웃
                 )
@@ -232,7 +236,7 @@ class DoclingService:
                 processing_time=processing_time
             )
     
-    def _convert_document_with_progress(self, file_path: str):
+    def _convert_document_with_progress(self, file_path: str, converter: Any):
         """문서 변환 (진행 상황 모니터링 포함)"""
         print(f"🔄 Docling 변환기로 파일 처리 시작: {os.path.basename(file_path)}")
         file_size_mb = os.path.getsize(file_path) / 1024 / 1024
@@ -260,7 +264,7 @@ class DoclingService:
                 nonlocal result, error
                 try:
                     print("💼 Docling 라이브러리 변환 시작... (내부 처리 중)")
-                    result = self.converter.convert(file_path)
+                    result = converter.convert(file_path)
                     conversion_done.set()
                 except Exception as e:
                     error = e
@@ -322,6 +326,21 @@ class DoclingService:
         }
         
         try:
+            # [DEBUG] 모든 노드 라벨을 로깅하여 Docling이 무엇을 반환하는지 확인
+            print("\n--- [Docling DEBUG] 문서에서 발견된 모든 노드 라벨 --- ")
+            all_labels = set()
+            try:
+                for item in docling_doc.iterate_items():
+                    if hasattr(item, 'label'):
+                        all_labels.add(str(item.label).lower())
+                if all_labels:
+                    print(f"발견된 라벨 종류 ({len(all_labels)}개): {sorted(list(all_labels))}")
+                else:
+                    print("문서에서 어떠한 라벨도 발견되지 않았습니다.")
+            except Exception as debug_e:
+                print(f"디버그 로깅 중 오류: {debug_e}")
+            print("--- [Docling DEBUG] 로깅 종료 ---\n")
+
             print("📝 기본 텍스트 추출 중...")
             # 기본 텍스트 추출
             if hasattr(docling_doc, 'text'):

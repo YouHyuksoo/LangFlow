@@ -1,5 +1,5 @@
 # API 라우터들
-from . import chat, files, flows, stats, categories, langflow, users, personas, system_settings
+from . import chat, files, flows, stats, categories, langflow, users, personas, system_settings, vectors
 
 __all__ = [
     "chat",
@@ -11,4 +11,5 @@ __all__ = [
     "users",
     "personas",
     "system_settings",
+    "vectors",
 ]

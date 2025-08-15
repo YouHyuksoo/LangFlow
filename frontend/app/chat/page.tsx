@@ -744,7 +744,7 @@ export default function ChatPage() {
                 selectedCategories={selectedCategories}
                 onCategoryChange={setSelectedCategories}
                 categories={categories}
-                showDocumentCount={false}
+                showDocumentCount={true}
               />
               {/* 페르소나 선택 & 검색 개수 설정 */}
               <div className="flex items-center gap-4 pt-2">

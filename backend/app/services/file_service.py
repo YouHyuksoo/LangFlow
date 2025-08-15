@@ -103,6 +103,27 @@ class FileService:
                 json.dump(self.files_metadata, f, ensure_ascii=False, indent=2, default=str)
         except Exception as e:
             print(f"파일 메타데이터 저장 중 오류: {str(e)}")
+
+    def reset_files_metadata(self) -> Dict[str, Any]:
+        """파일 메타데이터 JSON을 완전 초기화합니다."""
+        try:
+            removed_entries = len(getattr(self, 'files_metadata', {}) or {})
+            # 파일 닫힘을 보장하기 위해 먼저 메모리 데이터 비움
+            self.files_metadata = {}
+            # 파일 자체 삭제 시도 (존재하면)
+            if os.path.exists(self.files_metadata_file):
+                try:
+                    os.remove(self.files_metadata_file)
+                except Exception:
+                    # 삭제 실패 시 빈 내용으로 덮어쓰기
+                    self._save_files_metadata()
+            else:
+                # 파일이 없으면 빈 파일로 생성해 일관성 유지
+                self._save_files_metadata()
+            return {"status": "success", "removed_entries": removed_entries}
+        except Exception as e:
+            print(f"파일 메타데이터 초기화 실패: {str(e)}")
+            return {"status": "error", "error": str(e)}
     
     async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False, processing_options: Optional[FileProcessingOptions] = None) -> FileUploadResponse:
         """파일을 업로드하고 벡터화 준비를 합니다."""
@@ -235,32 +256,7 @@ class FileService:
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
-            # Docling 전처리 실행 (설정된 경우)
-            docling_result = None
-            if processing_options and processing_options.use_docling and processing_options.docling_options:
-                print(f"🔄 Docling 전처리 시작: {file.filename}")
-                try:
-                    if self.docling_service and self.docling_service.is_available:
-                        # Docling 지원 파일 형식 확인
-                        if await self.docling_service.is_supported_format(file_path):
-                            docling_result = await self.docling_service.process_document(
-                                file_path, processing_options.docling_options
-                            )
-                            if docling_result.success:
-                                print(f"✅ Docling 전처리 완료: {file.filename}")
-                            else:
-                                print(f"❌ Docling 전처리 실패: {docling_result.error}")
-                        else:
-                            print(f"⚠️ Docling 미지원 파일 형식: {file_extension}")
-                    else:
-                        print("⚠️ Docling 서비스를 사용할 수 없습니다.")
-                except Exception as e:
-                    print(f"❌ Docling 전처리 중 오류: {str(e)}")
-                    docling_result = DoclingResult(
-                        success=False,
-                        error=str(e),
-                        content={}
-                    )
+            # 업로드 단계에서는 Docling 전처리를 하지 않음 (벡터화 단계에서 처리)
 
             # 파일 정보 저장
             file_info = {
@@ -272,32 +268,22 @@ class FileService:
                 "file_hash": file_hash,  # 중복 검출용 해시 추가
                 "category_id": category_id,
                 "category_name": category_name,
-                "status": "uploaded",  # 단순 업로드 상태로 변경
+                "status": "uploaded",  # 업로드 완료 상태
                 "upload_time": datetime.now(),
-                "vectorized": False,
-                # Docling 관련 정보 추가
-                "docling_processed": docling_result is not None,
-                "docling_success": docling_result.success if docling_result else False,
-                "docling_result": docling_result.dict() if docling_result else None
+                "vectorized": False  # 벡터화는 별도 단계에서 수행
             }
             
             # 메타데이터 저장
             self.files_metadata[file_id] = file_info
             self._save_files_metadata()
             
-            # 응답 메시지 생성 (Docling 처리 결과 포함)
-            if docling_result:
-                if docling_result.success:
-                    message = f"파일이 성공적으로 업로드되고 Docling으로 전처리되었습니다. 처리 시간: {docling_result.processing_time:.2f}초"
-                else:
-                    message = f"파일이 업로드되었지만 Docling 전처리에 실패했습니다: {docling_result.error}"
-            else:
-                message = "파일이 성공적으로 업로드되었습니다. 벡터화는 별도 관리 페이지에서 실행해주세요."
+            # 업로드 완료 메시지
+            message = "파일이 성공적으로 업로드되었습니다. 벡터화는 벡터화 페이지에서 수행해주세요."
             
             return FileUploadResponse(
                 file_id=file_id,
                 filename=file.filename,
-                status="uploaded",  # 상태 변경
+                status="uploaded",  # 업로드만 완료
                 file_size=file_size,
                 category_id=category_id,
                 category_name=category_name,
@@ -390,28 +376,44 @@ class FileService:
                         "filename": file_info.filename,
                         "category_id": file_info.category_id,
                         "category_name": file_info.category_name,
+                        "flow_id": vectorization_flow_id,  # 결정된 flow_id 추가
                         "upload_time": file_info.upload_time.isoformat() if file_info.upload_time else None,
                         "file_size": file_info.file_size
                     }
                     
-                    # Docling 옵션 확인 (벡터화 시점에서 Docling 재시도)
+                    # Docling 옵션 결정 (메타데이터 우선, 없으면 설정값)
+                    from ..models.schemas import DoclingOptions, FileProcessingOptions
+
+                    enable_docling = False
                     docling_options = None
-                    file_metadata = self.files_metadata.get(file_id, {})
                     
-                    # 벡터화 시점에서 Docling을 시도 (업로드 시점 설정과 무관하게)
-                    enable_docling = True  # 항상 Docling 시도
-                    
-                    # 기본 Docling 옵션 설정
-                    from ..models.schemas import DoclingOptions
-                    docling_options = DoclingOptions(
-                        enabled=True,
-                        extract_tables=True,
-                        extract_images=True,
-                        ocr_enabled=False,
-                        output_format="markdown"
-                    )
-                    
-                    print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
+                    # 1. 파일 메타데이터에 저장된 처리 옵션 확인
+                    processing_options_data = file_info.dict().get("processing_options")
+                    if processing_options_data and processing_options_data.get("use_docling"):
+                        docling_options_data = processing_options_data.get("docling_options")
+                        if docling_options_data:
+                            enable_docling = True
+                            docling_options = DoclingOptions(**docling_options_data)
+                            print(f"🔧 벡터화 시점 Docling 활성화 (파일 메타데이터 기반): {file_info.filename} (OCR: {docling_options.ocr_enabled})")
+
+                    # 2. 메타데이터에 없으면, 전역 설정값 사용
+                    if not docling_options and not enable_docling:
+                        from .model_settings_service import ModelSettingsService
+                        model_settings_service = ModelSettingsService()
+                        docling_settings = await model_settings_service.get_docling_settings()
+                        enable_docling = docling_settings.enabled
+
+                        if enable_docling:
+                            docling_options = DoclingOptions(
+                                enabled=docling_settings.enabled,
+                                extract_tables=docling_settings.default_extract_tables,
+                                extract_images=docling_settings.default_extract_images,
+                                ocr_enabled=docling_settings.default_ocr_enabled,
+                                output_format=docling_settings.default_output_format
+                            )
+                            print(f"🔧 벡터화 시점 Docling 활성화 (전역 설정 기반): {file_info.filename} (OCR: {docling_options.ocr_enabled})")
+                        else:
+                            print(f"🔧 벡터화 시점 Docling 비활성화 (전역 설정 기반): {file_info.filename}")
                     
                     # 통합 벡터화 파이프라인 실행 (병렬 처리 활성화)
                     vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
@@ -548,16 +550,42 @@ class FileService:
             try:
                 from .langflow_service import LangflowService
                 langflow_service = LangflowService()
-                active_flows = await langflow_service.get_flows()
-                vectorization_flows = [flow for flow in active_flows if flow.get("is_active", False)]
+                all_flows = await langflow_service.get_flows()
+                
+                print(f"=== Flow 결정 디버깅 정보 ===")
+                print(f"총 발견된 Flow 수: {len(all_flows)}")
+                for flow in all_flows:
+                    print(f"Flow ID: {flow.get('flow_id')}, Name: {flow.get('name')}")
+                    print(f"  - is_active: {flow.get('is_active')}")
+                    print(f"  - is_default_vectorization: {flow.get('flow_data', {}).get('is_default_vectorization', False)}")
+                
+                # 먼저 기본 벡터화 Flow 찾기 (is_default_vectorization: true)
+                default_vectorization_flows = [flow for flow in all_flows if flow.get("flow_data", {}).get("is_default_vectorization", False) == True]
+                
+                print(f"기본 벡터화 Flow 개수: {len(default_vectorization_flows)}")
+                
+                if default_vectorization_flows:
+                    # 기본 벡터화 Flow가 있으면 첫 번째 것 사용
+                    default_flow = default_vectorization_flows[0]
+                    print(f"✅ 기본 벡터화 Flow 사용: {default_flow['flow_id']} ({default_flow['name']})")
+                    return default_flow['flow_id']
+                
+                # 기본 벡터화 Flow가 없으면 활성 Flow 중에서 선택
+                vectorization_flows = [flow for flow in all_flows if flow.get("is_active", True)]
+                
+                print(f"활성 Flow 개수: {len(vectorization_flows)}")
                 
                 if vectorization_flows:
                     # 가장 최근에 수정된 Flow 선택
                     latest_flow = max(vectorization_flows, key=lambda x: x.get("updated_at", x.get("created_at", "")))
-                    print(f"활성 Flow 사용: {latest_flow['flow_id']} ({latest_flow['name']})")
+                    print(f"✅ 활성 Flow 사용: {latest_flow['flow_id']} ({latest_flow['name']})")
                     return latest_flow['flow_id']
+                
+                print(f"❌ {len(all_flows)}개 Flow를 찾았지만 사용 가능한 것이 없습니다.")
             except Exception as e:
-                print(f"LangflowService 초기화 실패: {str(e)}")
+                print(f"❌ LangflowService 초기화 실패: {str(e)}")
+                import traceback
+                traceback.print_exc()
             
             print("활성화된 벡터화 Flow가 없습니다.")
             return None
@@ -590,28 +618,44 @@ class FileService:
                         "filename": file_info.filename,
                         "category_id": file_info.category_id,
                         "category_name": file_info.category_name,
+                        "flow_id": vectorization_flow_id,  # 결정된 flow_id 추가
                         "upload_time": file_info.upload_time.isoformat() if file_info.upload_time else None,
                         "file_size": file_info.file_size
                     }
                     
-                    # Docling 옵션 확인 (벡터화 시점에서 Docling 재시도)
+                    # Docling 옵션 결정 (메타데이터 우선, 없으면 설정값)
+                    from ..models.schemas import DoclingOptions, FileProcessingOptions
+
+                    enable_docling = False
                     docling_options = None
-                    file_metadata = self.files_metadata.get(file_id, {})
                     
-                    # 벡터화 시점에서 Docling을 시도 (업로드 시점 설정과 무관하게)
-                    enable_docling = True  # 항상 Docling 시도
-                    
-                    # 기본 Docling 옵션 설정
-                    from ..models.schemas import DoclingOptions
-                    docling_options = DoclingOptions(
-                        enabled=True,
-                        extract_tables=True,
-                        extract_images=True,
-                        ocr_enabled=False,
-                        output_format="markdown"
-                    )
-                    
-                    print(f"🔧 벡터화 시점 Docling 활성화: {file_info.filename}")
+                    # 1. 파일 메타데이터에 저장된 처리 옵션 확인
+                    processing_options_data = file_info.dict().get("processing_options")
+                    if processing_options_data and processing_options_data.get("use_docling"):
+                        docling_options_data = processing_options_data.get("docling_options")
+                        if docling_options_data:
+                            enable_docling = True
+                            docling_options = DoclingOptions(**docling_options_data)
+                            print(f"🔧 벡터화 시점 Docling 활성화 (파일 메타데이터 기반): {file_info.filename} (OCR: {docling_options.ocr_enabled})")
+
+                    # 2. 메타데이터에 없으면, 전역 설정값 사용
+                    if not docling_options and not enable_docling:
+                        from .model_settings_service import ModelSettingsService
+                        model_settings_service = ModelSettingsService()
+                        docling_settings = await model_settings_service.get_docling_settings()
+                        enable_docling = docling_settings.enabled
+
+                        if enable_docling:
+                            docling_options = DoclingOptions(
+                                enabled=docling_settings.enabled,
+                                extract_tables=docling_settings.default_extract_tables,
+                                extract_images=docling_settings.default_extract_images,
+                                ocr_enabled=docling_settings.default_ocr_enabled,
+                                output_format=docling_settings.default_output_format
+                            )
+                            print(f"🔧 벡터화 시점 Docling 활성화 (전역 설정 기반): {file_info.filename} (OCR: {docling_options.ocr_enabled})")
+                        else:
+                            print(f"🔧 벡터화 시점 Docling 비활성화 (전역 설정 기반): {file_info.filename}")
                     
                     # 통합 벡터화 파이프라인 실행 (병렬 처리 활성화)
                     vectorization_result = await self.vector_service.vectorize_with_docling_pipeline(
@@ -777,6 +821,18 @@ class FileService:
                         
                         try:
                             file_info = FileInfo(**file_info_data)
+                            # 전역 Docling 설정을 반영하여 처리 옵션 동적 업데이트
+                            # 전역 Docling 설정(ModelSettingsService) 기준으로 반영
+                            from .model_settings_service import ModelSettingsService
+                            model_settings_service = ModelSettingsService()
+                            docling_settings = await model_settings_service.get_docling_settings()
+                            docling_enabled = docling_settings.enabled
+
+                            if file_info.processing_options:
+                                file_info.processing_options.use_docling = docling_enabled
+                            else:
+                                file_info.processing_options = FileProcessingOptions(use_docling=docling_enabled)
+                            
                             files.append(file_info)
                             # 성공 로그 제거
                         except Exception as e:
@@ -1012,28 +1068,119 @@ class FileService:
             return {"error": str(e)}
     
     async def extract_text_from_pdf(self, file_path: str) -> str:
-        """PDF에서 텍스트를 추출합니다."""
+        """PDF에서 텍스트를 추출합니다 (pymupdf 사용 - 한글 폰트 매핑 최적화)."""
         try:
-            from pypdf import PdfReader
+            extracted_text = ""
             
-            text = ""
-            with open(file_path, 'rb') as file:
-                pdf_reader = PdfReader(file)
+            # 1) pymupdf 우선 사용 (한글 폰트 매핑에 가장 강력)
+            try:
+                import fitz  # pymupdf
+                print("📄 pymupdf로 PDF 텍스트 추출 시도...")
                 
-                for page_num, page in enumerate(pdf_reader.pages):
+                doc = fitz.open(file_path)
+                
+                for page_num in range(len(doc)):
                     try:
-                        page_text = page.extract_text()
+                        page = doc.load_page(page_num)
+                        
+                        # 텍스트 추출 (다양한 옵션으로 한글 처리 최적화)
+                        text_dict = page.get_text("dict")
+                        page_text = ""
+                        
+                        # 블록별로 텍스트 추출 (레이아웃 보존)
+                        for block in text_dict["blocks"]:
+                            if "lines" in block:  # 텍스트 블록
+                                for line in block["lines"]:
+                                    line_text = ""
+                                    for span in line["spans"]:
+                                        # 폰트 정보와 함께 텍스트 추출
+                                        span_text = span.get("text", "")
+                                        if span_text.strip():
+                                            line_text += span_text
+                                    if line_text.strip():
+                                        page_text += line_text + "\n"
+                                page_text += "\n"
+                        
+                        # 대체 방법: 간단한 텍스트 추출
+                        if not page_text.strip():
+                            page_text = page.get_text()
+                        
+                        # CID 코드 확인 및 처리
                         if page_text.strip():
-                            text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
+                            if "(cid:" not in page_text.lower():
+                                extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
+                                print(f"✅ 페이지 {page_num + 1} 텍스트 추출 성공")
+                            else:
+                                print(f"⚠️ 페이지 {page_num + 1}에서 CID 코드 감지 - OCR 방법 필요")
+                        
                     except Exception as e:
-                        print(f"페이지 {page_num + 1} 텍스트 추출 실패: {str(e)}")
+                        print(f"pymupdf 페이지 {page_num + 1} 추출 실패: {str(e)}")
                         continue
-            
-            return text.strip()
+                
+                doc.close()
+                
+                # pymupdf로 성공적으로 추출된 경우
+                if extracted_text.strip():
+                    print("✅ pymupdf로 텍스트 추출 성공")
+                    return extracted_text.strip()
+                else:
+                    print("⚠️ pymupdf 추출 결과가 비어있음 - 다른 방법 시도")
+                    
+            except ImportError:
+                print("❌ pymupdf 라이브러리가 설치되지 않음 - pip install pymupdf 필요")
+            except Exception as e:
+                print(f"pymupdf 추출 실패: {str(e)}")
+
+            # 2) pypdf 폴백
+            try:
+                from pypdf import PdfReader
+                print("📄 pypdf로 PDF 텍스트 추출 시도...")
+                
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PdfReader(file)
+                    for page_num, page in enumerate(pdf_reader.pages):
+                        try:
+                            page_text = page.extract_text() or ""
+                            if page_text.strip() and "(cid:" not in page_text.lower():
+                                extracted_text += f"[페이지 {page_num + 1}]\n{page_text}\n\n"
+                        except Exception as e:
+                            print(f"pypdf 페이지 {page_num + 1} 추출 실패: {str(e)}")
+                            continue
+                
+                if extracted_text.strip():
+                    print("✅ pypdf로 텍스트 추출 성공")
+                    return extracted_text.strip()
+                    
+            except Exception as e:
+                print(f"pypdf 추출 실패: {str(e)}")
+
+            # 3) pdfminer.six 마지막 폴백
+            try:
+                from pdfminer.high_level import extract_text as pdf_extract_text
+                print("📄 pdfminer.six로 PDF 텍스트 추출 시도...")
+                
+                text = pdf_extract_text(file_path) or ""
+                if text.strip():
+                    # CID 패턴 제거 및 대체
+                    import re
+                    # CID 코드를 적절한 텍스트로 대체
+                    text = re.sub(r'\(cid:\d+\)', '', text)
+                    text = re.sub(r'\s+', ' ', text)  # 공백 정리
+                    
+                    if text.strip():
+                        print("✅ pdfminer.six로 텍스트 추출 성공")
+                        return text.strip()
+                        
+            except Exception as e:
+                print(f"pdfminer.six 추출 실패: {str(e)}")
+
+            # 모든 방법 실패
+            print("❌ 모든 PDF 텍스트 추출 방법 실패")
+            return "⚠️ PDF에서 텍스트를 추출할 수 없습니다.\n\n이 PDF는 다음 중 하나일 수 있습니다:\n1. 이미지 기반 PDF (OCR 필요)\n2. 특수 폰트 인코딩 사용\n3. 보안 설정으로 텍스트 추출 제한\n\n해결책: Docling을 활성화하거나 OCR 처리를 사용해보세요."
             
         except Exception as e:
             print(f"PDF 텍스트 추출 중 오류: {str(e)}")
-            return ""
+            return f"⚠️ PDF 텍스트 추출 중 오류: {str(e)}"
 
     async def extract_text_from_office(self, file_path: str) -> str:
         """Office 파일(DOC, PPT, XLS)에서 텍스트를 추출합니다."""
@@ -1110,20 +1257,217 @@ class FileService:
             return f"⚠️ 파일 처리 중 오류가 발생했습니다: {str(e)}"
 
     async def extract_text_from_file(self, file_path: str) -> str:
-        """파일 확장자에 따라 적절한 텍스트 추출 방법을 선택합니다."""
+        """파일 확장자에 따라 적절한 텍스트 추출 방법을 선택합니다 (Docling 비활성화 시 사용)."""
         try:
             file_extension = os.path.splitext(file_path)[1].lower()
+            filename = os.path.basename(file_path)
             
+            print(f"📄 FileService 텍스트 추출 시작: {filename} ({file_extension})")
+            
+            # PDF 파일
             if file_extension == '.pdf':
+                print("📄 PDF 처리 - pymupdf + 다중 폴백 방식")
                 return await self.extract_text_from_pdf(file_path)
+            
+            # Office 파일들
             elif file_extension in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']:
+                print(f"📄 Office 파일 처리 - {file_extension}")
                 return await self.extract_text_from_office(file_path)
+            
+            # 텍스트 파일들
+            elif file_extension in ['.txt', '.md', '.csv']:
+                print(f"📝 텍스트 파일 처리 - {file_extension}")
+                return await self.extract_text_from_text_file(file_path)
+            
+            # HTML 파일들
+            elif file_extension in ['.html', '.htm']:
+                print(f"🌐 HTML 파일 처리 - {file_extension}")
+                return await self.extract_text_from_html(file_path)
+            
+            # JSON 파일
+            elif file_extension == '.json':
+                print("📋 JSON 파일 처리")
+                return await self.extract_text_from_json(file_path)
+            
+            # XML 파일
+            elif file_extension == '.xml':
+                print("🏷️ XML 파일 처리")
+                return await self.extract_text_from_xml(file_path)
+            
+            # 기타 텍스트로 읽기 시도
             else:
-                return f"⚠️ 지원되지 않는 파일 형식입니다: {file_extension}"
+                print(f"❓ 알 수 없는 형식 ({file_extension}) - 텍스트로 읽기 시도")
+                return await self.extract_text_from_unknown(file_path)
                 
         except Exception as e:
-            print(f"파일 텍스트 추출 중 오류: {str(e)}")
-            return f"⚠️ 파일 처리 중 오류가 발생했습니다: {str(e)}"
+            print(f"❌ FileService 텍스트 추출 실패: {str(e)}")
+            return f"⚠️ 텍스트 추출 실패: {str(e)}"
+    
+    async def extract_text_from_text_file(self, file_path: str) -> str:
+        """텍스트 파일에서 텍스트를 추출합니다 (한글 인코딩 처리 포함)."""
+        try:
+            # UTF-8 우선 시도
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                print("✅ UTF-8 인코딩으로 읽기 성공")
+                return content.strip()
+            except UnicodeDecodeError:
+                pass
+            
+            # CP949 (한글 인코딩) 시도
+            try:
+                with open(file_path, 'r', encoding='cp949') as f:
+                    content = f.read()
+                print("✅ CP949 인코딩으로 읽기 성공")
+                return content.strip()
+            except UnicodeDecodeError:
+                pass
+            
+            # EUC-KR 시도
+            try:
+                with open(file_path, 'r', encoding='euc-kr') as f:
+                    content = f.read()
+                print("✅ EUC-KR 인코딩으로 읽기 성공")
+                return content.strip()
+            except UnicodeDecodeError:
+                pass
+            
+            # Latin-1 폴백 (바이너리 데이터도 읽음)
+            with open(file_path, 'r', encoding='latin-1') as f:
+                content = f.read()
+            print("⚠️ Latin-1 폴백 인코딩 사용")
+            return content.strip()
+                
+        except Exception as e:
+            print(f"텍스트 파일 읽기 실패: {str(e)}")
+            return f"⚠️ 텍스트 파일 읽기 실패: {str(e)}"
+    
+    async def extract_text_from_html(self, file_path: str) -> str:
+        """HTML 파일에서 텍스트를 추출합니다."""
+        try:
+            # BeautifulSoup 사용 시도
+            try:
+                from bs4 import BeautifulSoup
+                
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                
+                soup = BeautifulSoup(html_content, 'html.parser')
+                # 스크립트와 스타일 태그 제거
+                for script in soup(["script", "style"]):
+                    script.extract()
+                
+                text = soup.get_text()
+                # 줄바꿈 정리
+                lines = (line.strip() for line in text.splitlines())
+                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                text = '\n'.join(chunk for chunk in chunks if chunk)
+                
+                print("✅ BeautifulSoup으로 HTML 파싱 완료")
+                return text
+                
+            except ImportError:
+                print("⚠️ BeautifulSoup이 설치되지 않음. 직접 읽기로 대체")
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+                    
+        except Exception as e:
+            print(f"HTML 파일 처리 실패: {str(e)}")
+            return f"⚠️ HTML 파일 처리 실패: {str(e)}"
+    
+    async def extract_text_from_json(self, file_path: str) -> str:
+        """JSON 파일을 텍스트로 변환합니다."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # JSON을 보기 좋은 텍스트로 변환
+            text_content = json.dumps(data, ensure_ascii=False, indent=2)
+            print("✅ JSON 파일 처리 완료")
+            return text_content
+            
+        except Exception as e:
+            print(f"JSON 파일 처리 실패: {str(e)}")
+            # JSON 파싱이 실패하면 텍스트로 읽기
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+            except:
+                return f"⚠️ JSON 파일 처리 실패: {str(e)}"
+    
+    async def extract_text_from_xml(self, file_path: str) -> str:
+        """XML 파일에서 텍스트를 추출합니다."""
+        try:
+            # xml.etree 사용 시도
+            try:
+                import xml.etree.ElementTree as ET
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+                
+                def extract_text_from_element(element):
+                    text_parts = []
+                    if element.text:
+                        text_parts.append(element.text.strip())
+                    for child in element:
+                        text_parts.extend(extract_text_from_element(child))
+                        if child.tail:
+                            text_parts.append(child.tail.strip())
+                    return [part for part in text_parts if part]
+                
+                all_texts = extract_text_from_element(root)
+                text = '\n'.join(all_texts)
+                print("✅ XML 파싱으로 텍스트 추출 완료")
+                return text
+                
+            except Exception as xml_error:
+                print(f"XML 파싱 실패: {xml_error}. 직접 읽기로 대체")
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+                    
+        except Exception as e:
+            print(f"XML 파일 처리 실패: {str(e)}")
+            return f"⚠️ XML 파일 처리 실패: {str(e)}"
+    
+    async def extract_text_from_unknown(self, file_path: str) -> str:
+        """알 수 없는 파일 형식을 텍스트로 읽기 시도합니다."""
+        try:
+            # 먼저 텍스트로 읽기 시도
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if content.strip():
+                    print("✅ 알 수 없는 파일을 텍스트로 성공적으로 읽음")
+                    return content.strip()
+            except UnicodeDecodeError:
+                pass
+            
+            # CP949로 시도
+            try:
+                with open(file_path, 'r', encoding='cp949') as f:
+                    content = f.read()
+                if content.strip():
+                    print("✅ 알 수 없는 파일을 CP949로 성공적으로 읽음")
+                    return content.strip()
+            except UnicodeDecodeError:
+                pass
+            
+            # 바이너리로 읽고 텍스트 부분만 추출
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+            
+            # UTF-8로 디코드 시도 (오류 무시)
+            content = raw_data.decode('utf-8', errors='ignore')
+            
+            if content.strip():
+                print("✅ 바이너리에서 텍스트 부분 추출 완료")
+                return content.strip()
+            else:
+                return "⚠️ 파일에서 읽을 수 있는 텍스트가 없습니다."
+                
+        except Exception as e:
+            print(f"알 수 없는 파일 처리 실패: {str(e)}")
+            return f"⚠️ 파일 처리 실패: {str(e)}"
     
     async def chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
         """텍스트를 청크로 분할합니다."""

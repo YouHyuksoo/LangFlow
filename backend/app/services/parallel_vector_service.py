@@ -16,7 +16,7 @@ from functools import lru_cache
 import logging
 
 from ..core.config import settings
-from .vector_service import VectorService
+from .vector_service import VectorService, _create_embedding_function
 from .cache_manager import get_cache_manager
 
 
@@ -46,11 +46,8 @@ class ParallelVectorService:
         self.logger = logging.getLogger(__name__)
         self.base_service = VectorService()
         
-        # 병렬 처리 설정
-        self.max_concurrent_embeddings = settings.MAX_CONCURRENT_EMBEDDINGS
-        self.max_concurrent_chunks = settings.MAX_CONCURRENT_CHUNKS
-        self.embedding_pool_size = settings.EMBEDDING_POOL_SIZE
-        self.chunk_buffer_size = settings.CHUNK_STREAM_BUFFER_SIZE
+        # 동적 성능 설정 로드
+        self._load_performance_settings()
         
         # 세마포어로 동시성 제어
         self.embedding_semaphore = asyncio.Semaphore(self.max_concurrent_embeddings)
@@ -74,12 +71,45 @@ class ParallelVectorService:
         
         self.logger.info(f"ParallelVectorService 초기화 완료 - 동시 임베딩: {self.max_concurrent_embeddings}, 청크: {self.max_concurrent_chunks}")
     
+    def _load_performance_settings(self):
+        """시스템 설정에서 성능 최적화 설정을 로드합니다."""
+        try:
+            # 시스템 설정 로드 시도
+            from ..api.settings import load_settings
+            system_settings = load_settings()
+            
+            # 성능 설정 적용 (설정 값이 있으면 사용, 없으면 기본값 사용)
+            self.max_concurrent_embeddings = system_settings.get("maxConcurrentEmbeddings", settings.MAX_CONCURRENT_EMBEDDINGS)
+            self.max_concurrent_chunks = system_settings.get("maxConcurrentChunks", settings.MAX_CONCURRENT_CHUNKS)
+            self.embedding_pool_size = system_settings.get("embeddingPoolSize", settings.EMBEDDING_POOL_SIZE)
+            self.chunk_buffer_size = system_settings.get("chunkStreamBufferSize", settings.CHUNK_STREAM_BUFFER_SIZE)
+            self.connection_pool_size = system_settings.get("connectionPoolSize", settings.CONNECTION_POOL_SIZE)
+            self.cache_ttl_seconds = system_settings.get("cacheTtlSeconds", settings.CACHE_TTL_SECONDS)
+            self.enable_parallel = system_settings.get("enableParallelProcessing", True)
+            self.enable_streaming = system_settings.get("enableStreamingChunks", True)
+            self.enable_caching = system_settings.get("enableSmartCaching", True)
+            
+            print(f"🔧 동적 성능 설정 적용: 임베딩={self.max_concurrent_embeddings}, 청크={self.max_concurrent_chunks}, 병렬={self.enable_parallel}")
+            
+        except Exception as e:
+            # 설정 로드 실패 시 기본값 사용
+            print(f"⚠️ 성능 설정 로드 실패, 기본값 사용: {str(e)}")
+            self.max_concurrent_embeddings = settings.MAX_CONCURRENT_EMBEDDINGS
+            self.max_concurrent_chunks = settings.MAX_CONCURRENT_CHUNKS
+            self.embedding_pool_size = settings.EMBEDDING_POOL_SIZE
+            self.chunk_buffer_size = settings.CHUNK_STREAM_BUFFER_SIZE
+            self.connection_pool_size = settings.CONNECTION_POOL_SIZE
+            self.cache_ttl_seconds = settings.CACHE_TTL_SECONDS
+            self.enable_parallel = True
+            self.enable_streaming = True
+            self.enable_caching = True
+    
     async def _get_embedding_function(self):
         """임베딩 함수 풀에서 함수 가져오기 (연결 풀링)"""
         with self._embedding_pool_lock:
             if len(self.embedding_pool) < self.embedding_pool_size:
                 # 새 임베딩 함수 생성
-                embedding_func = await self.base_service._create_embedding_function()
+                embedding_func = await _create_embedding_function()
                 self.embedding_pool.append(embedding_func)
                 self.logger.debug(f"새 임베딩 함수 생성 - 풀 크기: {len(self.embedding_pool)}")
                 return embedding_func

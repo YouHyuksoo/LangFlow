@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CategorySelector } from "@/components/category-selector";
-import { categoryAPI, settingsAPI } from "@/lib/api";
+import { categoryAPI, settingsAPI, doclingAPI } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -44,6 +44,7 @@ export function FileUpload({
   );
   const [hasCalledOnLoadFiles, setHasCalledOnLoadFiles] = useState(false);
   const [maxFileSize, setMaxFileSize] = useState<number>(10); // MB, 기본값 10MB
+  const [isDoclingEnabled, setIsDoclingEnabled] = useState<boolean>(false);
 
   // 설정 로드
   useEffect(() => {
@@ -51,6 +52,8 @@ export function FileUpload({
       try {
         const settings = await settingsAPI.getSettings();
         setMaxFileSize(settings.maxFileSize);
+        const doclingSettings = await doclingAPI.getDoclingSettings();
+        setIsDoclingEnabled(doclingSettings.enabled);
       } catch (error) {
         console.error("설정 로드 실패:", error);
         // 에러가 발생해도 기본값(10MB) 사용
@@ -202,7 +205,7 @@ export function FileUpload({
           <CategorySelector
             selectedCategories={selectedCategories}
             onCategoryChange={handleCategoryChange}
-            showDocumentCount={false}
+            showDocumentCount={true}
             multiSelect={true}
           />
 
@@ -238,7 +241,12 @@ export function FileUpload({
       {/* 파일 업로드 영역 */}
       <Card className={selectedCategories.length === 0 ? "opacity-50" : ""}>
         <CardHeader>
-          <CardTitle>문서 업로드</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>문서 업로드</CardTitle>
+            <Badge variant={isDoclingEnabled ? "default" : "destructive"}>
+              Docling {isDoclingEnabled ? "활성화" : "비활성화"}
+            </Badge>
+          </div>
           <CardDescription>
             {selectedCategories.length > 0
               ? "PDF, DOC, PPT, XLS 파일을 드래그하거나 클릭하여 업로드하세요"

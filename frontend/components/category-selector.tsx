@@ -544,7 +544,7 @@ export function CategorySelector({
 
       {/* 다중 선택 모드 (버튼 그리드) */}
       {multiSelect && (
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {categories.map((category) => {
             const isSelected = selectedCategories.includes(
               category.category_id
@@ -557,24 +557,34 @@ export function CategorySelector({
               <Button
                 key={category.category_id}
                 variant="outline"
-                size="sm"
-                className={`h-auto px-2.5 py-1.5 flex items-center justify-start space-x-2 transition-all duration-200 ease-in-out transform hover:scale-105 ${
+                size="default"
+                className={`h-auto px-3 py-2 flex items-center justify-between space-x-2 transition-all duration-200 ease-in-out transform hover:scale-105 ${
                   isSelected
                     ? `${colorClass} text-white shadow-md hover:brightness-110 border-transparent`
                     : `bg-muted/50 hover:bg-muted`
                 }`}
                 onClick={() => handleCategoryToggle(category.category_id)}
               >
-                <IconComponent className={`h-4 w-4 flex-shrink-0 ${
-                    isSelected ? 'text-white' : textColorClass
-                  }`} 
-                />
-                <span className={`text-xs font-medium truncate ${
-                    isSelected ? 'text-white' : 'text-foreground'
-                  }`}
-                >
-                  {category.name}
-                </span>
+                <div className="flex items-center space-x-2 truncate">
+                  <IconComponent className={`h-4 w-4 flex-shrink-0 ${
+                      isSelected ? 'text-white' : textColorClass
+                    }`}
+                  />
+                  <span className={`text-sm font-medium truncate ${
+                      isSelected ? 'text-white' : 'text-foreground'
+                    }`}
+                  >
+                    {category.name}
+                  </span>
+                </div>
+                {showDocumentCount && (
+                  <Badge
+                    variant={isSelected ? "default" : "secondary"}
+                    className="text-xs flex-shrink-0"
+                  >
+                    {categoryStats[category.category_id]?.document_count || 0}개
+                  </Badge>
+                )}
               </Button>
             );
           })}

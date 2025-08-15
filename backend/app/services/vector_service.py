@@ -3,6 +3,7 @@ import json
 import asyncio
 import time
 import threading
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from ..core.config import settings
@@ -35,60 +36,116 @@ class EmbeddingFunction:
         self.base_function = base_function
         self.expected_dimension = expected_dimension
     
-    def __call__(self, text: str) -> List[float]:
+    def __call__(self, input: List[str]) -> List[List[float]]:
         """
-        텍스트를 임베딩으로 변환하고 일관된 형식으로 반환
+        텍스트를 임베딩으로 변환하고 일관된 형식으로 반환 (ChromaDB 0.4.16+ 인터페이스)
         
         Args:
-            text: 변환할 텍스트
+            input: 변환할 텍스트 리스트
             
         Returns:
-            List[float]: 정규화된 임베딩 벡터
+            List[List[float]]: 정규화된 임베딩 벡터 리스트
             
         Raises:
             ValueError: 임베딩 차원이 예상과 다를 때
         """
         try:
-            # 기본 함수로 임베딩 생성
-            result = self.base_function(text)
+            print(f"🔄 임베딩 함수 호출 - 입력 텍스트 수: {len(input)}")
+            print(f"🔍 입력 데이터 타입: {type(input)}")
             
-            # 타입별 정규화
-            normalized_embedding = self._normalize_embedding(result)
+            # 입력 검증
+            if not input or len(input) == 0:
+                raise ValueError("입력 텍스트가 비어있습니다")
+            
+            # 배치로 임베딩 생성 (더 효율적)
+            if len(input) > 1:
+                print(f"📦 배치 임베딩 생성 중... ({len(input)}개)")
+                result = self.base_function(input)
+                print(f"✅ 배치 임베딩 생성 완료")
+                print(f"🔍 API 응답 타입: {type(result)}")
+            else:
+                print(f"🔍 단일 임베딩 생성 중...")
+                result = self.base_function(input)
+                print(f"✅ 단일 임베딩 생성 완료")
+                print(f"🔍 API 응답 타입: {type(result)}")
+            
+            # 타입별 정규화 (항상 List[List[float]] 반환)
+            normalized_embeddings = self._normalize_embedding(result)
             
             # 차원 검증
-            if len(normalized_embedding) != self.expected_dimension:
-                raise ValueError(
-                    f"임베딩 차원 불일치: 예상 {self.expected_dimension}, "
-                    f"실제 {len(normalized_embedding)}"
-                )
+            for i, embedding in enumerate(normalized_embeddings):
+                if len(embedding) != self.expected_dimension:
+                    raise ValueError(
+                        f"임베딩 차원 불일치 (인덱스 {i}): 예상 {self.expected_dimension}, "
+                        f"실제 {len(embedding)}"
+                    )
             
-            return normalized_embedding
+            print(f"✅ 임베딩 정규화 및 검증 완료 - {len(normalized_embeddings)}개 벡터")
+            return normalized_embeddings
             
         except Exception as e:
-            print(f"임베딩 생성 실패: {e}")
-            # 예외 시 0벡터 반환
-            return [0.0] * self.expected_dimension
+            print(f"❌ 임베딩 생성 실패: {e}")
+            print(f"🔍 에러 타입: {type(e).__name__}")
+            import traceback
+            print(f"🔍 상세 에러: {traceback.format_exc()}")
+            raise e  # 에러를 다시 throw하여 상위에서 처리
     
-    def _normalize_embedding(self, embedding: Any) -> List[float]:
-        """다양한 타입의 임베딩을 List[float]로 정규화"""
+    def _normalize_embedding(self, embedding: Any) -> List[List[float]]:
+        """다양한 타입의 임베딩을 List[List[float]]로 정규화"""
+        print(f"🔍 임베딩 정규화 시작 - 타입: {type(embedding)}")
+        print(f"🔍 임베딩 내용: {str(embedding)[:200]}...")  # 디버깅용
+        
+        # None 또는 빈 값 체크
+        if embedding is None:
+            print("❌ 임베딩이 None입니다")
+            raise TypeError("임베딩이 None입니다")
         
         # numpy array 처리
         if hasattr(embedding, 'tolist'):
-            return embedding.tolist()
+            result = embedding.tolist()
+            # 2차원인지 확인
+            if len(result) > 0 and isinstance(result[0], list):
+                print(f"✅ numpy array 2차원 정규화 완료 - {len(result)}개 벡터")
+                return [[float(x) for x in vec] for vec in result]
+            else:
+                print(f"✅ numpy array 1차원 정규화 완료 - 2차원으로 변환")
+                return [[float(x) for x in result]]
         
-        # 중첩된 리스트/배열 처리 [[...]] -> [...]
-        if isinstance(embedding, (list, tuple)) and len(embedding) == 1:
-            inner = embedding[0]
-            if hasattr(inner, 'tolist'):
-                return inner.tolist()
-            elif isinstance(inner, (list, tuple)):
-                return [float(x) for x in inner]
-        
-        # 단순 리스트/튜플 처리
-        if isinstance(embedding, (list, tuple)):
-            return [float(x) for x in embedding]
+        # 리스트 처리
+        if isinstance(embedding, list):
+            # 빈 리스트 체크
+            if len(embedding) == 0:
+                print("❌ 빈 임베딩 리스트")
+                raise TypeError("빈 임베딩 리스트")
+            
+            # 첫 번째 요소가 리스트인지 확인 (2차원)
+            if isinstance(embedding[0], list):
+                print(f"✅ 2차원 리스트 정규화 완료 - {len(embedding)}개 벡터")
+                return [[float(x) for x in vec] for vec in embedding]
+            
+            # 첫 번째 요소가 숫자인지 확인 (1차원)
+            elif isinstance(embedding[0], (int, float)):
+                print(f"✅ 1차원 리스트 정규화 완료 - 2차원으로 변환")
+                return [[float(x) for x in embedding]]
+            
+            # 첫 번째 요소가 numpy array인 경우
+            elif hasattr(embedding[0], 'tolist'):
+                print(f"✅ 리스트 내 numpy array 정규화 중... - {len(embedding)}개 벡터")
+                return [arr.tolist() for arr in embedding]
+            
+            # 첫 번째 요소가 다른 타입인 경우 (예: 문자열, 객체 등)
+            else:
+                print(f"❌ 리스트의 첫 번째 요소가 지원하지 않는 타입: {type(embedding[0])}")
+                print(f"🔍 첫 번째 요소 내용: {embedding[0]}")
+                # ChromaDB OpenAI 함수의 특별한 응답 형식 확인
+                if hasattr(embedding[0], '__dict__'):
+                    print(f"🔍 객체 속성: {vars(embedding[0])}")
+                raise TypeError(f"리스트의 첫 번째 요소가 지원하지 않는 타입: {type(embedding[0])}")
         
         # 그 외의 경우 오류 발생
+        print(f"❌ 지원하지 않는 임베딩 타입: {type(embedding)}")
+        if hasattr(embedding, '__dict__'):
+            print(f"🔍 객체 속성: {vars(embedding)}")
         raise TypeError(f"지원하지 않는 임베딩 타입: {type(embedding)}")
 
 async def _create_embedding_function() -> Union[EmbeddingFunction, None]:
@@ -107,13 +164,22 @@ async def _create_embedding_function() -> Union[EmbeddingFunction, None]:
         print(f"임베딩 함수 생성: {provider} - {model} ({dimension}차원)")
         
         if provider == "openai" and api_key:
-            from chromadb.utils import embedding_functions
-            base_function = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=api_key,
-                model_name=model,
-                dimensions=dimension  # OpenAI 차원 설정
-            )
-            return EmbeddingFunction(base_function, dimension)
+            try:
+                from chromadb.utils import embedding_functions
+                print(f"🔑 OpenAI API 키 길이: {len(api_key)} 문자")
+                print(f"🔑 API 키 시작: {api_key[:10]}...")
+                
+                base_function = embedding_functions.OpenAIEmbeddingFunction(
+                    api_key=api_key,
+                    model_name=model,
+                    dimensions=dimension  # OpenAI 차원 설정
+                )
+                print(f"✅ OpenAI 임베딩 함수 생성 성공")
+                return EmbeddingFunction(base_function, dimension)
+            except Exception as openai_error:
+                print(f"❌ OpenAI 임베딩 함수 생성 실패: {str(openai_error)}")
+                print(f"🔍 에러 타입: {type(openai_error).__name__}")
+                return None
             
         elif provider == "google" and api_key:
             # Google 임베딩 함수 (향후 확장)
@@ -165,7 +231,7 @@ class VectorService:
             # Docling 서비스 초기화
             self.docling_service = DoclingService()
             
-            # SQLite 메타데이터 서비스 초기화
+            # SQLite 메타데이터 서비스 초기화 (지연 사용)
             self.metadata_service = VectorMetadataService()
             
             # 지연 초기화 - 실제 벡터화 작업에서만 ChromaDB 연결을 수행
@@ -343,18 +409,29 @@ class VectorService:
         
         try:
             # 메모리 부족을 방지하기 위해 청크를 배치로 처리
-            batch_size = settings.BATCH_SIZE  # 설정에서 배치 크기 가져오기
+            initial_batch_size = settings.BATCH_SIZE  # 설정에서 배치 크기 가져오기
             total_chunks = len(chunks)
             
-            print(f"ChromaDB에 {total_chunks}개 청크를 {batch_size}개씩 배치 처리합니다.")
+            # 임베딩 생성 시에는 더 작은 배치 크기 사용 (안정성 향상)
+            batch_size = min(initial_batch_size, 5)  # 최대 5개씩 처리
+            
+            print(f"ChromaDB에 {total_chunks}개 청크를 {batch_size}개씩 배치 처리합니다. (임베딩 안정성을 위해 배치 크기 조정)")
             
             for batch_start in range(0, total_chunks, batch_size):
                 batch_end = min(batch_start + batch_size, total_chunks)
                 batch_chunks = chunks[batch_start:batch_end]
                 
                 print(f"배치 처리 중: {batch_start + 1}-{batch_end}/{total_chunks}")
+                print(f"🔍 ChromaDB 클라이언트 상태 확인 중...")
+                
+                # ChromaDB 상태 확인
+                await self._ensure_client()
+                if not VectorService._collection:
+                    raise RuntimeError("ChromaDB 컬렉션을 초기화할 수 없습니다.")
+                print(f"✅ ChromaDB 클라이언트 준비 완료")
                 
                 # 배치의 각 청크에 고유 ID 생성
+                print(f"📝 배치 데이터 준비 중... ({len(batch_chunks)}개 청크)")
                 chunk_ids = []
                 chunk_texts = []
                 chunk_metadatas = []
@@ -392,12 +469,87 @@ class VectorService:
                     else:
                         # 임베딩 생성하여 저장
                         print(f"배치 {batch_start + 1}-{batch_end} 임베딩 생성 중...")
-                        chunk_embeddings = []
                         
-                        for chunk_text in chunk_texts:
-                            # EmbeddingFunction 래퍼가 모든 타입 변환과 오류 처리를 담당
-                            embedding = await asyncio.to_thread(embedding_function, chunk_text.strip())
-                            chunk_embeddings.append(embedding)
+                        # 배치 단위로 임베딩 생성 (타임아웃과 재시도 포함)
+                        batch_texts = [chunk_text.strip() for chunk_text in chunk_texts]
+                        
+                        try:
+                            # 임베딩 생성 (60초 타임아웃)
+                            print(f"📡 OpenAI API 호출 시작... (배치 크기: {len(batch_texts)}, 최대 60초 대기)")
+                            print(f"🔍 API 키 확인: {'있음' if embedding_function.base_function.api_key else '없음'}")
+                            print(f"🔍 모델: {embedding_function.base_function.model_name}")
+                            print(f"🔍 차원: {embedding_function.expected_dimension}")
+                            
+                            # 임베딩 생성 전 추가 상태 체크
+                            start_time = time.time()
+                            print(f"⏱️ 임베딩 생성 시작: {start_time}")
+                            
+                            # 첫 번째 배치인 경우 연결 테스트
+                            if batch_start == 0:
+                                print("🧪 첫 번째 배치 - 연결 테스트 실행 중...")
+                                try:
+                                    test_embedding = await asyncio.wait_for(
+                                        asyncio.to_thread(embedding_function, ["연결 테스트"]),
+                                        timeout=30.0
+                                    )
+                                    print(f"✅ 연결 테스트 성공 (임베딩 차원: {len(test_embedding[0])})")
+                                except Exception as test_error:
+                                    print(f"❌ 연결 테스트 실패: {str(test_error)}")
+                                    raise test_error
+                            
+                            chunk_embeddings = await asyncio.wait_for(
+                                asyncio.to_thread(embedding_function, batch_texts),
+                                timeout=60.0
+                            )
+                            
+                            end_time = time.time()
+                            elapsed = end_time - start_time
+                            print(f"✅ 배치 {batch_start + 1}-{batch_end} 임베딩 생성 완료 (소요시간: {elapsed:.2f}초)")
+                            
+                        except asyncio.TimeoutError:
+                            print(f"⏰ 배치 {batch_start + 1}-{batch_end} 임베딩 생성 타임아웃 (60초) - 점진적 재시도 중...")
+                            
+                            # 점진적 재시도: 배치 크기를 절반으로 줄여서 재시도
+                            if len(batch_texts) > 1:
+                                print(f"🔄 배치 크기 축소 재시도 (크기: {len(batch_texts)} -> {len(batch_texts)//2})")
+                                mid_point = len(batch_texts) // 2
+                                chunk_embeddings = []
+                                
+                                # 첫 번째 절반 처리
+                                try:
+                                    first_half = await asyncio.wait_for(
+                                        asyncio.to_thread(embedding_function, batch_texts[:mid_point]),
+                                        timeout=45.0
+                                    )
+                                    chunk_embeddings.extend(first_half)
+                                    print(f"✅ 첫 번째 절반 완료 ({mid_point}개)")
+                                except Exception as first_error:
+                                    print(f"❌ 첫 번째 절반 실패: {str(first_error)}")
+                                    raise first_error
+                                
+                                # 두 번째 절반 처리
+                                try:
+                                    second_half = await asyncio.wait_for(
+                                        asyncio.to_thread(embedding_function, batch_texts[mid_point:]),
+                                        timeout=45.0
+                                    )
+                                    chunk_embeddings.extend(second_half)
+                                    print(f"✅ 두 번째 절반 완료 ({len(batch_texts) - mid_point}개)")
+                                except Exception as second_error:
+                                    print(f"❌ 두 번째 절반 실패: {str(second_error)}")
+                                    raise second_error
+                            else:
+                                # 단일 청크인 경우 더 긴 타임아웃으로 재시도
+                                print(f"🔄 단일 청크 재시도 (90초 타임아웃)")
+                                chunk_embeddings = await asyncio.wait_for(
+                                    asyncio.to_thread(embedding_function, batch_texts),
+                                    timeout=90.0
+                                )
+                                    
+                        except Exception as embed_error:
+                            print(f"❌ 배치 {batch_start + 1}-{batch_end} 임베딩 생성 실패: {str(embed_error)}")
+                            print(f"🔍 오류 상세: {type(embed_error).__name__}")
+                            raise embed_error
                         
                         # ChromaDB에 배치 추가 (임베딩 포함)
                         VectorService._collection.add(
@@ -1055,9 +1207,17 @@ class VectorService:
             print(f"💾 ChromaDB에 벡터 저장 시작... ({len(chunks)}개 청크)")
             vector_start_time = time.time()
             
-            if use_parallel and len(chunks) > settings.BATCH_SIZE * 2:
+            # 시스템 설정에서 병렬 처리 활성화 여부 확인
+            try:
+                from ..api.settings import load_settings
+                system_settings = load_settings()
+                parallel_enabled = system_settings.get("enableParallelProcessing", True)
+            except:
+                parallel_enabled = True
+                
+            if use_parallel and parallel_enabled and len(chunks) > settings.BATCH_SIZE * 2:
                 # 병렬 처리 적용 (큰 파일에만)
-                print(f"🚀 병렬 벡터화 모드 적용 - {len(chunks)}개 청크")
+                print(f"🚀 병렬 벡터화 모드 적용 - {len(chunks)}개 청크 (설정에서 활성화됨)")
                 try:
                     from .parallel_vector_service import get_parallel_vector_service
                     parallel_service = get_parallel_vector_service()
@@ -1183,46 +1343,67 @@ class VectorService:
             return chunks
     
     async def _smart_markdown_chunking(self, content: str, chunk_size: int, overlap_size: int) -> List[str]:
-        """Markdown 형식에 최적화된 스마트 청킹"""
+        """Markdown 형식에 최적화된 스마트 청킹 (개선된 버전)"""
         chunks = []
         
-        # Markdown 섹션별로 분할
-        sections = content.split('\n## ')
+        # Markdown 헤더(##, ###, #### 등)를 기준으로 섹션 분할
+        # 헤더 자체를 유지하기 위해 정규식의 캡처 그룹 사용
+        # 헤더가 없는 긴 텍스트도 처리하기 위해 문단 분할을 기본으로 사용
         
-        for i, section in enumerate(sections):
-            if i > 0:  # 첫 번째 섹션이 아니면 헤더 복원
-                section = '## ' + section
-            
-            if len(section) <= chunk_size:
-                # 섹션이 청크 크기보다 작으면 그대로 사용
-                chunks.append(section.strip())
-            else:
-                # 섹션이 큰 경우 하위 분할
-                subsections = section.split('\n### ')
-                current_chunk = ""
-                
-                for j, subsection in enumerate(subsections):
-                    if j > 0:
-                        subsection = '### ' + subsection
-                    
-                    if len(current_chunk + subsection) <= chunk_size:
-                        current_chunk += ('\n' if current_chunk else '') + subsection
-                    else:
-                        if current_chunk:
-                            chunks.append(current_chunk.strip())
-                        
-                        # 서브섹션도 큰 경우 텍스트 청킹
-                        if len(subsection) > chunk_size:
-                            text_chunks = await self._smart_text_chunking(subsection, chunk_size, overlap_size)
-                            chunks.extend(text_chunks)
-                            current_chunk = ""
-                        else:
-                            current_chunk = subsection
-                
+        all_paragraphs = content.split('\n\n')
+        current_chunk = ""
+
+        for paragraph in all_paragraphs:
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+
+            # 현재 청크에 문단을 추가할 수 있는지 확인
+            if len(current_chunk) + len(paragraph) + 2 <= chunk_size:
                 if current_chunk:
-                    chunks.append(current_chunk.strip())
+                    current_chunk += "\n\n" + paragraph
+                else:
+                    current_chunk = paragraph
+            else:
+                # 현재 청크를 저장
+                if current_chunk:
+                    chunks.append(current_chunk)
+                
+                # 문단 자체가 청크 크기보다 큰 경우, 문장 단위로 재분할
+                if len(paragraph) > chunk_size:
+                    sentence_chunks = await self._split_long_paragraph(paragraph, chunk_size, overlap_size)
+                    chunks.extend(sentence_chunks)
+                    current_chunk = "" # 다음 문단을 새 청크에서 시작
+                else:
+                    current_chunk = paragraph
+
+        # 마지막 남은 청크 저장
+        if current_chunk:
+            chunks.append(current_chunk)
         
         return [chunk for chunk in chunks if chunk.strip()]
+
+    async def _split_long_paragraph(self, paragraph: str, chunk_size: int, overlap_size: int) -> List[str]:
+        """긴 문단을 문장 단위로 분할하는 헬퍼 함수"""
+        sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+        chunks = []
+        current_chunk = ""
+
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) + 1 <= chunk_size:
+                if current_chunk:
+                    current_chunk += " " + sentence
+                else:
+                    current_chunk = sentence
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = sentence
+        
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
     
     async def _smart_text_chunking(self, content: str, chunk_size: int, overlap_size: int) -> List[str]:
         """텍스트에 대한 스마트 청킹 (문단 경계 고려)"""
@@ -1349,80 +1530,110 @@ class VectorService:
         return unique_chunks
     
     async def _fallback_text_processing(self, file_path: str, file_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Docling을 사용할 수 없을 때의 폴백 처리"""
+        """Docling 비활성화 시 또는 사용할 수 없을 때의 기본 텍스트 처리"""
         try:
-            print(f"📄 기본 텍스트 처리로 진행: {file_path}")
-            
-            # 파일 확장자에 따른 텍스트 추출
             import os
             file_extension = os.path.splitext(file_path)[1].lower()
+            filename = os.path.basename(file_path)
             
-            if file_extension == '.pdf':
-                # PDF 파일 처리 - FileService의 extract_text_from_pdf 사용
-                from .file_service import FileService
-                file_service = FileService()
-                content = await file_service.extract_text_from_pdf(file_path)
-            elif file_extension in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']:
-                # Office 파일 처리
-                from .file_service import FileService
-                file_service = FileService()
-                content = await file_service.extract_text_from_office(file_path)
-            else:
-                # 텍스트 파일 처리 (txt, md 등)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                except UnicodeDecodeError:
-                    # UTF-8로 읽을 수 없으면 다른 인코딩 시도
-                    try:
-                        with open(file_path, 'r', encoding='cp949') as f:
-                            content = f.read()
-                    except:
-                        with open(file_path, 'r', encoding='latin-1') as f:
-                            content = f.read()
+            print(f"📄 기본 텍스트 처리 시작: {filename} ({file_extension})")
+            start_time = time.time()
             
+            # FileService 통합 텍스트 추출 사용 (한글 처리에 최적화된 방식)
+            from .file_service import FileService
+            file_service = FileService()
+            
+            # 모든 파일 형식을 FileService에서 처리
+            print(f"📄 FileService 통합 텍스트 추출 사용: {file_extension}")
+            content = await file_service.extract_text_from_file(file_path)
+            
+            processing_time = time.time() - start_time
+            
+            # 추출 결과 검증
             if not content or content.strip() == "":
                 return {
                     "success": False,
-                    "error": "파일에서 텍스트를 추출할 수 없습니다.",
-                    "chunks_count": 0
+                    "error": f"파일에서 텍스트를 추출할 수 없습니다. ({file_extension})",
+                    "chunks_count": 0,
+                    "processing_method": "basic_text",
+                    "processing_time": processing_time
                 }
             
-            # 기본 청킹 (설정값 사용)
-            chunks = await self._smart_text_chunking(content, settings.DEFAULT_CHUNK_SIZE, settings.DEFAULT_CHUNK_OVERLAP)
+            print(f"✅ 텍스트 추출 완료: {len(content):,}자 ({processing_time:.2f}초 소요)")
+            
+            # 스마트 청킹 (설정값 사용)
+            chunks = await self._smart_text_chunking(
+                content, 
+                settings.DEFAULT_CHUNK_SIZE, 
+                settings.DEFAULT_CHUNK_OVERLAP
+            )
             
             if not chunks:
                 return {
                     "success": False,
                     "error": "유효한 청크를 생성할 수 없습니다.",
-                    "chunks_count": 0
+                    "chunks_count": 0,
+                    "processing_method": "basic_text",
+                    "processing_time": processing_time
                 }
+            
+            print(f"📝 청킹 완료: {len(chunks)}개 청크 생성")
             
             # 메타데이터 업데이트
             fallback_metadata = {
                 **metadata,
-                "processing_method": "basic_text",
-                "processing_time": 0.1,
-                "file_type": file_extension
+                "processing_method": "basic_text_optimized",
+                "processing_time": processing_time,
+                "file_type": file_extension,
+                "text_extraction_method": self._get_extraction_method_name(file_extension)
             }
             
             # 벡터 저장
+            print("💾 벡터 데이터베이스에 저장 중...")
             success = await self.add_document_chunks(file_id, chunks, fallback_metadata)
+            
+            if success:
+                print(f"✅ 벡터화 완료: {len(chunks)}개 청크 저장됨")
+            else:
+                print("❌ 벡터 저장 실패")
             
             return {
                 "success": success,
                 "chunks_count": len(chunks),
-                "processing_method": "basic_text",
-                "processing_time": 0.1
+                "processing_method": "basic_text_optimized",
+                "processing_time": processing_time,
+                "text_length": len(content),
+                "extraction_method": self._get_extraction_method_name(file_extension)
             }
             
         except Exception as e:
-            print(f"❌ 폴백 텍스트 처리 실패: {str(e)}")
+            print(f"❌ 기본 텍스트 처리 실패: {str(e)}")
+            import traceback
+            print(f"🔍 오류 상세: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
-                "chunks_count": 0
+                "chunks_count": 0,
+                "processing_method": "basic_text_failed"
             }
+    
+    def _get_extraction_method_name(self, file_extension: str) -> str:
+        """파일 확장자에 따른 추출 방법 이름 반환"""
+        method_map = {
+            '.pdf': 'pdfminer.six + pypdf',
+            '.docx': 'python-docx',
+            '.pptx': 'python-pptx', 
+            '.xlsx': 'openpyxl',
+            '.doc': 'python-docx (legacy)',
+            '.ppt': 'python-pptx (legacy)',
+            '.xls': 'openpyxl (legacy)',
+            '.txt': 'direct_read',
+            '.md': 'direct_read',
+            '.csv': 'direct_read',
+            '.html': 'beautifulsoup4',
+            '.htm': 'beautifulsoup4'
+        }
+        return method_map.get(file_extension, 'direct_read_fallback')
     
     async def vectorize_with_docling_pipeline(
         self, 
@@ -1448,11 +1659,20 @@ class VectorService:
         """
         try:
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            filename = metadata.get("filename", os.path.basename(file_path))
+            docling_status = "활성화" if enable_docling else "비활성화"
+            print(f"🔧 벡터화 시점 Docling {docling_status} (설정 기반): {filename}")
             print(f"🚀 통합 벡터화 파이프라인 시작: {file_path}")
             print(f"📊 파일 정보: {file_size / 1024 / 1024:.2f} MB, Docling 활성화: {enable_docling}")
             
-            if enable_docling:
-                print("🔧 Docling 기반 처리 시작...")
+            # Docling 설정 상태를 명확하게 출력
+            print(f"🔍 Docling 설정 상태:")
+            print(f"   - enable_docling: {enable_docling}")
+            print(f"   - docling_service.is_available: {self.docling_service.is_available}")
+            print(f"   - docling_options: {docling_options.dict() if docling_options else 'None'}")
+            
+            if enable_docling and self.docling_service.is_available:
+                print("🔧 Docling 통합 벡터화 파이프라인 실행 시작...")
                 # Docling을 우선적으로 시도
                 result = await self.process_document_with_docling(
                     file_path, file_id, metadata, docling_options, use_parallel
@@ -1464,8 +1684,10 @@ class VectorService:
                 else:
                     print(f"⚠️ Docling 처리 실패: {result.get('error', '알 수 없는 오류')}")
                     print("↪️ 기본 텍스트 처리로 전환 중...")
+            elif not enable_docling:
+                print("📝 Docling 비활성화됨 (사용자 설정)")
             else:
-                print("📝 Docling 비활성화 - 기본 처리 사용")
+                print("📝 Docling 사용 불가 (라이브러리 미설치 또는 오류)")
             
             # 기본 텍스트 처리로 폴백
             print("📝 기본 텍스트 처리 시작...")
@@ -1649,34 +1871,55 @@ class VectorService:
         """고아 벡터를 정리합니다."""
         try:
             orphaned_info = await self.find_orphaned_vectors()
-            
+
             if 'error' in orphaned_info:
                 return orphaned_info
-            
+
             if orphaned_info['orphaned_count'] == 0:
                 return {
                     'message': orphaned_info.get('message', '정리할 고아 벡터가 없습니다.'),
                     'cleaned_count': 0,
                     'total_vectors': orphaned_info.get('total_vectors', 0)
                 }
-            
+
             # 고아 벡터 삭제
             orphaned_ids = [v['vector_id'] for v in orphaned_info['orphaned_vectors']]
             VectorService._collection.delete(ids=orphaned_ids)
-            
+
             print(f"✅ {orphaned_info['orphaned_count']}개의 고아 벡터를 정리했습니다.")
-            
+
             return {
                 'message': f"{orphaned_info['orphaned_count']}개의 고아 벡터를 정리했습니다.",
                 'cleaned_count': orphaned_info['orphaned_count'],
                 'remaining_vectors': orphaned_info['total_vectors'] - orphaned_info['orphaned_count'],
                 'total_vectors': orphaned_info['total_vectors']
             }
-            
         except Exception as e:
             print(f"고아 벡터 정리 중 오류: {str(e)}")
             return {
                 'error': str(e),
                 'cleaned_count': 0,
                 'message': f'고아 벡터 정리 중 오류가 발생했습니다: {str(e)}'
-            } 
+            }
+
+    async def clear_chromadb_documents_only(self) -> Dict[str, Any]:
+        """ChromaDB 컬렉션 구조는 유지하고, 문서(벡터)만 모두 삭제합니다."""
+        try:
+            await self._ensure_client()
+            if not VectorService._collection:
+                return {"success": False, "error": "컬렉션이 초기화되지 않았습니다."}
+
+            # 전체 삭제: where 조건 없이 ids=None으로 delete 호출 시 모든 항목 제거
+            try:
+                # 일부 버전은 ids 또는 where가 필요 → 모든 ids를 가져와 삭제
+                all_ids = []
+                data = VectorService._collection.get()
+                if data and data.get('ids'):
+                    all_ids = data['ids']
+                if all_ids:
+                    VectorService._collection.delete(ids=all_ids)
+                return {"success": True, "deleted_count": len(all_ids)}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}

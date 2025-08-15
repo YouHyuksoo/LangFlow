@@ -29,7 +29,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { fileAPI } from "@/lib/api";
+import { fileAPI, doclingAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useVectorizationSSE } from "@/hooks/use-sse";
 import { DoclingSettingsInfo } from "@/components/docling-settings-info";
@@ -90,48 +90,71 @@ export default function VectorizationPage() {
       // 동시에 데이터 로드
       const [filesResponse, chromaStatus] = await Promise.all([
         fileAPI.getFiles(),
-        fileAPI.getChromaDBStatus().catch(() => ({ collection_count: 0 })) // ChromaDB 상태 조회 실패 시 기본값 사용
+        fileAPI.getChromaDBStatus().catch(() => ({ collection_count: 0 })), // ChromaDB 상태 조회 실패 시 기본값 사용
       ]);
-      
+
       setFiles(filesResponse);
 
       // 디버그: 받은 파일 데이터 확인
-      console.log('🔍 API에서 받은 파일 데이터:', filesResponse);
+      console.log("🔍 API에서 받은 파일 데이터:", filesResponse);
       filesResponse.forEach((f: VectorizationFile) => {
-        console.log(`📄 ${f.filename}: vectorized=${f.vectorized} (타입: ${typeof f.vectorized}), status=${f.status}, vectorization_status=${f.vectorization_status}`);
+        console.log(
+          `📄 ${f.filename}: vectorized=${
+            f.vectorized
+          } (타입: ${typeof f.vectorized}), status=${
+            f.status
+          }, vectorization_status=${f.vectorization_status}`
+        );
       });
 
       // 통계 계산 (벡터화 상태를 더 정확히 분류)
-      const vectorizedFiles = filesResponse.filter((f: VectorizationFile) => f.vectorized === true);
+      const vectorizedFiles = filesResponse.filter(
+        (f: VectorizationFile) => f.vectorized === true
+      );
       const vectorizedCount = vectorizedFiles.length;
-      console.log('✅ 벡터화 완료된 파일들:', vectorizedFiles.map((f: VectorizationFile) => f.filename));
-      
+      console.log(
+        "✅ 벡터화 완료된 파일들:",
+        vectorizedFiles.map((f: VectorizationFile) => f.filename)
+      );
+
       const failedFiles = filesResponse.filter(
         (f: VectorizationFile) =>
-          f.vectorization_status === "failed" || 
-          f.error_message || 
-          (f.vectorization_status === "error")
+          f.vectorization_status === "failed" ||
+          f.error_message ||
+          f.vectorization_status === "error"
       );
       const failedCount = failedFiles.length;
-      console.log('❌ 벡터화 실패한 파일들:', failedFiles.map((f: VectorizationFile) => f.filename));
-      
+      console.log(
+        "❌ 벡터화 실패한 파일들:",
+        failedFiles.map((f: VectorizationFile) => f.filename)
+      );
+
       const processingFiles = filesResponse.filter(
-        (f: VectorizationFile) => 
+        (f: VectorizationFile) =>
           f.vectorization_status === "processing" ||
           f.vectorization_status === "in_progress" ||
           processing.has(f.file_id)
       );
       const processingCount = processingFiles.length;
-      console.log('🔄 벡터화 진행중인 파일들:', processingFiles.map((f: VectorizationFile) => f.filename));
-      
-      const pendingCount = filesResponse.length - vectorizedCount - failedCount - processingCount;
-      
+      console.log(
+        "🔄 벡터화 진행중인 파일들:",
+        processingFiles.map((f: VectorizationFile) => f.filename)
+      );
+
+      const pendingCount =
+        filesResponse.length - vectorizedCount - failedCount - processingCount;
+
       // 총 청크 수 계산
-      const totalChunks = filesResponse.reduce((total: number, file: VectorizationFile) => {
-        return total + (file.chunk_count || 0);
-      }, 0);
-      
-      console.log(`📊 통계 계산: 총 ${filesResponse.length}개 파일 중 완료=${vectorizedCount}, 실패=${failedCount}, 진행중=${processingCount}, 대기=${pendingCount}, 총 청크=${totalChunks}개`);
+      const totalChunks = filesResponse.reduce(
+        (total: number, file: VectorizationFile) => {
+          return total + (file.chunk_count || 0);
+        },
+        0
+      );
+
+      console.log(
+        `📊 통계 계산: 총 ${filesResponse.length}개 파일 중 완료=${vectorizedCount}, 실패=${failedCount}, 진행중=${processingCount}, 대기=${pendingCount}, 총 청크=${totalChunks}개`
+      );
 
       setStats({
         totalFiles: filesResponse.length,
@@ -141,15 +164,14 @@ export default function VectorizationPage() {
         totalVectors: chromaStatus?.collection_count || 0,
         totalChunks: totalChunks,
       });
-      
-      console.log('벡터화 데이터 업데이트:', {
+
+      console.log("벡터화 데이터 업데이트:", {
         total: filesResponse.length,
         vectorized: vectorizedCount,
         pending: Math.max(0, pendingCount),
         failed: failedCount,
-        processing: processingCount
+        processing: processingCount,
       });
-      
     } catch (error) {
       console.error("벡터화 데이터 로드 실패:", error);
       toast({
@@ -168,23 +190,24 @@ export default function VectorizationPage() {
 
   // SSE 실시간 벡터화 상태 업데이트
   const handleVectorizationUpdate = (data: any) => {
-    console.log('🔔 실시간 벡터화 상태 업데이트:', data);
-    
-    setFiles(prevFiles => 
-      prevFiles.map(file => 
-        file.file_id === data.file_id 
-          ? { 
-              ...file, 
-              vectorized: data.vectorized || data.status === 'completed',
-              vectorization_status: data.status === 'started' ? 'processing' : data.status 
+    console.log("🔔 실시간 벡터화 상태 업데이트:", data);
+
+    setFiles((prevFiles) =>
+      prevFiles.map((file) =>
+        file.file_id === data.file_id
+          ? {
+              ...file,
+              vectorized: data.vectorized || data.status === "completed",
+              vectorization_status:
+                data.status === "started" ? "processing" : data.status,
             }
           : file
       )
     );
 
     // 벡터화 시작 시에는 processing 상태 유지, 완료/실패 시에만 제거
-    if (data.status === 'completed' || data.status === 'failed') {
-      setProcessing(prev => {
+    if (data.status === "completed" || data.status === "failed") {
+      setProcessing((prev) => {
         const newSet = new Set(Array.from(prev));
         newSet.delete(data.file_id);
         return newSet;
@@ -192,17 +215,17 @@ export default function VectorizationPage() {
     }
 
     // 토스트 알림
-    if (data.status === 'started') {
+    if (data.status === "started") {
       console.log(`🚀 벡터화 시작 확인: ${data.filename}`);
       // 시작 시에는 별도 토스트 없음 (이미 표시했음)
-    } else if (data.status === 'completed') {
+    } else if (data.status === "completed") {
       toast({
         title: "벡터화 완료",
         description: `"${data.filename}" 파일의 벡터화가 완료되었습니다.`,
       });
-    } else if (data.status === 'failed') {
+    } else if (data.status === "failed") {
       toast({
-        title: "벡터화 실패", 
+        title: "벡터화 실패",
         description: `"${data.filename}" 파일의 벡터화에 실패했습니다.`,
         variant: "destructive",
       });
@@ -210,25 +233,27 @@ export default function VectorizationPage() {
   };
 
   // SSE 연결
-  const { isConnected, connectionStatus } = useVectorizationSSE(handleVectorizationUpdate);
-  
+  const { isConnected, connectionStatus } = useVectorizationSSE(
+    handleVectorizationUpdate
+  );
+
   // 페이지 포커스 시 데이터 새로고침
   useEffect(() => {
     const handleFocus = () => {
-      console.log('벡터화 페이지 포커스됨 - 데이터 새로고침');
+      console.log("벡터화 페이지 포커스됨 - 데이터 새로고침");
       loadVectorizationData();
     };
-    
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
-        console.log('벡터화 페이지 가시성 변경 - 데이터 새로고침');
+        console.log("벡터화 페이지 가시성 변경 - 데이터 새로고침");
         loadVectorizationData();
       }
     });
-    
+
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [loadVectorizationData]);
 
@@ -236,32 +261,27 @@ export default function VectorizationPage() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/model-settings/', {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const settings = await response.json();
-          setCurrentSettings(settings);
-        }
+        const settings = await doclingAPI.getDoclingSettings();
+        setCurrentSettings(settings);
       } catch (error) {
-        console.error('Docling 설정 로드 실패:', error);
+        console.error("Docling 설정 로드 실패:", error);
       }
     };
     loadSettings();
   }, []);
-  
+
   // 자동 새로고침 기능 (SSE 연결 실패 시 백업용)
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
+
     if ((autoRefresh || processing.size > 0) && !isConnected) {
       // SSE가 연결되지 않았을 때만 폴링 사용
-      console.log('📡 SSE 미연결 - 백업 폴링 시작');
+      console.log("📡 SSE 미연결 - 백업 폴링 시작");
       interval = setInterval(() => {
         loadVectorizationData();
       }, 10000); // 10초마다 새로고침 (SSE 백업용)
     }
-    
+
     return () => {
       if (interval) {
         clearInterval(interval);
@@ -282,29 +302,33 @@ export default function VectorizationPage() {
         newSet.add(fileId);
         return newSet;
       });
-      
+
+      // 비동기 백그라운드 벡터화 사용 (Docling 설정은 백엔드에서 자동 처리)
       const response = await fileAPI.vectorizeFile(fileId);
-      
+
       // 백엔드 응답 메시지를 사용한 알림
       toast({
         title: "벡터화 시작",
-        description: response?.message || `"${filename}" 파일의 벡터화가 시작되었습니다.`,
+        description:
+          response?.message || `"${filename}" 파일의 벡터화가 시작되었습니다.`,
       });
 
       // 즉시 데이터 새로고침 및 주기적 체크
       await loadVectorizationData();
-      
+
       // SSE가 연결된 경우 폴링하지 않음 (실시간 업데이트 대기)
       if (isConnected) {
-        console.log('✅ SSE 연결됨 - 실시간 상태 업데이트 대기');
+        console.log("✅ SSE 연결됨 - 실시간 상태 업데이트 대기");
       } else {
-        console.log('⚠️ SSE 미연결 - 백업 폴링 로직으로 상태 확인');
+        console.log("⚠️ SSE 미연결 - 백업 폴링 로직으로 상태 확인");
         // SSE가 연결되지 않은 경우에만 간단한 백업 확인
         setTimeout(async () => {
           await loadVectorizationData();
           const updatedFiles = await fileAPI.getFiles();
-          const updatedFile = updatedFiles.find((f: any) => f.file_id === fileId);
-          
+          const updatedFile = updatedFiles.find(
+            (f: any) => f.file_id === fileId
+          );
+
           if (updatedFile?.vectorized || updatedFile?.error_message) {
             setProcessing((prev) => {
               const newSet = new Set(Array.from(prev));
@@ -314,22 +338,23 @@ export default function VectorizationPage() {
           }
         }, 5000);
       }
-      
     } catch (error: any) {
-      console.error('벡터화 요청 오류:', error);
-      
+      console.error("벡터화 요청 오류:", error);
+
       // HTTP 타임아웃이나 네트워크 오류 vs 실제 벡터화 실패 구분
-      const isNetworkError = error?.code === 'NETWORK_ERROR' || error?.code === 'TIMEOUT_ERROR';
-      
+      const isNetworkError =
+        error?.code === "NETWORK_ERROR" || error?.code === "TIMEOUT_ERROR";
+
       toast({
         title: isNetworkError ? "네트워크 오류" : "벡터화 요청 실패",
-        description: error?.response?.data?.detail || 
-          (isNetworkError 
+        description:
+          error?.response?.data?.detail ||
+          (isNetworkError
             ? `"${filename}" 파일 벡터화 요청 중 네트워크 오류가 발생했습니다.`
             : `"${filename}" 파일의 벡터화 요청에 실패했습니다.`),
         variant: "destructive",
       });
-      
+
       // 네트워크 오류가 아닌 경우에만 processing 제거
       if (!isNetworkError) {
         setProcessing((prev) => {
@@ -352,7 +377,7 @@ export default function VectorizationPage() {
 
   const executeRevectorizeFile = async () => {
     const { fileId, filename } = confirmRevectorize;
-    
+
     // 모달 닫기
     setConfirmRevectorize({
       isOpen: false,
@@ -373,29 +398,33 @@ export default function VectorizationPage() {
         newSet.add(fileId);
         return newSet;
       });
-      
+
       const response = await fileAPI.revectorizeFile(fileId);
-      
+
       // 백엔드 응답 메시지를 사용한 알림
       toast({
         title: "재벡터화 시작",
-        description: response?.message || `"${filename}" 파일의 재벡터화가 시작되었습니다.`,
+        description:
+          response?.message ||
+          `"${filename}" 파일의 재벡터화가 시작되었습니다.`,
       });
 
       // 즉시 데이터 새로고침
       await loadVectorizationData();
-      
+
       // SSE가 연결된 경우 폴링하지 않음 (실시간 업데이트 대기)
       if (isConnected) {
-        console.log('✅ SSE 연결됨 - 실시간 상태 업데이트 대기');
+        console.log("✅ SSE 연결됨 - 실시간 상태 업데이트 대기");
       } else {
-        console.log('⚠️ SSE 미연결 - 백업 폴링 로직으로 상태 확인');
+        console.log("⚠️ SSE 미연결 - 백업 폴링 로직으로 상태 확인");
         // SSE가 연결되지 않은 경우에만 간단한 백업 확인
         setTimeout(async () => {
           await loadVectorizationData();
           const updatedFiles = await fileAPI.getFiles();
-          const updatedFile = updatedFiles.find((f: any) => f.file_id === fileId);
-          
+          const updatedFile = updatedFiles.find(
+            (f: any) => f.file_id === fileId
+          );
+
           if (updatedFile?.vectorized || updatedFile?.error_message) {
             setProcessing((prev) => {
               const newSet = new Set(Array.from(prev));
@@ -405,22 +434,23 @@ export default function VectorizationPage() {
           }
         }, 5000);
       }
-      
     } catch (error: any) {
-      console.error('재벡터화 요청 오류:', error);
-      
+      console.error("재벡터화 요청 오류:", error);
+
       // HTTP 타임아웃이나 네트워크 오류 vs 실제 벡터화 실패 구분
-      const isNetworkError = error?.code === 'NETWORK_ERROR' || error?.code === 'TIMEOUT_ERROR';
-      
+      const isNetworkError =
+        error?.code === "NETWORK_ERROR" || error?.code === "TIMEOUT_ERROR";
+
       toast({
         title: isNetworkError ? "네트워크 오류" : "재벡터화 요청 실패",
-        description: error?.response?.data?.detail || 
-          (isNetworkError 
+        description:
+          error?.response?.data?.detail ||
+          (isNetworkError
             ? `"${filename}" 파일 재벡터화 요청 중 네트워크 오류가 발생했습니다.`
             : `"${filename}" 파일의 재벡터화 요청에 실패했습니다.`),
         variant: "destructive",
       });
-      
+
       // 네트워크 오류가 아닌 경우에만 processing 제거
       if (!isNetworkError) {
         setProcessing((prev) => {
@@ -453,7 +483,7 @@ export default function VectorizationPage() {
 
   const executeRevectorizeAll = async () => {
     const vectorizedFiles = files.filter((f) => f.vectorized);
-    
+
     // 모달 닫기
     setConfirmRevectorize({
       isOpen: false,
@@ -464,9 +494,9 @@ export default function VectorizationPage() {
 
     try {
       // 모든 파일을 processing 상태로 설정
-      const processingSet = new Set(vectorizedFiles.map(f => f.file_id));
+      const processingSet = new Set(vectorizedFiles.map((f) => f.file_id));
       setProcessing(processingSet);
-      
+
       // 모든 파일 재벡터화 실행
       const results = await Promise.allSettled(
         vectorizedFiles.map(async (file) => {
@@ -478,18 +508,20 @@ export default function VectorizationPage() {
           }
         })
       );
-      
+
       // 성공/실패 분류
-      const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
-      
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+
       if (succeeded > 0) {
         toast({
           title: "일괄 재벡터화 시작",
-          description: `${succeeded}개 파일의 재벡터화가 시작되었습니다.${failed > 0 ? ` (${failed}개 실패)` : ''}`,
+          description: `${succeeded}개 파일의 재벡터화가 시작되었습니다.${
+            failed > 0 ? ` (${failed}개 실패)` : ""
+          }`,
         });
       }
-      
+
       if (failed > 0 && succeeded === 0) {
         toast({
           title: "일괄 재벡터화 실패",
@@ -500,12 +532,12 @@ export default function VectorizationPage() {
 
       // 즉시 데이터 새로고침
       await loadVectorizationData();
-      
+
       // 주기적으로 상태 체크 (최대 16초간)
       let attempts = 0;
       const maxAttempts = 8; // 폴링 횟수
       const pollInterval = 2000; // 2초 간격
-      
+
       const pollForUpdates = async () => {
         if (attempts >= maxAttempts) {
           console.log(`일괄 재벡터화 폴링 완료: ${attempts}회 시도 후 종료`);
@@ -514,32 +546,37 @@ export default function VectorizationPage() {
           await loadVectorizationData();
           return;
         }
-        
+
         attempts++;
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
         await loadVectorizationData();
-        
+
         // 아직 processing 중인 파일이 있는지 확인
         const updatedFiles = await fileAPI.getFiles();
-        const stillPending = updatedFiles.filter((f: any) => 
-          processingSet.has(f.file_id) && f.vectorization_status === "processing"
+        const stillPending = updatedFiles.filter(
+          (f: any) =>
+            processingSet.has(f.file_id) &&
+            f.vectorization_status === "processing"
         );
-        
+
         const completedCount = vectorizedFiles.length - stillPending.length;
-        console.log(`일괄 재벡터화 폴링 ${attempts}회: ${completedCount}/${vectorizedFiles.length} 완료 (남은 파일: ${stillPending.length}개)`);
-        
+        console.log(
+          `일괄 재벡터화 폴링 ${attempts}회: ${completedCount}/${vectorizedFiles.length} 완료 (남은 파일: ${stillPending.length}개)`
+        );
+
         if (stillPending.length > 0 && attempts < maxAttempts) {
           pollForUpdates();
         } else {
-          console.log(`일괄 재벡터화 완료: 총 ${completedCount}/${vectorizedFiles.length} 파일 처리됨`);
+          console.log(
+            `일괄 재벡터화 완료: 총 ${completedCount}/${vectorizedFiles.length} 파일 처리됨`
+          );
           setProcessing(new Set()); // 폴링 완료 후 processing 상태 해제
         }
       };
-      
+
       pollForUpdates();
-      
     } catch (error: any) {
-      console.error('일괄 재벡터화 오류:', error);
+      console.error("일괄 재벡터화 오류:", error);
       toast({
         title: "일괄 재벡터화 실패",
         description: "일부 파일의 재벡터화에 실패했습니다.",
@@ -562,9 +599,9 @@ export default function VectorizationPage() {
 
     try {
       // 모든 파일을 processing 상태로 설정
-      const processingSet = new Set(pendingFiles.map(f => f.file_id));
+      const processingSet = new Set(pendingFiles.map((f) => f.file_id));
       setProcessing(processingSet);
-      
+
       // 모든 파일 벡터화 실행
       const results = await Promise.allSettled(
         pendingFiles.map(async (file) => {
@@ -576,18 +613,20 @@ export default function VectorizationPage() {
           }
         })
       );
-      
+
       // 성공/실패 분류
-      const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
-      
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+
       if (succeeded > 0) {
         toast({
           title: "일괄 벡터화 완료",
-          description: `${succeeded}개 파일의 벡터화가 완료되었습니다.${failed > 0 ? ` (${failed}개 실패)` : ''}`,
+          description: `${succeeded}개 파일의 벡터화가 완료되었습니다.${
+            failed > 0 ? ` (${failed}개 실패)` : ""
+          }`,
         });
       }
-      
+
       if (failed > 0 && succeeded === 0) {
         toast({
           title: "일괄 벡터화 실패",
@@ -598,12 +637,12 @@ export default function VectorizationPage() {
 
       // 즉시 데이터 새로고침
       await loadVectorizationData();
-      
+
       // 주기적으로 상태 체크 (최대 16초간)
       let attempts = 0;
       const maxAttempts = 8; // 폴링 횟수 증가
       const pollInterval = 2000; // 2초 간격 유지
-      
+
       const pollForUpdates = async () => {
         if (attempts >= maxAttempts) {
           console.log(`일괄 벡터화 폴링 완료: ${attempts}회 시도 후 종료`);
@@ -612,32 +651,39 @@ export default function VectorizationPage() {
           await loadVectorizationData();
           return;
         }
-        
+
         attempts++;
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
         await loadVectorizationData();
-        
+
         // 아직 processing 중인 파일이 있는지 확인
         const updatedFiles = await fileAPI.getFiles();
-        const stillPending = updatedFiles.filter((f: any) => 
-          processingSet.has(f.file_id) && !f.vectorized && !f.error_message && f.vectorization_status !== "failed"
+        const stillPending = updatedFiles.filter(
+          (f: any) =>
+            processingSet.has(f.file_id) &&
+            !f.vectorized &&
+            !f.error_message &&
+            f.vectorization_status !== "failed"
         );
-        
+
         const completedCount = pendingFiles.length - stillPending.length;
-        console.log(`일괄 벡터화 폴링 ${attempts}회: ${completedCount}/${pendingFiles.length} 완료 (남은 파일: ${stillPending.length}개)`);
-        
+        console.log(
+          `일괄 벡터화 폴링 ${attempts}회: ${completedCount}/${pendingFiles.length} 완료 (남은 파일: ${stillPending.length}개)`
+        );
+
         if (stillPending.length > 0 && attempts < maxAttempts) {
           pollForUpdates();
         } else {
-          console.log(`일괄 벡터화 완료: 총 ${completedCount}/${pendingFiles.length} 파일 처리됨`);
+          console.log(
+            `일괄 벡터화 완료: 총 ${completedCount}/${pendingFiles.length} 파일 처리됨`
+          );
           setProcessing(new Set()); // 폴링 완료 후 processing 상태 해제
         }
       };
-      
+
       pollForUpdates();
-      
     } catch (error: any) {
-      console.error('일괄 벡터화 오류:', error);
+      console.error("일괄 벡터화 오류:", error);
       toast({
         title: "일괄 벡터화 실패",
         description: "일부 파일의 벡터화에 실패했습니다.",
@@ -678,7 +724,7 @@ export default function VectorizationPage() {
         </Badge>
       );
     }
-    
+
     // 벡터화 완료
     if (file.vectorized === true) {
       return (
@@ -688,10 +734,12 @@ export default function VectorizationPage() {
         </Badge>
       );
     }
-    
+
     // 서버에서도 진행중인 상태
-    if (file.vectorization_status === "processing" || 
-        file.vectorization_status === "in_progress") {
+    if (
+      file.vectorization_status === "processing" ||
+      file.vectorization_status === "in_progress"
+    ) {
       return (
         <Badge className="bg-blue-100 text-blue-800 border-blue-200">
           <Clock className="h-3 w-3 mr-1 animate-spin" />
@@ -699,11 +747,13 @@ export default function VectorizationPage() {
         </Badge>
       );
     }
-    
+
     // 오류 상태
-    if (file.error_message || 
-        file.vectorization_status === "failed" ||
-        file.vectorization_status === "error") {
+    if (
+      file.error_message ||
+      file.vectorization_status === "failed" ||
+      file.vectorization_status === "error"
+    ) {
       return (
         <Badge className="bg-red-100 text-red-800 border-red-200">
           <AlertTriangle className="h-3 w-3 mr-1" />
@@ -711,7 +761,7 @@ export default function VectorizationPage() {
         </Badge>
       );
     }
-    
+
     // 기본 대기 상태
     return (
       <Badge variant="secondary">
@@ -744,30 +794,38 @@ export default function VectorizationPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">벡터화 관리</h1>
         <div className="flex gap-2">
-          <Button 
-            onClick={loadVectorizationData} 
-            variant="outline" 
+          <Button
+            onClick={loadVectorizationData}
+            variant="outline"
             size="sm"
             disabled={loading}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
             새로고침
           </Button>
           {/* SSE 연결 상태 */}
-          <Badge 
+          <Badge
             variant={isConnected ? "default" : "destructive"}
             className="px-3"
           >
-            <div className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+            <div
+              className={`w-2 h-2 rounded-full mr-2 ${
+                isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+              }`}
+            ></div>
             {isConnected ? "실시간 연결됨" : "연결 끊어짐"}
           </Badge>
-          
+
           <Button
             onClick={() => setAutoRefresh(!autoRefresh)}
             variant={autoRefresh ? "default" : "outline"}
             size="sm"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${autoRefresh ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${autoRefresh ? "animate-spin" : ""}`}
+            />
             {isConnected ? "백업 폴링" : "자동 새로고침"}
           </Button>
           <Button
@@ -942,7 +1000,9 @@ export default function VectorizationPage() {
                         <span>{formatFileSize(file.file_size)}</span>
                         <span>카테고리: {file.category_name}</span>
                         {file.chunk_count && (
-                          <span>청크: {file.chunk_count.toLocaleString()}개</span>
+                          <span>
+                            청크: {file.chunk_count.toLocaleString()}개
+                          </span>
                         )}
                         <span>
                           {new Date(file.upload_time).toLocaleString()}
@@ -974,9 +1034,10 @@ export default function VectorizationPage() {
                           벡터화
                         </Button>
                       )}
-                    
+
                     {/* 재시도 버튼 (실패한 경우) */}
-                    {(file.error_message || file.vectorization_status === "failed") &&
+                    {(file.error_message ||
+                      file.vectorization_status === "failed") &&
                       !processing.has(file.file_id) && (
                         <Button
                           size="sm"
@@ -990,7 +1051,7 @@ export default function VectorizationPage() {
                           재시도
                         </Button>
                       )}
-                    
+
                     {/* 재벡터화 버튼 (성공한 경우) */}
                     {file.vectorized &&
                       !processing.has(file.file_id) &&
@@ -1018,16 +1079,19 @@ export default function VectorizationPage() {
       </Card>
 
       {/* 재벡터화 확인 모달 */}
-      <Dialog open={confirmRevectorize.isOpen} onOpenChange={(open) => {
-        if (!open) {
-          setConfirmRevectorize({
-            isOpen: false,
-            fileId: "",
-            filename: "",
-            isAllFiles: false,
-          });
-        }
-      }}>
+      <Dialog
+        open={confirmRevectorize.isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmRevectorize({
+              isOpen: false,
+              fileId: "",
+              filename: "",
+              isAllFiles: false,
+            });
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1035,10 +1099,9 @@ export default function VectorizationPage() {
               재벡터화 확인
             </DialogTitle>
             <DialogDescription>
-              {confirmRevectorize.isAllFiles 
+              {confirmRevectorize.isAllFiles
                 ? `총 ${confirmRevectorize.filename}을 재벡터화하시겠습니까?`
-                : `"${confirmRevectorize.filename}" 파일을 재벡터화하시겠습니까?`
-              }
+                : `"${confirmRevectorize.filename}" 파일을 재벡터화하시겠습니까?`}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -1060,19 +1123,25 @@ export default function VectorizationPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setConfirmRevectorize({
-                isOpen: false,
-                fileId: "",
-                filename: "",
-                isAllFiles: false,
-              })}
+            <Button
+              variant="outline"
+              onClick={() =>
+                setConfirmRevectorize({
+                  isOpen: false,
+                  fileId: "",
+                  filename: "",
+                  isAllFiles: false,
+                })
+              }
             >
               취소
             </Button>
-            <Button 
-              onClick={confirmRevectorize.isAllFiles ? executeRevectorizeAll : executeRevectorizeFile}
+            <Button
+              onClick={
+                confirmRevectorize.isAllFiles
+                  ? executeRevectorizeAll
+                  : executeRevectorizeFile
+              }
               className="bg-orange-600 hover:bg-orange-700 text-white"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
