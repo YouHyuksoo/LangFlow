@@ -17,7 +17,13 @@ import {
   AlertTriangleIcon,
   UploadIcon,
   LayoutDashboardIcon,
-  ZapIcon
+  ZapIcon,
+  BotIcon,
+  CpuIcon,
+  FileTextIcon,
+  FileSearchIcon,
+  ChevronDownIcon,
+  ChevronRightIcon
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
@@ -29,7 +35,19 @@ const navigation = [
   { name: '벡터화 관리', href: '/admin/vectorization', icon: DatabaseIcon },
   { name: '벡터 분석', href: '/admin/vectors', icon: ZapIcon },
   { name: '채팅 기록', href: '/admin/chat-history', icon: MessageSquareIcon },
-  { name: '설정', href: '/admin/settings', icon: SettingsIcon },
+  { 
+    name: '설정', 
+    href: '/admin/settings', 
+    icon: SettingsIcon,
+    children: [
+      { name: '기본 설정', href: '/admin/settings', icon: SettingsIcon },
+      { name: '모델 설정', href: '/admin/settings/models', icon: BotIcon },
+      { name: '성능 관리', href: '/admin/settings/performance', icon: CpuIcon },
+      { name: 'Docling 전처리', href: '/admin/settings/preprocessing/docling', icon: FileTextIcon },
+      { name: 'Unstructured 전처리', href: '/admin/settings/preprocessing/unstructured', icon: FileSearchIcon },
+      { name: '데이터베이스 관리', href: '/admin/settings/database', icon: DatabaseIcon },
+    ]
+  },
 ]
 
 export default function AdminLayout({
@@ -38,9 +56,17 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading, isAuthenticated, isAdminUser, logout } = useAuth()
+
+  const toggleMenu = (menuName: string) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [menuName]: !prev[menuName]
+    }))
+  }
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -49,6 +75,13 @@ export default function AdminLayout({
       router.push('/') // 관리자가 아닌 경우 홈으로 리다이렉트
     }
   }, [loading, isAuthenticated, isAdminUser, router])
+
+  // 현재 경로가 설정 페이지인 경우 설정 메뉴 자동 확장
+  useEffect(() => {
+    if (pathname.startsWith('/admin/settings')) {
+      setExpandedMenus(prev => ({ ...prev, '설정': true }))
+    }
+  }, [pathname])
 
   // 로딩 중이거나 인증되지 않은 경우
   if (loading) {
@@ -125,26 +158,88 @@ export default function AdminLayout({
           <ul className="space-y-1">
             {navigation.map((item) => {
               const isActive = pathname === item.href
+              const hasChildren = item.children && item.children.length > 0
+              const isExpanded = expandedMenus[item.name]
+              const isChildActive = hasChildren && item.children.some(child => pathname === child.href)
+
               return (
                 <li key={item.name}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                      isActive
-                        ? "bg-primary/10 text-primary border-r-2 border-primary"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    )}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <item.icon
-                      className={cn(
-                        "mr-3 h-5 w-5 transition-colors",
-                        isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                  {hasChildren ? (
+                    <div>
+                      <button
+                        onClick={() => toggleMenu(item.name)}
+                        className={cn(
+                          "group flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                          isActive || isChildActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        )}
+                      >
+                        <div className="flex items-center">
+                          <item.icon
+                            className={cn(
+                              "mr-3 h-5 w-5 transition-colors",
+                              isActive || isChildActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                            )}
+                          />
+                          {item.name}
+                        </div>
+                        {isExpanded ? (
+                          <ChevronDownIcon className="h-4 w-4" />
+                        ) : (
+                          <ChevronRightIcon className="h-4 w-4" />
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <ul className="mt-1 ml-6 space-y-1">
+                          {item.children.map((child) => {
+                            const isChildItemActive = pathname === child.href
+                            return (
+                              <li key={child.name}>
+                                <Link
+                                  href={child.href}
+                                  className={cn(
+                                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                                    isChildItemActive
+                                      ? "bg-primary/10 text-primary border-r-2 border-primary"
+                                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                  )}
+                                  onClick={() => setSidebarOpen(false)}
+                                >
+                                  <child.icon
+                                    className={cn(
+                                      "mr-3 h-4 w-4 transition-colors",
+                                      isChildItemActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                                    )}
+                                  />
+                                  {child.name}
+                                </Link>
+                              </li>
+                            )
+                          })}
+                        </ul>
                       )}
-                    />
-                    {item.name}
-                  </Link>
+                    </div>
+                  ) : (
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                        isActive
+                          ? "bg-primary/10 text-primary border-r-2 border-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <item.icon
+                        className={cn(
+                          "mr-3 h-5 w-5 transition-colors",
+                          isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                        )}
+                      />
+                      {item.name}
+                    </Link>
+                  )}
                 </li>
               )
             })}

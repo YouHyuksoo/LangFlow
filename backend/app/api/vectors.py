@@ -872,3 +872,276 @@ async def reset_vector_metadata_db(admin_user = Depends(get_admin_user)):
     except Exception as e:
         _clog.error(f"메타데이터 DB 초기화 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === 데이터베이스 관리 API 엔드포인트 ===
+
+@router.get("/database/settings")
+async def get_database_settings(admin_user = Depends(get_admin_user)):
+    """데이터베이스 설정 및 상태 조회"""
+    try:
+        from ..services.settings_service import settings_service
+        
+        # --- 실제 DB 상태 조회 ---
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
+        
+        available_collections = []
+        if chroma_client:
+            try:
+                collections = chroma_client.list_collections()
+                available_collections = [c.name for c in collections]
+            except Exception as e:
+                _clog.warning(f"ChromaDB 컬렉션 목록 조회 실패: {e}")
+
+        # --- 설정 파일 기반 정보 조회 ---
+        system_settings = settings_service.get_section_settings("system")
+        
+        # 활성 컬렉션 결정 (설정값 -> 사용 가능한 첫번째 컬렉션 -> 기본값)
+        active_collection = system_settings.get("chromadbCollectionName")
+        if not active_collection and available_collections:
+            active_collection = available_collections[0]
+        elif not active_collection:
+            active_collection = "langflow_vectors" # 최후의 보루
+
+        db_settings = {
+            "db_type": "local",
+            "db_path": vector_service.vector_dir,
+            "active_collection": active_collection,
+            "available_collections": available_collections,
+            
+            # 기존 설정들은 유지 (UI 재구성에 따라 일부는 사용되지 않을 수 있음)
+            "chromadb_collection_name": active_collection, # 호환성을 위해 유지
+            "vectorDimension": system_settings.get("vectorDimension", 1536),
+            "similarity_threshold": system_settings.get("similarityThreshold", 0.7),
+            "max_results": system_settings.get("maxResults", 10),
+        }
+        
+        return db_settings
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 설정 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"데이터베이스 설정을 불러오는 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/database/settings")
+async def update_database_settings(settings_data: Dict[str, Any], admin_user = Depends(get_admin_user)):
+    """데이터베이스 설정 업데이트 (활성 컬렉션 변경)"""
+    try:
+        from ..services.settings_service import settings_service
+        
+        collection_name = settings_data.get("active_collection")
+        
+        if not collection_name:
+            raise HTTPException(status_code=400, detail="활성화할 컬렉션 이름이 필요합니다.")
+
+        # 시스템 설정에서 컬렉션 이름만 업데이트
+        settings_service.update_section_settings(
+            "system", 
+            {"chromadbCollectionName": collection_name}
+        )
+        
+        # 현재 실행중인 VectorService가 즉시 새 컬렉션을 사용하도록 강제 재연결
+        if vector_service._client:
+            try:
+                await vector_service._connect_to_chromadb()
+                _clog.info(f"VectorService가 새 컬렉션 '{collection_name}'(으)로 재연결되었습니다.")
+            except Exception as e:
+                _clog.error(f"VectorService 컬렉션 재연결 실패: {e}")
+
+        return {"message": f"활성 컬렉션이 '{collection_name}'(으)로 변경되었습니다.", "status": "success"}
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 설정 업데이트 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"데이터베이스 설정 업데이트 중 오류가 발생했습니다: {str(e)}")
+
+@router.get("/database/stats")
+async def get_database_stats(admin_user = Depends(get_admin_user)):
+    """데이터베이스 통계 조회"""
+    try:
+        # ChromaDB 연결 및 통계 수집
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
+        
+        stats = {
+            "total_documents": 0,
+            "total_chunks": 0,
+            "database_size_mb": 0.0,
+            "index_size_mb": 0.0,
+            "last_backup": "",
+            "collection_status": "unknown",
+            "health_status": "unknown"
+        }
+        
+        if chroma_client:
+            try:
+                # 컬렉션 정보 수집
+                collections = chroma_client.list_collections()
+                total_vectors = 0
+                
+                for collection in collections:
+                    try:
+                        coll = chroma_client.get_collection(collection.name)
+                        total_vectors += coll.count()
+                    except Exception:
+                        continue
+                
+                stats["total_chunks"] = total_vectors
+                stats["collection_status"] = "active" if len(collections) > 0 else "inactive"
+                stats["health_status"] = "healthy"
+                
+            except Exception as e:
+                _clog.warning(f"ChromaDB 통계 수집 실패: {e}")
+                stats["health_status"] = "error"
+        
+        # 메타데이터 DB에서 문서 수 조회
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if os.path.exists(metadata_db_path):
+            try:
+                with sqlite3.connect(metadata_db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM vector_metadata")
+                    stats["total_documents"] = cursor.fetchone()[0]
+                    
+                    # 데이터베이스 파일 크기 계산
+                    import os
+                    file_size = os.path.getsize(metadata_db_path)
+                    stats["database_size_mb"] = file_size / (1024 * 1024)
+                    
+            except Exception as e:
+                _clog.warning(f"메타데이터 DB 통계 수집 실패: {e}")
+        
+        return stats
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 통계 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"데이터베이스 통계 조회 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/database/test")
+async def test_database_connection(admin_user = Depends(get_admin_user)):
+    """데이터베이스 연결 테스트"""
+    try:
+        # ChromaDB 연결 테스트
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
+        
+        if not chroma_client:
+            raise HTTPException(status_code=503, detail="ChromaDB에 연결할 수 없습니다")
+        
+        # 간단한 작업으로 연결 확인
+        collections = chroma_client.list_collections()
+        
+        return {
+            "status": "success",
+            "message": "데이터베이스 연결 테스트가 성공했습니다",
+            "collections_count": len(collections),
+            "collections": [c.name for c in collections]
+        }
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 연결 테스트 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"데이터베이스 연결 테스트 실패: {str(e)}")
+
+@router.post("/database/backup")
+async def create_database_backup(admin_user = Depends(get_admin_user)):
+    """데이터베이스 백업 생성"""
+    try:
+        # 백업 디렉토리 생성
+        backup_dir = os.path.join(settings.DATA_DIR, "backups", "vector_db")
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # 백업 파일명 (타임스탬프 포함)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"vector_backup_{timestamp}.db"
+        backup_path = os.path.join(backup_dir, backup_filename)
+        
+        # 메타데이터 DB 백업 (SQLite 파일 복사)
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if os.path.exists(metadata_db_path):
+            import shutil
+            shutil.copy2(metadata_db_path, backup_path)
+        
+        return {
+            "status": "success", 
+            "message": "데이터베이스 백업이 완료되었습니다",
+            "backup_file": backup_filename,
+            "backup_path": backup_path,
+            "created_at": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 백업 생성 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"백업 생성 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/database/optimize")
+async def optimize_database(admin_user = Depends(get_admin_user)):
+    """데이터베이스 최적화"""
+    try:
+        # 메타데이터 SQLite DB 최적화
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        if os.path.exists(metadata_db_path):
+            with sqlite3.connect(metadata_db_path) as conn:
+                conn.execute("VACUUM")
+                conn.execute("REINDEX")
+        
+        return {
+            "status": "success",
+            "message": "데이터베이스 최적화가 완료되었습니다",
+            "optimized_at": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        _clog.error(f"데이터베이스 최적화 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"데이터베이스 최적화 중 오류가 발생했습니다: {str(e)}")
+
+@router.delete("/database/all-vectors")
+async def delete_all_vectors(admin_user = Depends(get_admin_user)):
+    """모든 벡터 데이터 삭제"""
+    try:
+        # ChromaDB에서 모든 컬렉션 삭제
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
+        
+        deleted_collections = []
+        if chroma_client:
+            try:
+                collections = chroma_client.list_collections()
+                for collection in collections:
+                    try:
+                        chroma_client.delete_collection(collection.name)
+                        deleted_collections.append(collection.name)
+                    except Exception as e:
+                        _clog.warning(f"컬렉션 {collection.name} 삭제 실패: {e}")
+            except Exception as e:
+                _clog.error(f"ChromaDB 컬렉션 삭제 오류: {e}")
+        
+        # 메타데이터 DB 초기화
+        success = metadata_service.reset_database()
+        
+        return {
+            "status": "success",
+            "message": "모든 벡터 데이터가 삭제되었습니다",
+            "deleted_collections": deleted_collections,
+            "metadata_reset": success,
+            "deleted_at": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        _clog.error(f"벡터 데이터 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"벡터 데이터 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@router.get("/status")
+async def get_vector_status():
+    """벡터 서비스 상태 조회 (통합 엔드포인트)"""
+    try:
+        status = await vector_service.get_status()
+        return status
+    except Exception as e:
+        _clog.error(f"벡터 상태 조회 실패: {e}")
+        return {
+            "connected": False,
+            "total_vectors": 0,
+            "collection_count": 0,
+            "collections": [],
+            "error": str(e)
+        }

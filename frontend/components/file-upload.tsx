@@ -44,6 +44,7 @@ export function FileUpload({
   );
   const [hasCalledOnLoadFiles, setHasCalledOnLoadFiles] = useState(false);
   const [maxFileSize, setMaxFileSize] = useState<number>(10); // MB, 기본값 10MB
+  const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>(['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']);
   const [isDoclingEnabled, setIsDoclingEnabled] = useState<boolean>(false);
 
   // 설정 로드
@@ -51,12 +52,18 @@ export function FileUpload({
     const loadSettings = async () => {
       try {
         const settings = await settingsAPI.getSettings();
-        setMaxFileSize(settings.maxFileSize);
+        setMaxFileSize(settings.maxFileSize || 10);
+        
+        // 백엔드에서 확장자에 점(.)이 없는 형태로 오는 경우 점 추가
+        const fileTypes = settings.allowedFileTypes || ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
+        const formattedTypes = fileTypes.map((type: string) => type.startsWith('.') ? type : `.${type}`);
+        setAllowedFileTypes(formattedTypes);
+        
         const doclingSettings = await doclingAPI.getDoclingSettings();
         setIsDoclingEnabled(doclingSettings.enabled);
       } catch (error) {
         console.error("설정 로드 실패:", error);
-        // 에러가 발생해도 기본값(10MB) 사용
+        // 에러가 발생해도 기본값 사용
       }
     };
 
@@ -124,15 +131,15 @@ export function FileUpload({
           return;
         }
 
-        // 파일 형식 검증
-        const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'];
+        // 파일 형식 검증 (설정에서 가져온 허용 형식 사용)
         const fileName = file.name.toLowerCase();
-        const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+        const hasValidExtension = allowedFileTypes.some(ext => fileName.endsWith(ext.toLowerCase()));
         
         if (!hasValidExtension) {
+          const allowedTypesText = allowedFileTypes.map(type => type.toUpperCase()).join(', ');
           toast({
             title: "잘못된 파일 형식",
-            description: `"${file.name}"은 지원되지 않는 파일 형식입니다. PDF, DOC, PPT, XLS 파일만 업로드할 수 있습니다.`,
+            description: `"${file.name}"은 지원되지 않는 파일 형식입니다. 지원 형식: ${allowedTypesText}`,
             variant: "destructive",
           });
           return;
@@ -161,20 +168,59 @@ export function FileUpload({
 
       setIsUploading(false);
     },
-    [selectedCategories, onFileUpload, onUploadStart, onUploadComplete]
+    [selectedCategories, onFileUpload, onUploadStart, onUploadComplete, allowedFileTypes, maxFileSize]
   );
+
+  // 동적으로 accept 속성 생성
+  const getAcceptTypes = () => {
+    const acceptMap: { [key: string]: string[] } = {};
+    
+    allowedFileTypes.forEach(type => {
+      const lowerType = type.toLowerCase();
+      switch (lowerType) {
+        case '.pdf':
+          acceptMap["application/pdf"] = [".pdf"];
+          break;
+        case '.doc':
+          acceptMap["application/msword"] = [".doc"];
+          break;
+        case '.docx':
+          acceptMap["application/vnd.openxmlformats-officedocument.wordprocessingml.document"] = [".docx"];
+          break;
+        case '.ppt':
+          acceptMap["application/vnd.ms-powerpoint"] = [".ppt"];
+          break;
+        case '.pptx':
+          acceptMap["application/vnd.openxmlformats-officedocument.presentationml.presentation"] = [".pptx"];
+          break;
+        case '.xls':
+          acceptMap["application/vnd.ms-excel"] = [".xls"];
+          break;
+        case '.xlsx':
+          acceptMap["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] = [".xlsx"];
+          break;
+        case '.txt':
+          acceptMap["text/plain"] = [".txt"];
+          break;
+        case '.md':
+          acceptMap["text/markdown"] = [".md"];
+          break;
+        case '.html':
+          acceptMap["text/html"] = [".html"];
+          break;
+        default:
+          // 기타 형식은 일반적인 형태로 처리
+          acceptMap[`*/*`] = [lowerType];
+          break;
+      }
+    });
+    
+    return acceptMap;
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/msword": [".doc"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/vnd.ms-powerpoint": [".ppt"],
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-      "application/vnd.ms-excel": [".xls"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-    },
+    accept: getAcceptTypes(),
     multiple: true,
   });
 
@@ -249,7 +295,7 @@ export function FileUpload({
           </div>
           <CardDescription>
             {selectedCategories.length > 0
-              ? "PDF, DOC, PPT, XLS 파일을 드래그하거나 클릭하여 업로드하세요"
+              ? `${allowedFileTypes.map(type => type.toUpperCase()).join(', ')} 파일을 드래그하거나 클릭하여 업로드하세요`
               : "카테고리를 선택한 후 파일을 업로드할 수 있습니다"}
           </CardDescription>
         </CardHeader>
@@ -289,7 +335,7 @@ export function FileUpload({
                     : "파일을 드래그하거나 클릭하여 업로드"}
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  PDF, DOC, PPT, XLS 파일만 지원됩니다 (최대 {maxFileSize}MB)
+                  {allowedFileTypes.map(type => type.toUpperCase()).join(', ')} 파일만 지원됩니다 (최대 {maxFileSize}MB)
                 </p>
                 <Button
                   disabled={selectedCategories.length === 0}

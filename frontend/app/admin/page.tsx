@@ -53,12 +53,11 @@ import { useToast } from "@/hooks/use-toast";
 
 // --- 데이터 인터페이스 정의 ---
 interface ChromaDBStatus {
-  chromadb_available?: boolean;
-  collection_count?: number;
-  status?: string;
-  message?: string;
-  error?: string;
-  requires_migration?: boolean;
+  connected: boolean;
+  total_vectors: number;
+  collection_count: number;
+  collections: string[];
+  error: string | null;
 }
 
 interface SQLiteStatus {
@@ -201,7 +200,11 @@ const OverviewChart = ({ data }: OverviewChartProps) => {
                 borderRadius: "var(--radius)",
               }}
             />
-            <Bar dataKey="questions" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+            <Bar
+              dataKey="questions"
+              fill="hsl(var(--primary))"
+              radius={[4, 4, 0, 0]}
+            />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -214,20 +217,29 @@ interface CategoryDistributionChartProps {
 }
 
 // CategoryDistributionChart: 카테고리별 파일 분포를 보여주는 파이 차트
-const CategoryDistributionChart = ({ data }: CategoryDistributionChartProps) => {
+const CategoryDistributionChart = ({
+  data,
+}: CategoryDistributionChartProps) => {
   const chartData = useMemo(() => {
     if (!data?.categories?.categories) {
       return [];
     }
-    
+
     const filteredData = data.categories.categories
-      .filter(cat => cat.file_count > 0)
-      .map(cat => ({ name: cat.name, value: cat.file_count }));
-    
+      .filter((cat) => cat.file_count > 0)
+      .map((cat) => ({ name: cat.name, value: cat.file_count }));
+
     return filteredData;
   }, [data]);
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AF19FF", "#FF1943"];
+  const COLORS = [
+    "#0088FE",
+    "#00C49F",
+    "#FFBB28",
+    "#FF8042",
+    "#AF19FF",
+    "#FF1943",
+  ];
 
   return (
     <Card className="shadow-sm">
@@ -250,10 +262,15 @@ const CategoryDistributionChart = ({ data }: CategoryDistributionChartProps) => 
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
-                label={({ name, percent }: { name: string; percent: number }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }: { name: string; percent: number }) =>
+                  `${name} ${(percent * 100).toFixed(0)}%`
+                }
               >
                 {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                  />
                 ))}
               </Pie>
               <Tooltip
@@ -271,7 +288,9 @@ const CategoryDistributionChart = ({ data }: CategoryDistributionChartProps) => 
             <div className="text-center">
               <PieChart className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p className="text-sm">카테고리 데이터가 없습니다</p>
-              <p className="text-xs">파일을 업로드하고 카테고리를 설정해주세요</p>
+              <p className="text-xs">
+                파일을 업로드하고 카테고리를 설정해주세요
+              </p>
             </div>
           </div>
         )}
@@ -281,13 +300,17 @@ const CategoryDistributionChart = ({ data }: CategoryDistributionChartProps) => 
 };
 
 interface SystemHealthWidgetProps {
-  chromaStatus: (ChromaDBStatus & { status: string }) | null;
+  chromaStatus: ChromaDBStatus | null;
   sqliteStatus: SQLiteStatus | undefined;
   onReset: () => void;
 }
 
 // SystemHealthWidget: 시스템 상태 정보를 보여주는 위젯
-const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }: SystemHealthWidgetProps) => (
+const SystemHealthWidget = ({
+  chromaStatus,
+  sqliteStatus,
+  onReset,
+}: SystemHealthWidgetProps) => (
   <Card className="shadow-sm">
     <CardHeader>
       <CardTitle className="flex items-center gap-2">
@@ -301,17 +324,17 @@ const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }: SystemHealt
         <h4 className="text-sm font-medium">벡터 DB (ChromaDB)</h4>
         <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-2">
-            {chromaStatus?.chromadb_available ? (
+            {chromaStatus?.connected ? (
               <CheckCircle className="h-4 w-4 text-green-500" />
             ) : (
               <XCircle className="h-4 w-4 text-red-500" />
             )}
             <span className="text-sm font-medium">
-              {chromaStatus?.chromadb_available ? "연결됨" : "연결 끊김"}
+              {chromaStatus?.connected ? "연결됨" : "연결 끊김"}
             </span>
           </div>
-          <Badge variant={chromaStatus?.chromadb_available ? "default" : "destructive"}>
-            {chromaStatus?.message}
+          <Badge variant={chromaStatus?.connected ? "default" : "destructive"}>
+            {chromaStatus?.error || "정상"}
           </Badge>
         </div>
         {chromaStatus?.error && (
@@ -319,12 +342,7 @@ const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }: SystemHealt
             {chromaStatus.error}
           </div>
         )}
-        {chromaStatus?.requires_migration && (
-          <Button onClick={onReset} variant="outline" size="sm" className="w-full">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            데이터베이스 리셋
-          </Button>
-        )}
+        {/* Removed requires_migration as it's not directly available in the new ChromaDBStatus */}
       </div>
 
       {/* SQLite DB Status */}
@@ -338,10 +356,18 @@ const SystemHealthWidget = ({ chromaStatus, sqliteStatus, onReset }: SystemHealt
               <XCircle className="h-4 w-4 text-red-500" />
             )}
             <span className="text-sm font-medium">
-              {sqliteStatus?.db_available && sqliteStatus?.table_found ? "정상" : "오류"}
+              {sqliteStatus?.db_available && sqliteStatus?.table_found
+                ? "정상"
+                : "오류"}
             </span>
           </div>
-          <Badge variant={sqliteStatus?.db_available && sqliteStatus?.table_found ? "default" : "destructive"}>
+          <Badge
+            variant={
+              sqliteStatus?.db_available && sqliteStatus?.table_found
+                ? "default"
+                : "destructive"
+            }
+          >
             {sqliteStatus?.message}
           </Badge>
         </div>
@@ -386,36 +412,43 @@ const ActivityFeed = ({ data }: ActivityFeedProps) => (
       <div className="border-t pt-4">
         <h4 className="text-sm font-medium mb-2">최근 검색</h4>
         <div className="space-y-2 text-xs">
-          {data?.recent_activity.recent_searches.slice(0, 3).map((search, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <span className="truncate flex-1">{search.query}</span>
-              <span className="text-muted-foreground">
-                {new Date(search.time).toLocaleTimeString()}
-              </span>
-            </div>
-          ))}
+          {data?.recent_activity.recent_searches
+            .slice(0, 3)
+            .map((search, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate flex-1">{search.query}</span>
+                <span className="text-muted-foreground">
+                  {new Date(search.time).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
         </div>
       </div>
     </CardContent>
   </Card>
 );
 
-
 // --- 메인 대시보드 컴포넌트 ---
 export default function AdminDashboard() {
   const { toast } = useToast();
-  const [chromaDBStatus, setChromaDBStatus] = useState<ChromaDBStatus | null>(null);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [chromaDBStatus, setChromaDBStatus] = useState<ChromaDBStatus | null>(
+    null
+  );
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       const [chromaStatus, dashboardStats] = await Promise.all([
+        // 기존 파일 API의 ChromaDB 상태 사용
         fileAPI.getChromaDBStatus(),
         statsAPI.getDashboardStats(),
       ]);
+
       setChromaDBStatus(chromaStatus);
       setDashboardData(dashboardStats.data);
     } catch (error) {
@@ -469,7 +502,7 @@ export default function AdminDashboard() {
 
   const systemHealth = chromaDBStatus?.error
     ? "error"
-    : chromaDBStatus?.requires_migration
+    : chromaDBStatus?.connected === false
     ? "warning"
     : "healthy";
 
@@ -479,7 +512,9 @@ export default function AdminDashboard() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">관리자 대시보드</h1>
-          <p className="text-muted-foreground">시스템의 현재 상태와 주요 지표를 확인하세요.</p>
+          <p className="text-muted-foreground">
+            시스템의 현재 상태와 주요 지표를 확인하세요.
+          </p>
         </div>
         <Button onClick={loadDashboardData} variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -523,7 +558,9 @@ export default function AdminDashboard() {
               icon={Database}
               title="벡터화 완료"
               value={dashboardData?.system.vectorized_files || 0}
-              description={`${dashboardData?.performance.vector_performance.total_vectors || 0} 벡터`}
+              description={`${
+                dashboardData?.performance.vector_performance.total_vectors || 0
+              } 벡터`}
               colorClass="text-green-500"
             />
             <StatCard
@@ -551,10 +588,10 @@ export default function AdminDashboard() {
 
         {/* 오른쪽 사이드바 */}
         <div className="space-y-6">
-          <SystemHealthWidget 
-            chromaStatus={{ ...chromaDBStatus, status: systemHealth }} 
+          <SystemHealthWidget
+            chromaStatus={chromaDBStatus}
             sqliteStatus={dashboardData?.system.sqlite_status}
-            onReset={handleChromaDBReset} 
+            onReset={handleChromaDBReset}
           />
           <ActivityFeed data={dashboardData} />
         </div>

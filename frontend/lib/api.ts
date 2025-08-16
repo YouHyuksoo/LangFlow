@@ -133,13 +133,45 @@ export const settingsAPI = {
     const response = await api.post("/api/v1/settings/reset");
     return response.data;
   },
+
+  // 성능 설정 관련 API
+  getPerformanceSettings: async () => {
+    const response = await api.get("/api/v1/settings/performance");
+    return response.data;
+  },
+
+  updatePerformanceSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/performance", settings);
+    return response.data;
+  },
+
+  getSystemStats: async () => {
+    const response = await api.get("/api/v1/settings/system-stats");
+    return response.data;
+  },
+
+  // Docling 설정 관련 API
+  getDoclingSettings: async () => {
+    const response = await api.get("/api/v1/settings/docling");
+    return response.data;
+  },
+
+  updateDoclingSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/docling", settings);
+    return response.data;
+  },
+
+  testDoclingProcessor: async () => {
+    const response = await api.post("/api/v1/settings/docling/test");
+    return response.data;
+  },
 };
 
 // 모델 설정 API (Docling 포함)
 export const modelSettingsAPI = {
   getSettings: async () => {
     try {
-      const response = await api.get("/api/v1/model-settings/");
+      const response = await api.get("/api/v1/settings/models");
       return response.data;
     } catch (error) {
       console.error("모델 설정 로드 실패:", error);
@@ -148,47 +180,57 @@ export const modelSettingsAPI = {
   },
 
   updateSettings: async (settings: any) => {
-    const response = await api.put("/api/v1/model-settings/", settings);
+    const response = await api.post("/api/v1/settings/models", settings);
     return response.data;
   },
 
   getAvailableProviders: async () => {
-    const response = await api.get("/api/v1/model-settings/providers");
+    const response = await api.get("/api/v1/settings/models/providers");
     return response.data;
   },
 
   getDoclingSettings: async () => {
-    const response = await api.get("/api/v1/model-settings/docling");
+    const response = await api.get("/api/v1/settings/docling");
     return response.data;
   },
 
   getDoclingStatus: async () => {
-    const response = await api.get("/api/v1/model-settings/docling/status");
+    const response = await api.get("/api/v1/settings/docling/status");
     return response.data;
   },
 
   getModelsByProvider: async (provider: string) => {
-    const response = await api.get(`/api/v1/model-settings/models/${provider}`);
+    const response = await api.get(`/api/v1/settings/models/${provider}`);
     return response.data;
   },
 
   updateModelSettings: async (settings: any) => {
-    const response = await api.put("/api/v1/model-settings/", settings);
+    const response = await api.post("/api/v1/settings/models", settings);
     return response.data;
   },
 
   updateDoclingSettings: async (settings: any) => {
-    const response = await api.put("/api/v1/model-settings/docling", settings);
+    const response = await api.post("/api/v1/settings/docling", settings);
     return response.data;
   },
 
   testModelConnection: async () => {
-    const response = await api.post("/api/v1/model-settings/test");
+    const response = await api.post("/api/v1/settings/models/test");
+    return response.data;
+  },
+
+  testLLMConnection: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/models/test-llm", settings);
+    return response.data;
+  },
+
+  testEmbeddingConnection: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/models/test-embedding", settings);
     return response.data;
   },
 
   resetModelSettings: async () => {
-    const response = await api.post("/api/v1/model-settings/reset");
+    const response = await api.post("/api/v1/settings/models/reset");
     return response.data;
   },
 };
@@ -196,17 +238,17 @@ export const modelSettingsAPI = {
 // Docling 관련 API
 export const doclingAPI = {
   getDoclingSettings: async () => {
-    const response = await api.get("/api/v1/model-settings/docling");
+    const response = await api.get("/api/v1/settings/docling");
     return response.data;
   },
 
   updateDoclingSettings: async (settings: any) => {
-    const response = await api.put("/api/v1/model-settings/docling", settings);
+    const response = await api.post("/api/v1/settings/docling", settings);
     return response.data;
   },
 
   getDoclingStatus: async () => {
-    const response = await api.get("/api/v1/model-settings/docling/status");
+    const response = await api.get("/api/v1/settings/docling/status");
     return response.data;
   },
 };
@@ -346,23 +388,13 @@ export const fileAPI = {
     return response.data;
   },
 
-  // ChromaDB 상태 조회
+  // ChromaDB 상태 조회 (통합된 엔드포인트 사용)
   getChromaDBStatus: async () => {
     const response = await api.get("/api/v1/files/chromadb/status/");
     return response.data;
   },
 
-  // ChromaDB 리셋
-  resetChromaDB: async () => {
-    const response = await api.post("/api/v1/files/chromadb/reset");
-    return response.data;
-  },
-
-  // ChromaDB 초기화
-  initializeChromaDB: async () => {
-    const response = await api.post("/api/v1/files/chromadb/initialize");
-    return response.data;
-  },
+  // 주의: ChromaDB 관리 기능은 vectorAPI.resetChromaDB() 사용을 권장합니다.
 
   // LangFlow 등록 현황 조회
   getLangflowStatus: async () => {
@@ -1083,37 +1115,142 @@ export const vectorAPI = {
     );
     return response.data;
   },
+
+  // 데이터베이스 관리 관련 API
+  getDatabaseSettings: async () => {
+    const response = await api.get("/api/v1/admin/vectors/database/settings");
+    return response.data;
+  },
+
+  updateDatabaseSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/admin/vectors/database/settings", settings);
+    return response.data;
+  },
+
+  getDatabaseStats: async () => {
+    const response = await api.get("/api/v1/admin/vectors/database/stats");
+    return response.data;
+  },
+
+  testDatabaseConnection: async () => {
+    const response = await api.post("/api/v1/admin/vectors/database/test");
+    return response.data;
+  },
+
+  createBackup: async () => {
+    const response = await api.post("/api/v1/admin/vectors/database/backup");
+    return response.data;
+  },
+
+  optimizeDatabase: async () => {
+    const response = await api.post("/api/v1/admin/vectors/database/optimize");
+    return response.data;
+  },
+
+  deleteAllVectors: async () => {
+    const response = await api.delete("/api/v1/admin/vectors/database/all-vectors");
+    return response.data;
+  },
+
+  // ChromaDB 리셋 (deleteAllVectors와 동일하지만 더 안전한 네이밍)
+  resetChromaDB: async () => {
+    const response = await api.delete("/api/v1/admin/vectors/database/all-vectors");
+    return response.data;
+  },
+};
+
+// 데이터베이스 관리 API (새로운 통합 관리)
+export const databaseAPI = {
+  // 전체 데이터베이스 상태 조회
+  getAllDatabaseStatus: async () => {
+    const response = await api.get("/api/v1/admin/database/status");
+    return response.data;
+  },
+
+  // ChromaDB 관리
+  getChromaDBStatus: async () => {
+    const response = await api.get("/api/v1/admin/database/chromadb/status");
+    return response.data;
+  },
+
+  backupChromaDB: async () => {
+    const response = await api.post("/api/v1/admin/database/chromadb/backup");
+    return response.data;
+  },
+
+  resetChromaDB: async () => {
+    const response = await api.post("/api/v1/admin/database/chromadb/reset");
+    return response.data;
+  },
+
+  // Metadata DB 관리
+  getMetadataDBStatus: async () => {
+    const response = await api.get("/api/v1/admin/database/metadata/status");
+    return response.data;
+  },
+
+  backupMetadataDB: async () => {
+    const response = await api.post("/api/v1/admin/database/metadata/backup");
+    return response.data;
+  },
+
+  resetMetadataDB: async () => {
+    const response = await api.post("/api/v1/admin/database/metadata/reset");
+    return response.data;
+  },
+
+  // Users DB 관리
+  getUsersDBStatus: async () => {
+    const response = await api.get("/api/v1/admin/database/users/status");
+    return response.data;
+  },
+
+  backupUsersDB: async () => {
+    const response = await api.post("/api/v1/admin/database/users/backup");
+    return response.data;
+  },
+
+  resetUsersDB: async () => {
+    const response = await api.post("/api/v1/admin/database/users/reset");
+    return response.data;
+  },
+
+  // 전체 백업
+  backupAllDatabases: async () => {
+    const response = await api.post("/api/v1/admin/database/backup-all");
+    return response.data;
+  },
 };
 
 // Unstructured 설정 API
 export const unstructuredAPI = {
   // Unstructured 설정 조회
-  getSettings: async () => {
-    const response = await api.get("/api/v1/unstructured-settings/");
+  getUnstructuredSettings: async () => {
+    const response = await api.get("/api/v1/settings/unstructured");
     return response.data;
   },
 
   // Unstructured 설정 업데이트
-  updateSettings: async (settings: any) => {
-    const response = await api.post("/api/v1/unstructured-settings/", settings);
+  updateUnstructuredSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/unstructured", settings);
     return response.data;
   },
 
   // Unstructured 설정 초기화
   resetSettings: async () => {
-    const response = await api.post("/api/v1/unstructured-settings/reset");
+    const response = await api.post("/api/v1/settings/reset");
     return response.data;
   },
 
   // Unstructured 라이브러리 상태 확인
   getStatus: async () => {
-    const response = await api.get("/api/v1/unstructured-settings/status");
+    const response = await api.get("/api/v1/settings/unstructured/status");
     return response.data;
   },
 
-  // Unstructured 처리 테스트
-  testProcessing: async () => {
-    const response = await api.post("/api/v1/unstructured-settings/test");
+  // Unstructured 프로세서 테스트
+  testUnstructuredProcessor: async () => {
+    const response = await api.post("/api/v1/settings/unstructured/test");
     return response.data;
   },
 };

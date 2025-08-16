@@ -1,15 +1,26 @@
+# -*- coding: utf-8 -*-
+import os
+import sys
+
+# 윈도우 환경에서 UTF-8 인코딩 강제 설정
+if os.name == 'nt':  # Windows
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+    
+    # 환경 변수로 UTF-8 설정
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import setup_logging, get_console_logger
-from app.api import chat, files, flows, stats, categories, langflow, users, personas, system_settings, sse, model_settings, vectors, unstructured_settings
+from app.api import chat, files, flows, stats, categories, langflow, users, personas, sse, vectors, database_management
 from app.api import settings as settings_api
 from app.db.init_db import initialize_database
 import uvicorn
-import os
 import signal
-import sys
 import subprocess
 import time
 import psutil
@@ -139,10 +150,8 @@ app.include_router(langflow.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
 app.include_router(settings_api.router, prefix=settings.API_V1_STR)
 app.include_router(personas.router, prefix=settings.API_V1_STR)
-app.include_router(system_settings.router, prefix=settings.API_V1_STR)
-app.include_router(model_settings.router, prefix=settings.API_V1_STR)
 app.include_router(vectors.router, prefix=settings.API_V1_STR)
-app.include_router(unstructured_settings.router, prefix=settings.API_V1_STR)
+app.include_router(database_management.router, prefix=settings.API_V1_STR)
 app.include_router(sse.router)  # SSE는 별도 prefix 사용
 
 # 정적 파일 서빙 설정 (아바타 이미지 및 문서 이미지용)

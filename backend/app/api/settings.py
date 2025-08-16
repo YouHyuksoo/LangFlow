@@ -1,71 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-import json
-import os
-from ..core.config import settings as config_settings
+from ..services.settings_service import settings_service
 from ..core.logger import get_console_logger
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 _clog = get_console_logger()
 
-# 기본 설정값
-DEFAULT_SETTINGS = {
-    "maxFileSize": 10,  # MB
-    "allowedFileTypes": ["pdf", "docx", "pptx", "xlsx"],
-    "uploadDirectory": "uploads/",
-    "vectorDimension": 1536,
-    "chunkSize": 1000,
-    "chunkOverlap": 200,
-    "enableAutoVectorization": True,
-    "enableNotifications": True,
-    "debugMode": False,
-}
-
-def get_settings_file_path():
-    """설정 파일 경로 반환"""
-    return os.path.join(config_settings.DATA_DIR, "system_settings.json")
-
-def load_settings() -> Dict[str, Any]:
-    """설정 파일에서 설정 로드"""
-    settings_file = get_settings_file_path()
-    
-    try:
-        if os.path.exists(settings_file):
-            with open(settings_file, 'r', encoding='utf-8') as f:
-                saved_settings = json.load(f)
-                # 기본 설정과 병합 (새로운 설정이 추가되었을 경우를 대비)
-                merged_settings = DEFAULT_SETTINGS.copy()
-                merged_settings.update(saved_settings)
-                return merged_settings
-        else:
-            # 설정 파일이 없으면 기본 설정 반환
-            return DEFAULT_SETTINGS.copy()
-    except Exception as e:
-        _clog.error(f"설정 로드 중 오류: {str(e)}")
-        return DEFAULT_SETTINGS.copy()
-
-def save_settings(new_settings: Dict[str, Any]) -> bool:
-    """설정을 파일에 저장"""
-    settings_file = get_settings_file_path()
-    
-    try:
-        # 데이터 디렉토리가 없으면 생성
-        os.makedirs(os.path.dirname(settings_file), exist_ok=True)
-        
-        with open(settings_file, 'w', encoding='utf-8') as f:
-            json.dump(new_settings, f, ensure_ascii=False, indent=2)
-        
-        _clog.info(f"설정 저장 완료: {settings_file}")
-        return True
-    except Exception as e:
-        _clog.error(f"설정 저장 중 오류: {str(e)}")
-        return False
+# 통합 설정 서비스를 사용하므로 기존 함수들은 제거됨
 
 @router.get("/")
 async def get_settings():
     """시스템 설정 조회"""
     try:
-        settings_data = load_settings()
+        settings_data = settings_service.get_section_settings("system")
         _clog.info("설정 조회 완료")
         return settings_data
     except Exception as e:
@@ -76,25 +23,16 @@ async def get_settings():
 async def update_settings(new_settings: Dict[str, Any]):
     """시스템 설정 업데이트"""
     try:
-        # 현재 설정 로드
-        current_settings = load_settings()
-        
-        # 새 설정으로 업데이트
-        current_settings.update(new_settings)
-        
         # 설정 유효성 검증
-        if "maxFileSize" in new_settings:
-            max_size = new_settings["maxFileSize"]
-            if not isinstance(max_size, (int, float)) or max_size <= 0 or max_size > 100:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="최대 파일 크기는 0보다 크고 100MB 이하여야 합니다."
-                )
+        is_valid, error_message = settings_service.validate_settings("system", new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
         
         # 설정 저장
-        if save_settings(current_settings):
+        if settings_service.update_section_settings("system", new_settings):
+            updated_settings = settings_service.get_section_settings("system")
             _clog.info("설정 업데이트 완료")
-            return {"message": "설정이 성공적으로 업데이트되었습니다.", "settings": current_settings}
+            return {"message": "설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
         else:
             raise HTTPException(status_code=500, detail="설정 저장에 실패했습니다.")
             
@@ -108,11 +46,345 @@ async def update_settings(new_settings: Dict[str, Any]):
 async def reset_settings():
     """설정을 기본값으로 초기화"""
     try:
-        if save_settings(DEFAULT_SETTINGS.copy()):
+        if settings_service.reset_section_settings("system"):
+            default_settings = settings_service.get_section_settings("system")
             _clog.info("설정 초기화 완료")
-            return {"message": "설정이 기본값으로 초기화되었습니다.", "settings": DEFAULT_SETTINGS}
+            return {"message": "설정이 기본값으로 초기화되었습니다.", "settings": default_settings}
         else:
             raise HTTPException(status_code=500, detail="설정 초기화에 실패했습니다.")
     except Exception as e:
         _clog.error(f"설정 초기화 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail="설정 초기화 중 오류가 발생했습니다.")
+
+@router.get("/performance")
+async def get_performance_settings():
+    """성능 설정 조회"""
+    try:
+        settings_data = settings_service.get_section_settings("performance")
+        _clog.info("성능 설정 조회 완료")
+        return settings_data
+    except Exception as e:
+        _clog.error(f"성능 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="성능 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/performance")
+async def update_performance_settings(new_settings: Dict[str, Any]):
+    """성능 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        is_valid, error_message = settings_service.validate_settings("performance", new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        # 설정 저장
+        if settings_service.update_section_settings("performance", new_settings):
+            updated_settings = settings_service.get_section_settings("performance")
+            _clog.info("성능 설정 업데이트 완료")
+            return {"message": "성능 설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
+        else:
+            raise HTTPException(status_code=500, detail="성능 설정 저장에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"성능 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="성능 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.get("/system-stats")
+async def get_system_statistics():
+    """시스템 통계 조회"""
+    try:
+        stats_data = settings_service.get_system_stats()
+        _clog.info("시스템 통계 조회 완료")
+        return stats_data
+    except Exception as e:
+        _clog.error(f"시스템 통계 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="시스템 통계 조회 중 오류가 발생했습니다.")
+
+# 모델 설정 관련 엔드포인트들
+@router.get("/models")
+async def get_model_settings():
+    """모델 설정 조회"""
+    try:
+        settings = settings_service.get_section_settings("models")
+        _clog.info("모델 설정 조회 완료")
+        return settings
+    except Exception as e:
+        _clog.error(f"모델 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/models")
+async def update_model_settings(new_settings: Dict[str, Any]):
+    """모델 설정 수정"""
+    try:
+        is_valid, error_message = settings_service.validate_settings("models", new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        if settings_service.update_section_settings("models", new_settings):
+            updated_settings = settings_service.get_section_settings("models")
+            _clog.info("모델 설정 수정 완료")
+            return updated_settings
+        else:
+            raise HTTPException(status_code=500, detail="모델 설정 저장에 실패했습니다.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"모델 설정 수정 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/models/providers")
+async def get_available_providers():
+    """사용 가능한 모델 제공업체 목록 조회"""
+    try:
+        providers = settings_service.get_available_providers()
+        _clog.info("모델 제공업체 목록 조회 완료")
+        return providers
+    except Exception as e:
+        _clog.error(f"모델 제공업체 목록 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/models/{provider}")
+async def get_models_by_provider(provider: str):
+    """특정 제공업체의 모델 목록 조회"""
+    try:
+        models = settings_service.get_models_by_provider(provider)
+        _clog.info(f"{provider} 모델 목록 조회 완료")
+        return {"models": models}
+    except Exception as e:
+        _clog.error(f"{provider} 모델 목록 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/models/test")
+async def test_model_settings():
+    """현재 모델 설정으로 연결 테스트"""
+    try:
+        result = settings_service.test_model_connection()
+        _clog.info("모델 연결 테스트 완료")
+        return result
+    except Exception as e:
+        _clog.error(f"모델 연결 테스트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/models/test-llm")
+async def test_llm_connection(test_settings: Dict[str, Any]):
+    """LLM 연결 테스트"""
+    try:
+        # 테스트용 설정으로 연결 확인
+        result = settings_service.test_llm_connection(test_settings)
+        _clog.info("LLM 연결 테스트 완료")
+        return result
+    except Exception as e:
+        _clog.error(f"LLM 연결 테스트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/models/test-embedding")
+async def test_embedding_connection(test_settings: Dict[str, Any]):
+    """임베딩 모델 연결 테스트"""
+    try:
+        # 테스트용 설정으로 연결 확인
+        result = settings_service.test_embedding_connection(test_settings)
+        _clog.info("임베딩 연결 테스트 완료")
+        return result
+    except Exception as e:
+        _clog.error(f"임베딩 연결 테스트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Docling 관련 엔드포인트
+@router.get("/docling")
+async def get_docling_settings():
+    """Docling 설정 조회"""
+    try:
+        settings = settings_service.get_section_settings("docling")
+        _clog.info("Docling 설정 조회 완료")
+        return settings
+    except Exception as e:
+        _clog.error(f"Docling 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/docling")
+async def update_docling_settings(new_settings: Dict[str, Any]):
+    """Docling 설정 수정"""
+    try:
+        is_valid, error_message = settings_service.validate_settings("docling", new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        if settings_service.update_section_settings("docling", new_settings):
+            updated_settings = settings_service.get_section_settings("docling")
+            _clog.info("Docling 설정 수정 완료")
+            return updated_settings
+        else:
+            raise HTTPException(status_code=500, detail="Docling 설정 저장에 실패했습니다.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"Docling 설정 수정 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/docling/status")
+async def get_docling_status():
+    """Docling 서비스 상태 확인"""
+    try:
+        status = settings_service.get_docling_status()
+        _clog.info("Docling 상태 확인 완료")
+        return status
+    except Exception as e:
+        _clog.error(f"Docling 상태 확인 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Unstructured 관련 엔드포인트
+@router.get("/unstructured")
+async def get_unstructured_settings():
+    """Unstructured 설정 조회"""
+    try:
+        settings_data = settings_service.get_section_settings("unstructured")
+        _clog.info("Unstructured 설정 조회 완료")
+        return settings_data
+    except Exception as e:
+        _clog.error(f"Unstructured 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unstructured 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/unstructured")
+async def update_unstructured_settings(new_settings: Dict[str, Any]):
+    """Unstructured 설정 업데이트"""
+    try:
+        is_valid, error_message = settings_service.validate_settings("unstructured", new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        if settings_service.update_section_settings("unstructured", new_settings):
+            updated_settings = settings_service.get_section_settings("unstructured")
+            _clog.info("Unstructured 설정 업데이트 완료")
+            return {"message": "Unstructured 설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
+        else:
+            raise HTTPException(status_code=500, detail="Unstructured 설정 저장에 실패했습니다.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"Unstructured 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unstructured 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.get("/unstructured/status")
+async def get_unstructured_status():
+    """Unstructured 라이브러리 상태 확인"""
+    try:
+        status = settings_service.get_unstructured_status()
+        _clog.info("Unstructured 상태 확인 완료")
+        return status
+    except Exception as e:
+        _clog.error(f"Unstructured 상태 확인 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/unstructured/test")
+async def test_unstructured_processing():
+    """Unstructured 처리 테스트"""
+    try:
+        settings_data = settings_service.get_section_settings("unstructured")
+        
+        if not settings_data.get("enabled", False):
+            return {
+                "success": False,
+                "message": "Unstructured가 비활성화되어 있습니다.",
+                "settings": settings_data
+            }
+        
+        try:
+            from unstructured.partition.text import partition_text
+            
+            test_text = "이것은 Unstructured 라이브러리 테스트입니다.\n\n테이블 추론과 한글 처리가 정상적으로 작동하는지 확인합니다."
+            elements = partition_text(text=test_text)
+            
+            result = {
+                "success": True,
+                "message": "Unstructured 처리 테스트 성공",
+                "elements_count": len(elements),
+                "elements": [str(elem) for elem in elements[:3]],
+                "settings": settings_data
+            }
+            
+            _clog.info("Unstructured 처리 테스트 성공")
+            return result
+            
+        except ImportError:
+            return {
+                "success": False,
+                "message": "Unstructured 라이브러리가 설치되지 않았습니다.",
+                "settings": settings_data
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Unstructured 테스트 실패: {str(e)}",
+                "settings": settings_data
+            }
+            
+    except Exception as e:
+        _clog.error(f"Unstructured 테스트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unstructured 테스트 중 오류가 발생했습니다.")
+
+# 통합 설정 관리를 위한 새로운 엔드포인트들
+
+@router.get("/all")
+async def get_all_settings():
+    """모든 설정 조회"""
+    try:
+        all_settings = settings_service.load_settings()
+        _clog.info("전체 설정 조회 완료")
+        return all_settings
+    except Exception as e:
+        _clog.error(f"전체 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="전체 설정 조회 중 오류가 발생했습니다.")
+
+@router.get("/{section}")
+async def get_section_settings(section: str):
+    """특정 섹션 설정 조회"""
+    try:
+        settings_data = settings_service.get_section_settings(section)
+        if not settings_data:
+            raise HTTPException(status_code=404, detail=f"'{section}' 섹션을 찾을 수 없습니다.")
+        
+        _clog.info(f"{section} 설정 조회 완료")
+        return settings_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"{section} 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{section} 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/{section}")
+async def update_section_settings(section: str, new_settings: Dict[str, Any]):
+    """특정 섹션 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        is_valid, error_message = settings_service.validate_settings(section, new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        # 설정 저장
+        if settings_service.update_section_settings(section, new_settings):
+            updated_settings = settings_service.get_section_settings(section)
+            _clog.info(f"{section} 설정 업데이트 완료")
+            return {"message": f"{section} 설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
+        else:
+            raise HTTPException(status_code=500, detail=f"{section} 설정 저장에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"{section} 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{section} 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.post("/reset-all")
+async def reset_all_settings():
+    """모든 설정을 기본값으로 초기화"""
+    try:
+        if settings_service.reset_all_settings():
+            default_settings = settings_service.load_settings()
+            _clog.info("전체 설정 초기화 완료")
+            return {"message": "모든 설정이 기본값으로 초기화되었습니다.", "settings": default_settings}
+        else:
+            raise HTTPException(status_code=500, detail="전체 설정 초기화에 실패했습니다.")
+    except Exception as e:
+        _clog.error(f"전체 설정 초기화 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="전체 설정 초기화 중 오류가 발생했습니다.")

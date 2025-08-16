@@ -5,8 +5,7 @@ from ..core.logger import get_user_logger, get_console_logger
 from ..models.schemas import FileUploadResponse, FileInfo, DoclingOptions, FileProcessingOptions
 from ..services import get_file_service
 from ..services.docling_service import DoclingService
-from ..services.model_settings_service import ModelSettingsService
-from .settings import load_settings
+from ..services.settings_service import settings_service
 import os
 import json
 
@@ -46,10 +45,9 @@ async def upload_file(
                 detail="카테고리를 지정해야 합니다. category_id 또는 category를 제공해주세요."
             )
         
-        # 파일 형식 검증 - 동적 설정 사용
-        from .settings import load_settings
-        current_settings = load_settings()
-        allowed_file_types = current_settings.get("allowedFileTypes", ["pdf"])
+        # 파일 형식 검증 - 통합 설정 사용
+        system_settings = settings_service.get_section_settings("system")
+        allowed_file_types = system_settings.get("allowedFileTypes", ["pdf"])
         allowed_extensions = [f".{ext}" if not ext.startswith('.') else ext for ext in allowed_file_types]
         
         file_extension = None
@@ -66,12 +64,11 @@ async def upload_file(
         # 파일 크기 로깅 (검증은 FileService에서 처리)
         _clog.info(f"파일 크기: {file.size} bytes")
         
-        # Docling 사용 여부 및 옵션 구성: ModelSettingsService의 Docling 설정을 단일 소스로 사용
-        settings_service = ModelSettingsService()
-        svc_docling_settings = await settings_service.get_docling_settings()
+        # Docling 사용 여부 및 옵션 구성: 통합 설정 서비스의 Docling 설정을 사용
+        svc_docling_settings = settings_service.get_section_settings("docling")
 
         # 기본 사용 여부는 서비스 설정을 따르고, Form 파라미터가 있으면 오버라이드
-        docling_enabled = svc_docling_settings.enabled
+        docling_enabled = svc_docling_settings.get("enabled", False)
         if use_docling is not None:
             docling_enabled = use_docling
 
@@ -501,11 +498,11 @@ async def get_vectorization_status():
         file_service = get_file_service_instance()
         if hasattr(file_service, '_vector_service') and file_service._vector_service:
             try:
-                chroma_status = file_service._vector_service.get_chromadb_status()
-                chromadb_status = chroma_status.get("status", "unknown")
-                chromadb_message = chroma_status.get("message", "상태 정보 없음")
+                chroma_status = await file_service._vector_service.get_status()
+                chromadb_status = chroma_status.get("connected", False)
+                chromadb_message = "ChromaDB 연결됨" if chromadb_status else "ChromaDB 연결 안됨"
             except Exception:
-                chromadb_status = "error"
+                chromadb_status = False
                 chromadb_message = "ChromaDB 상태 조회 중 오류 발생"
         else:
             chromadb_status = "not_loaded"
@@ -604,6 +601,28 @@ async def reset_files_metadata():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/chromadb/status/")
+async def get_chromadb_status():
+    """ChromaDB 연결 및 상태 조회 (파일 API 통합 엔드포인트)"""
+    try:
+        # VectorService 직접 사용
+        from ..services.vector_service import VectorService
+        vector_service = VectorService()
+        
+        # ChromaDB 상태 조회
+        status = await vector_service.get_status()
+        return status
+        
+    except Exception as e:
+        _clog.error(f"ChromaDB 상태 조회 실패: {e}")
+        return {
+            "connected": False,
+            "total_vectors": 0,
+            "collection_count": 0,
+            "collections": [],
+            "error": str(e)
+        }
 
 @router.get("/langflow/status/")
 async def get_langflow_status():
@@ -812,13 +831,13 @@ async def diagnose_and_fix_database():
         
         # 5단계: ChromaDB 상태 확인
         try:
-            chromadb_status = vector_service.get_chromadb_status()
+            chromadb_status = await vector_service.get_status()
             results["steps"].append({
                 "step": "chromadb_status_check",
                 "name": "ChromaDB 상태 확인",
                 "status": "completed",
                 "chromadb_status": chromadb_status,
-                "message": f"ChromaDB 상태: {chromadb_status.get('status', 'unknown')}"
+                "message": f"ChromaDB 상태: {'연결됨' if chromadb_status.get('connected') else '연결 안됨'}"
             })
         except Exception as e:
             results["steps"].append({
@@ -843,309 +862,6 @@ async def diagnose_and_fix_database():
 
 
 
-@router.get("/chromadb/status/")
-async def get_chromadb_status():
-    """ChromaDB 상태 조회 (안전한 버전)"""
-    try:
-        # VectorService를 지연 로딩으로 가져오기
-        file_service = get_file_service_instance()
-        
-        # VectorService 초기화를 시도하지만 오류 시 안전하게 처리
-        try:
-            vector_service = file_service.vector_service
-            if not vector_service:
-                return {
-                    "chromadb_available": False,
-                    "client_initialized": False,
-                    "collection_initialized": False,
-                    "collection_count": 0,
-                    "error": "VectorService를 초기화할 수 없습니다."
-                }
-            
-            status = vector_service.get_chromadb_status()
-            return status
-        except Exception as ve:
-            # VectorService 오류는 안전하게 처리
-            error_msg = str(ve)
-            return {
-                "chromadb_available": False,
-                "client_initialized": False,
-                "collection_initialized": False,
-                "collection_count": 0,
-                "error": error_msg,
-                "requires_migration": "no such column" in error_msg.lower(),
-                "error_type": "chromadb_schema_error" if "no such column" in error_msg.lower() else "initialization_error"
-            }
-            
-    except Exception as e:
-        return {
-            "chromadb_available": False,
-            "client_initialized": False,
-            "collection_initialized": False,
-            "collection_count": 0,
-            "error": str(e),
-            "error_type": "api_error"
-        }
-
-@router.post("/chromadb/migrate")
-async def migrate_chromadb():
-    """ChromaDB를 새로운 설정으로 마이그레이션"""
-    try:
-        # VectorService를 지연 로딩으로 가져오기
-        file_service = get_file_service_instance()
-        vector_service = file_service.vector_service
-        if not vector_service:
-            raise HTTPException(status_code=500, detail="벡터 서비스를 초기화할 수 없습니다.")
-        
-        success = await vector_service.migrate_from_deprecated_config()
-        
-        if success:
-            return {
-                "message": "ChromaDB 마이그레이션이 성공적으로 완료되었습니다.",
-                "status": vector_service.get_chromadb_status()
-            }
-        else:
-            return {
-                "message": "ChromaDB 마이그레이션에 실패했지만 JSON fallback으로 작동합니다.",
-                "status": vector_service.get_chromadb_status()
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/maintenance/reset-vector-data")
-async def reset_vector_data():
-    """벡터 데이터와 메타데이터만 초기화 (파일과 DB 구조는 유지)"""
-    try:
-        _clog.info("벡터 데이터 초기화 시작")
-        
-        file_service = get_file_service_instance()
-        vector_service = file_service.vector_service
-        
-        results = {
-            "message": "벡터 데이터 초기화 완료",
-            "status": "success",
-            "chromadb_cleared": False,
-            "metadata_cleared": False,
-            "vector_count_before": 0,
-            "vector_count_after": 0
-        }
-        
-        # 1. ChromaDB 벡터 데이터 초기화 (컬렉션 구조는 유지)
-        try:
-            # 초기화 전 벡터 수 확인
-            try:
-                await vector_service._ensure_client()
-                if vector_service._collection:
-                    results["vector_count_before"] = vector_service._collection.count()
-            except Exception:
-                results["vector_count_before"] = 0
-            
-            # 벡터 데이터만 삭제
-            clear_result = await vector_service.clear_chromadb_documents_only()
-            results["chromadb_cleared"] = clear_result.get("success", False)
-            
-            # 초기화 후 벡터 수 확인
-            try:
-                if vector_service._collection:
-                    results["vector_count_after"] = vector_service._collection.count()
-            except Exception:
-                results["vector_count_after"] = 0
-                
-            _clog.info(f"ChromaDB 벡터 삭제: {results['vector_count_before']}개 → {results['vector_count_after']}개")
-            
-        except Exception as e:
-            _clog.error(f"ChromaDB 초기화 실패: {e}")
-            results["chromadb_error"] = str(e)
-        
-        # 2. metadata.db 테이블 데이터 초기화
-        try:
-            from ..models.vector_models import VectorMetadataService
-            metadata_service = VectorMetadataService()
-            
-            cleared_count = metadata_service.clear_all()
-            results["metadata_cleared"] = True
-            results["metadata_records_cleared"] = cleared_count
-            
-            _clog.info(f"메타데이터 레코드 {cleared_count}개 삭제 완료")
-            
-        except Exception as e:
-            _clog.error(f"메타데이터 초기화 실패: {e}")
-            results["metadata_error"] = str(e)
-        
-        # 파일 메타데이터는 건드리지 않음 (파일 정보는 유지)
-        _clog.info("벡터 데이터 초기화 완료")
-        return results
-        
-    except Exception as e:
-        _clog.error(f"벡터 데이터 초기화 전체 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
-
-
-@router.post("/maintenance/wipe-all")  
-async def wipe_all_data():
-    """모든 데이터 완전 삭제 (파일, 벡터, 메타데이터 모두 삭제)"""
-    try:
-        _clog.info("전체 데이터 삭제 시작")
-        
-        import shutil
-        file_service = get_file_service_instance()
-        
-        results = {
-            "message": "모든 데이터가 삭제되었습니다.",
-            "status": "success",
-            "files_deleted": 0,
-            "vector_data_cleared": False,
-            "metadata_cleared": False
-        }
-        
-        # 1. 업로드된 파일들 삭제
-        try:
-            uploads_dir = file_service.upload_dir
-            if os.path.exists(uploads_dir):
-                file_count = len([f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))])
-                results["files_deleted"] = file_count
-                
-                # 폴더 내용 삭제
-                for item in os.listdir(uploads_dir):
-                    item_path = os.path.join(uploads_dir, item)
-                    try:
-                        if os.path.isfile(item_path):
-                            os.remove(item_path)
-                        elif os.path.isdir(item_path):
-                            shutil.rmtree(item_path)
-                    except Exception as e:
-                        _clog.error(f"파일 삭제 실패: {item_path}, 오류: {e}")
-                        
-                _clog.info(f"업로드 파일 {file_count}개 삭제 완료")
-            
-        except Exception as e:
-            _clog.error(f"파일 삭제 실패: {e}")
-            results["file_deletion_error"] = str(e)
-        
-        # 2. 벡터 데이터 초기화
-        try:
-            vector_reset_result = await reset_vector_data()
-            results["vector_data_cleared"] = vector_reset_result.get("chromadb_cleared", False)
-            results["metadata_cleared"] = vector_reset_result.get("metadata_cleared", False)
-            
-        except Exception as e:
-            _clog.error(f"벡터 데이터 삭제 실패: {e}")
-            results["vector_deletion_error"] = str(e)
-        
-        # 3. 파일 메타데이터 초기화
-        try:
-            file_service.files_metadata = {}
-            file_service._save_files_metadata()
-            _clog.info("파일 메타데이터 초기화 완료")
-            
-        except Exception as e:
-            _clog.error(f"파일 메타데이터 초기화 실패: {e}")
-            results["metadata_deletion_error"] = str(e)
-        
-        _clog.info("전체 데이터 삭제 완료")
-        return results
-        
-    except Exception as e:
-        _clog.error(f"전체 데이터 삭제 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"삭제 실패: {str(e)}")
-
-@router.post("/chromadb/reset")
-async def reset_chromadb():
-    """ChromaDB 스키마 오류 해결을 위한 완전 리셋"""
-    try:
-        _clog.info("ChromaDB 리셋 시작")
-        
-        file_service = get_file_service_instance()
-        vector_service = file_service.vector_service
-        
-        # ChromaDB 리셋 실행
-        await vector_service.reset_chromadb()
-        
-        # 리셋 후 상태 확인
-        status = vector_service.get_chromadb_status()
-        
-        _clog.info("ChromaDB 리셋 완료")
-        
-        return {
-            "message": "ChromaDB 데이터베이스 리셋 완료",
-            "status": "success",
-            "new_status": status
-        }
-        
-    except Exception as e:
-        _clog.error(f"ChromaDB 리셋 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"리셋 실패: {str(e)}") 
-
-
-
-@router.get("/chromadb/status/")
-async def get_chromadb_status():
-    """출력하지 않고 ChromaDB 상태만 확인합니다."""
-    try:
-        file_service = get_file_service_instance()
-        vector_service = file_service.vector_service
-        
-        if not vector_service:
-            return {
-                "status": "error",
-                "message": "벡터 서비스를 초기화할 수 없습니다.",
-                "chromadb_available": False
-            }
-        
-        # ChromaDB 상태 확인
-        from ..services.vector_service import VectorService
-        
-        status = {
-            "chromadb_available": False,
-            "client_initialized": bool(VectorService._client),
-            "collection_initialized": bool(VectorService._collection),
-            "error_message": None
-        }
-        
-        try:
-            # 새 구조에 맞게 클라이언트 확인
-            vector_service._ensure_client()
-            
-            # 초기화 후 상태 업데이트
-            status["client_initialized"] = bool(VectorService._client)
-            status["collection_initialized"] = bool(VectorService._collection)
-            
-            if VectorService._client and VectorService._collection:
-                # 간단한 테스트 수행
-                try:
-                    collections = VectorService._client.list_collections()
-                    status["chromadb_available"] = True
-                    status["collections_count"] = len(collections)
-                except Exception as test_e:
-                    status["error_message"] = f"컬렉션 접근 실패: {str(test_e)}"
-            else:
-                status["error_message"] = "ChromaDB 초기화 실패"
-                
-        except Exception as init_e:
-            status["error_message"] = f"초기화 오류: {str(init_e)}"
-        
-        # 전체 상태 결정
-        if status["chromadb_available"]:
-            status["status"] = "healthy"
-            status["message"] = "ChromaDB가 정상적으로 작동 중입니다."
-        elif status["error_message"]:
-            status["status"] = "error"
-            status["message"] = f"ChromaDB 또는 컬렉션에 문제가 있습니다: {status['error_message']}"
-        else:
-            status["status"] = "warning"
-            status["message"] = "ChromaDB가 초기화되지 않았습니다."
-        
-        return status
-        
-    except Exception as e:
-        print(f"ChromaDB 상태 확인 오류: {str(e)}")
-        return {
-            "status": "error",
-            "message": f"ChromaDB 상태 확인 중 오류가 발생했습니다: {str(e)}",
-            "chromadb_available": False,
-            "error_message": str(e)
-        }
-
 @router.post("/chromadb/initialize")
 async def initialize_chromadb():
     """ChromaDB를 수동으로 초기화합니다."""
@@ -1165,7 +881,7 @@ async def initialize_chromadb():
         
         if result["success"]:
             # 초기화 후 상태 확인
-            status = vector_service.get_chromadb_status()
+            status = await vector_service.get_status()
             result["status"] = status
             
         return result

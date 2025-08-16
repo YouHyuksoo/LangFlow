@@ -110,8 +110,8 @@ async def _get_file_stats() -> Dict[str, Any]:
         # ChromaDB 상태에서 벡터 수 가져오기
         from ..services.vector_service import VectorService
         vector_service = VectorService()
-        chroma_status = vector_service.get_chromadb_status()
-        total_vectors = chroma_status.get('collection_count', 0)
+        chroma_status = await vector_service.get_status()
+        total_vectors = chroma_status.get('total_vectors', 0)
 
         # 파일 메타데이터에서 파일 수 및 최근 업로드 가져오기
         from ..services.file_service import FileService

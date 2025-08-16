@@ -29,7 +29,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { fileAPI, doclingAPI } from "@/lib/api";
+import { fileAPI, doclingAPI, settingsAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useVectorizationSSE } from "@/hooks/use-sse";
 import { DoclingSettingsInfo } from "@/components/docling-settings-info";
@@ -71,6 +71,7 @@ export default function VectorizationPage() {
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<any>(null);
+  const [systemSettings, setSystemSettings] = useState<any>(null);
   const [confirmRevectorize, setConfirmRevectorize] = useState<{
     isOpen: boolean;
     fileId: string;
@@ -257,14 +258,20 @@ export default function VectorizationPage() {
     };
   }, [loadVectorizationData]);
 
-  // Docling 설정 로드
+  // 설정 로드 (Docling 및 기본 설정)
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settings = await doclingAPI.getDoclingSettings();
-        setCurrentSettings(settings);
+        // Docling 설정과 기본 설정을 동시에 로드
+        const [doclingSettings, basicSettings] = await Promise.all([
+          doclingAPI.getDoclingSettings(),
+          settingsAPI.getSettings()
+        ]);
+        
+        setCurrentSettings(doclingSettings);
+        setSystemSettings(basicSettings);
       } catch (error) {
-        console.error("Docling 설정 로드 실패:", error);
+        console.error("설정 로드 실패:", error);
       }
     };
     loadSettings();
@@ -849,17 +856,104 @@ export default function VectorizationPage() {
         </div>
       </div>
 
-      {/* Docling 설정 정보 */}
+      {/* 문서 처리 설정 정보 */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">문서 처리 설정</CardTitle>
           <CardDescription>
-            현재 적용 중인 Docling 문서 처리 설정을 확인할 수 있습니다.
+            현재 적용 중인 전처리 방식과 문서 처리 설정을 확인할 수 있습니다.
           </CardDescription>
-          <div className="pt-2">
-            <DoclingSettingsInfo settings={currentSettings} />
-          </div>
         </CardHeader>
+        <CardContent className="space-y-4">
+          {/* 전처리 방식 표시 */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-900/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <h3 className="font-medium text-blue-800 dark:text-blue-300">
+                  기본 전처리 방식
+                </h3>
+              </div>
+              <div className="text-sm text-blue-700 dark:text-blue-400">
+                {systemSettings?.preprocessing_method === "basic" && (
+                  <div>
+                    <span className="font-medium">기본 처리</span>
+                    <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">
+                      빠른 텍스트 추출, 간단한 문서에 적합
+                    </p>
+                  </div>
+                )}
+                {systemSettings?.preprocessing_method === "docling" && (
+                  <div>
+                    <span className="font-medium">Docling</span>
+                    <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">
+                      고급 문서 구조 분석, 표와 이미지 추출
+                    </p>
+                  </div>
+                )}
+                {systemSettings?.preprocessing_method === "unstructured" && (
+                  <div>
+                    <span className="font-medium">Unstructured</span>
+                    <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">
+                      포괄적 문서 분석, 다양한 형식 지원
+                    </p>
+                  </div>
+                )}
+                {!systemSettings?.preprocessing_method && (
+                  <div>
+                    <span className="font-medium">설정 로드 중...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-900/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <h3 className="font-medium text-green-800 dark:text-green-300">
+                  파일 업로드 설정
+                </h3>
+              </div>
+              <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
+                <div>
+                  <span className="font-medium">최대 크기:</span> {systemSettings?.maxFileSize || 10}MB
+                </div>
+                <div>
+                  <span className="font-medium">지원 형식:</span> {systemSettings?.allowedFileTypes?.length || 0}개
+                </div>
+                <div className="text-xs text-green-600 dark:text-green-500">
+                  {systemSettings?.allowedFileTypes?.join(', ') || '로딩 중...'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Docling 세부 설정 */}
+          {systemSettings?.preprocessing_method === "docling" && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-3 text-purple-800 dark:text-purple-300">
+                Docling 세부 설정
+              </h3>
+              <DoclingSettingsInfo settings={currentSettings} />
+            </div>
+          )}
+
+          {/* 설정 변경 안내 */}
+          <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <div className="text-sm text-yellow-800 dark:text-yellow-300">
+              <span className="font-medium">💡 전처리 방식 변경:</span> 
+              <span className="ml-1">기본 설정 페이지에서 변경할 수 있습니다.</span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => window.open('/admin/settings', '_blank')}
+              className="text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-400 dark:border-yellow-600 dark:hover:bg-yellow-900/50"
+            >
+              설정 변경
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       {/* 통계 카드들 */}

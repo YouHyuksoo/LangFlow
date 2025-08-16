@@ -7,8 +7,7 @@ from ..core.config import settings
 from .file_service import FileService
 from .langflow_service import LangflowService
 from .persona_service import PersonaService
-from .system_settings_service import SystemSettingsService
-from .model_settings_service import get_current_model_config
+from .settings_service import settings_service
 from ..utils.image_utils import extract_image_path_from_chunk, is_image_chunk, create_vision_image_content
 import openai
 from datetime import datetime
@@ -18,13 +17,19 @@ class ChatService:
         self.file_service = FileService()
         self.langflow_service = LangflowService()
         self.persona_service = PersonaService()
-        self.system_settings_service = SystemSettingsService()
     
     async def _get_llm_client(self):
         """현재 모델 설정에 따라 LLM 클라이언트를 반환합니다."""
         try:
-            model_config = await get_current_model_config()
-            llm_config = model_config.get("llm", {})
+            model_settings = settings_service.get_section_settings("models")
+            llm_config = {
+                "provider": model_settings.get("llm_provider", "openai"),
+                "model": model_settings.get("llm_model", "gpt-3.5-turbo"),
+                "api_key": model_settings.get("llm_api_key", ""),
+                "base_url": model_settings.get("llm_base_url", ""),
+                "temperature": model_settings.get("temperature", 0.7),
+                "max_tokens": model_settings.get("max_tokens", 2000)
+            }
             
             provider = llm_config.get("provider", "openai")
             api_key = llm_config.get("api_key", "")
@@ -68,8 +73,15 @@ class ChatService:
     async def _call_vision_llm(self, messages: List[Dict[str, Any]], images: List[str] = None) -> str:
         """Vision 모델로 메시지를 전송하고 응답을 받습니다."""
         try:
-            model_config = await get_current_model_config()
-            llm_config = model_config.get("llm", {})
+            model_settings = settings_service.get_section_settings("models")
+            llm_config = {
+                "provider": model_settings.get("llm_provider", "openai"),
+                "model": model_settings.get("llm_model", "gpt-3.5-turbo"),
+                "api_key": model_settings.get("llm_api_key", ""),
+                "base_url": model_settings.get("llm_base_url", ""),
+                "temperature": model_settings.get("temperature", 0.7),
+                "max_tokens": model_settings.get("max_tokens", 2000)
+            }
             
             llm_client, provider = await self._get_llm_client()
             if not llm_client:
@@ -119,8 +131,15 @@ class ChatService:
     async def _call_llm(self, messages: List[Dict[str, Any]]) -> str:
         """설정된 LLM으로 메시지를 전송하고 응답을 받습니다."""
         try:
-            model_config = await get_current_model_config()
-            llm_config = model_config.get("llm", {})
+            model_settings = settings_service.get_section_settings("models")
+            llm_config = {
+                "provider": model_settings.get("llm_provider", "openai"),
+                "model": model_settings.get("llm_model", "gpt-3.5-turbo"),
+                "api_key": model_settings.get("llm_api_key", ""),
+                "base_url": model_settings.get("llm_base_url", ""),
+                "temperature": model_settings.get("temperature", 0.7),
+                "max_tokens": model_settings.get("max_tokens", 2000)
+            }
             
             llm_client, provider = await self._get_llm_client()
             if not llm_client:
@@ -625,7 +644,7 @@ class ChatService:
             flow_id_to_use = flow_id or await self._get_default_search_flow()
             if flow_id_to_use:
                 print(f"LangFlow 실행: {flow_id_to_use}")
-                model_config = await get_current_model_config()
+                model_settings = settings_service.get_section_settings("models")
                 langflow_result = await self.langflow_service.execute_flow_with_llm(
                     flow_id_to_use,
                     prompt,
@@ -1061,7 +1080,7 @@ class ChatService:
             flow_id_to_use = flow_id or await self._get_default_search_flow()
             if flow_id_to_use:
                 print(f"멀티모달 LangFlow 실행: {flow_id_to_use}")
-                model_config = await get_current_model_config()
+                model_settings = settings_service.get_section_settings("models")
                 langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
                     flow_id_to_use,
                     prompt,
