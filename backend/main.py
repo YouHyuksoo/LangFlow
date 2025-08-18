@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import setup_logging, get_console_logger
-from app.api import chat, files, flows, stats, categories, langflow, users, personas, sse, vectors, database_management, model_profiles
+from app.api import chat, files, flows, stats, categories, langflow, users, personas, sse, vectors, database_management, model_profiles, preprocessing
 from app.api import settings as settings_api
 from app.db.init_db import initialize_database
 import uvicorn
@@ -160,6 +160,7 @@ app.include_router(personas.router, prefix=settings.API_V1_STR)
 app.include_router(vectors.router, prefix=settings.API_V1_STR)
 app.include_router(database_management.router, prefix=settings.API_V1_STR)
 app.include_router(model_profiles.router, prefix=f"{settings.API_V1_STR}/model-profiles", tags=["model-profiles"])
+app.include_router(preprocessing.router, prefix=f"{settings.API_V1_STR}/preprocessing", tags=["preprocessing"])
 app.include_router(sse.router)  # SSE는 별도 prefix 사용
 
 # 정적 파일 서빙 설정 (아바타 이미지 및 문서 이미지용)

@@ -240,20 +240,20 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-muted py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">회원가입</CardTitle>
         </CardHeader>
         <CardContent>
           {message && (
-            <Alert className={`mb-4 ${message.type === 'success' ? 'border-green-500' : 'border-red-500'}`}>
+            <Alert className={`mb-4 ${message.type === 'success' ? 'border-primary' : 'border-destructive'}`}>
               {message.type === 'success' ? (
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle className="h-4 w-4 text-primary" />
               ) : (
-                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertCircle className="h-4 w-4 text-destructive" />
               )}
-              <AlertDescription className={message.type === 'success' ? 'text-green-700' : 'text-red-700'}>
+              <AlertDescription className={message.type === 'success' ? 'text-primary' : 'text-destructive'}>
                 {typeof message.text === 'string' ? message.text : '오류가 발생했습니다.'}
               </AlertDescription>
             </Alert>
@@ -342,7 +342,7 @@ export default function RegisterPage() {
 
             <div>
               <Label>관심 분야 (선택사항)</Label>
-              <p className="text-sm text-gray-600 mb-3">클릭하여 관심 있는 카테고리를 선택하세요.</p>
+              <p className="text-sm text-muted-foreground mb-3">클릭하여 관심 있는 카테고리를 선택하세요.</p>
               <div className="flex flex-wrap gap-2">
                 {categories && categories.length > 0 ? categories.map((category) => {
                   const categoryId = String(category.category_id || '')
@@ -353,11 +353,7 @@ export default function RegisterPage() {
                     <Badge
                       key={categoryId || categoryName}
                       variant={formData.interest_areas.includes(categoryId) ? "default" : "outline"}
-                      className={`cursor-pointer transition-colors ${
-                        formData.interest_areas.includes(categoryId) 
-                          ? "bg-blue-600 hover:bg-blue-700" 
-                          : "hover:bg-gray-100"
-                      }`}
+                      className="cursor-pointer transition-colors" 
                       onClick={() => handleInterestChange(categoryId, !formData.interest_areas.includes(categoryId))}
                     >
                       {IconComponent && <IconComponent className="w-3 h-3 mr-1" />}
@@ -365,7 +361,7 @@ export default function RegisterPage() {
                     </Badge>
                   )
                 }) : (
-                  <p className="text-sm text-gray-500">카테고리를 불러오는 중...</p>
+                  <p className="text-sm text-muted-foreground">카테고리를 불러오는 중...</p>
                 )}
               </div>
             </div>
@@ -377,13 +373,13 @@ export default function RegisterPage() {
 
           <div className="mt-4 text-center text-sm">
             이미 계정이 있으신가요?{' '}
-            <Link href="/login" className="text-blue-600 hover:text-blue-500">
+            <Link href="/login" className="text-primary hover:underline">
               로그인
             </Link>
           </div>
           
-          <div className="mt-4 p-3 bg-yellow-50 rounded-md">
-            <p className="text-xs text-yellow-800">
+          <div className="mt-4 p-3 bg-accent rounded-md">
+            <p className="text-xs text-accent-foreground">
               ⚠️ 회원가입 신청 후 관리자 승인을 받아야 서비스를 이용할 수 있습니다.
             </p>
           </div>

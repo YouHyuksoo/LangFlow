@@ -192,7 +192,7 @@ export default function PerformancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-            <Cpu className="h-8 w-8" />
+            <Cpu className="h-8 w-8 text-orange-500" />
             성능 관리
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
@@ -215,13 +215,13 @@ export default function PerformancePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Cpu className="h-4 w-4" />
+              <Cpu className="h-4 w-4 text-orange-500" />
               CPU 사용률
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{systemStats.cpu.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               제한: {settings.maxCpuUsagePercent}%
             </p>
           </CardContent>
@@ -229,13 +229,13 @@ export default function PerformancePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Activity className="h-4 w-4" />
+              <Activity className="h-4 w-4 text-green-500" />
               메모리 사용량
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{systemStats.memory.toFixed(0)}MB</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               제한: {settings.maxMemoryUsageMB}MB
             </p>
           </CardContent>
@@ -243,13 +243,13 @@ export default function PerformancePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Server className="h-4 w-4" />
+              <Server className="h-4 w-4 text-green-500" />
               활성 연결
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{systemStats.activeConnections}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               풀 크기: {settings.connectionPoolSize}
             </p>
           </CardContent>
@@ -257,13 +257,13 @@ export default function PerformancePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4 text-blue-500" />
               캐시 적중률
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{systemStats.cacheHitRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               TTL: {Math.floor(settings.cacheTtlSeconds / 60)}분
             </p>
           </CardContent>
@@ -274,7 +274,7 @@ export default function PerformancePage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
+            <Zap className="h-5 w-5 text-orange-500" />
             병렬 처리 설정
           </CardTitle>
           <CardDescription>
@@ -298,7 +298,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 3-10
               </p>
             </div>
@@ -317,7 +317,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 10-50
               </p>
             </div>
@@ -336,7 +336,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 2-5
               </p>
             </div>
@@ -355,7 +355,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 50-200
               </p>
             </div>
@@ -404,7 +404,7 @@ export default function PerformancePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
+              <Database className="h-5 w-5 text-green-500" />
               연결 설정
             </CardTitle>
             <CardDescription>
@@ -427,7 +427,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 5-20
               </p>
             </div>
@@ -446,7 +446,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 120-300
               </p>
             </div>
@@ -456,7 +456,7 @@ export default function PerformancePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
+              <Clock className="h-5 w-5 text-orange-500" />
               캐시 설정
             </CardTitle>
             <CardDescription>
@@ -479,7 +479,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 1800-7200 ({Math.floor(settings.cacheTtlSeconds / 60)}분)
               </p>
             </div>
@@ -527,7 +527,7 @@ export default function PerformancePage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
+            <TrendingUp className="h-5 w-5 text-orange-500" />
             리소스 제한
           </CardTitle>
           <CardDescription>
@@ -551,7 +551,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 1024-4096MB
               </p>
             </div>
@@ -570,7 +570,7 @@ export default function PerformancePage() {
                 }
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 권장: 60-90%
               </p>
             </div>
@@ -582,7 +582,7 @@ export default function PerformancePage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
+            <Activity className="h-5 w-5 text-green-500" />
             성능 모니터링
           </CardTitle>
           <CardDescription>

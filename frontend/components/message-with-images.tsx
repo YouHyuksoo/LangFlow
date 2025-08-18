@@ -46,7 +46,9 @@ export const MessageWithImages: React.FC<MessageWithImagesProps> = ({
   // 이미지 참조가 없으면 ContentPreview를 사용하여 마크다운 렌더링
   if (imageReferences.length === 0) {
     return (
-      <ContentPreview content={content} className={className} />
+      <div className={className}>
+        <ContentPreview content={content} />
+      </div>
     );
   }
 

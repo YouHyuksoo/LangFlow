@@ -433,24 +433,19 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-slate-800 via-purple-600 to-blue-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">
-            사용자 관리
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-2 text-lg">
+          <h1 className="text-2xl font-bold tracking-tight">사용자 관리</h1>
+          <p className="text-muted-foreground">
             시스템 사용자 계정과 페르소나를 관리하세요.
           </p>
         </div>
         <div className="flex gap-2">
           <Dialog open={personaDialogOpen} onOpenChange={setPersonaDialogOpen}>
             <DialogTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 border-blue-500/30 text-blue-300 hover:from-blue-500/30 hover:to-purple-500/30 backdrop-blur-sm"
-              >
+              <Button variant="outline">
                 <Bot className="h-4 w-4 mr-2" />
                 새 페르소나
               </Button>
@@ -458,7 +453,7 @@ export default function UsersPage() {
           </Dialog>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
+              <Button>
                 <UserPlus className="h-4 w-4 mr-2" />
                 새 사용자
               </Button>
@@ -469,141 +464,86 @@ export default function UsersPage() {
 
       {/* 탭 구조 */}
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 bg-gradient-to-r from-slate-800/50 to-slate-700/50 backdrop-blur-sm border-slate-600/30">
-          <TabsTrigger 
-            value="users"
-            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500/30 data-[state=active]:to-cyan-500/30 data-[state=active]:text-white text-slate-300"
-          >
-            사용자 관리
-          </TabsTrigger>
-          <TabsTrigger 
-            value="pending"
-            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500/30 data-[state=active]:to-cyan-500/30 data-[state=active]:text-white text-slate-300"
-          >
-            승인 대기
-          </TabsTrigger>
-          <TabsTrigger 
-            value="personas"
-            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500/30 data-[state=active]:to-cyan-500/30 data-[state=active]:text-white text-slate-300"
-          >
-            페르소나 관리
-          </TabsTrigger>
+        <TabsList>
+          <TabsTrigger value="users">사용자 관리</TabsTrigger>
+          <TabsTrigger value="pending">승인 대기</TabsTrigger>
+          <TabsTrigger value="personas">페르소나 관리</TabsTrigger>
         </TabsList>
 
         {/* 사용자 관리 탭 */}
         <TabsContent value="users" className="space-y-6">
           {/* 통계 카드들 */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-sm font-medium text-white/90">전체 사용자</CardTitle>
-                <div className="p-2 rounded-lg bg-white/10">
-                  <Users className="h-5 w-5 text-blue-500" />
-                </div>
+            <Card className="stat-card relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">전체 사용자</CardTitle>
+                <Users className="h-4 w-4 text-orange-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-white mb-1">{stats.totalUsers}</div>
-                <p className="text-xs text-white/70">등록된 사용자 수</p>
-                <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
-                </div>
+                <div className="text-2xl font-bold">{stats.totalUsers}</div>
               </CardContent>
             </Card>
-
-            <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-sm font-medium text-white/90">활성 사용자</CardTitle>
-                <div className="p-2 rounded-lg bg-white/10">
-                  <Activity className="h-5 w-5 text-green-500" />
-                </div>
+            <Card className="stat-card relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">활성 사용자</CardTitle>
+                <Activity className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-white mb-1">{stats.activeUsers}</div>
-                <p className="text-xs text-white/70">활성 상태 사용자</p>
-                <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
-                </div>
+                <div className="text-2xl font-bold">{stats.activeUsers}</div>
               </CardContent>
             </Card>
-
-            <Card className="bg-gradient-to-br from-purple-500/20 to-violet-600/20 border-purple-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-sm font-medium text-white/90">관리자</CardTitle>
-                <div className="p-2 rounded-lg bg-white/10">
-                  <Shield className="h-5 w-5 text-purple-500" />
-                </div>
+            <Card className="stat-card relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">관리자</CardTitle>
+                <Shield className="h-4 w-4 text-purple-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-white mb-1">{stats.adminUsers}</div>
-                <p className="text-xs text-white/70">관리자 계정 수</p>
-                <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
-                </div>
+                <div className="text-2xl font-bold">{stats.adminUsers}</div>
               </CardContent>
             </Card>
-
-            <Card className="bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-sm font-medium text-white/90">신규 사용자</CardTitle>
-                <div className="p-2 rounded-lg bg-white/10">
-                  <Clock className="h-5 w-5 text-orange-500" />
-                </div>
+            <Card className="stat-card relative overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">신규 사용자 (1주)</CardTitle>
+                <Clock className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-white mb-1">{stats.recentUsers}</div>
-                <p className="text-xs text-white/70">최근 1주일 가입</p>
-                <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
-                </div>
+                <div className="text-2xl font-bold">{stats.recentUsers}</div>
               </CardContent>
             </Card>
           </div>
 
           {/* 사용자 목록 */}
-          <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-white">
-                <div className="p-2 rounded-lg bg-blue-500/20">
-                  <Users className="h-5 w-5 text-blue-400" />
-                </div>
-                <span>사용자 목록</span>
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                등록된 모든 사용자를 관리할 수 있습니다.
-              </CardDescription>
+              <CardTitle>사용자 목록</CardTitle>
+              <CardDescription>등록된 모든 사용자를 관리할 수 있습니다.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {users.map((user) => (
                   <div
                     key={user.user_id}
-                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 hover:from-slate-700/50 hover:to-slate-600/50 transition-all duration-300"
+                    className="flex items-center justify-between p-4 rounded-lg border"
                   >
                     <div className="flex items-center space-x-4">
                       <Avatar>
-                        <AvatarFallback className="bg-primary/10">
+                        <AvatarFallback>
                           {(user.full_name || user.username).charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
-                          <h4 className="text-sm font-semibold text-white">
+                          <h4 className="text-sm font-semibold">
                             {user.full_name || user.username}
                           </h4>
-                          <Badge 
-                            variant={user.is_active ? "default" : "secondary"}
-                            className={user.is_active ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-slate-500/20 text-slate-400 border-slate-500/30"}
-                          >
+                          <Badge variant={user.is_active ? "default" : "secondary"}>
                             {user.is_active ? "활성" : "비활성"}
                           </Badge>
-                          <Badge 
-                            variant={user.role === "admin" ? "destructive" : "outline"}
-                            className={user.role === "admin" ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-blue-500/20 text-blue-400 border-blue-500/30"}
-                          >
+                          <Badge variant={user.role === "admin" ? "destructive" : "outline"}>
                             {user.role === "admin" ? "관리자" : "일반사용자"}
                           </Badge>
                         </div>
-                        <div className="flex items-center space-x-4 text-xs text-slate-400">
+                        <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                           <div className="flex items-center space-x-1">
                             <User className="h-3 w-3" />
                             <span>{user.username}</span>
@@ -617,7 +557,7 @@ export default function UsersPage() {
                             <span>{formatDate(user.created_at)}</span>
                           </div>
                         </div>
-                        <div className="text-xs text-slate-400">
+                        <div className="text-xs text-muted-foreground">
                           페르소나: {getPersonaName(user.persona)}
                           {user.interest_areas.length > 0 && (
                             <span className="ml-2">
@@ -632,18 +572,13 @@ export default function UsersPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEditDialog(user)}
-                        className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30 backdrop-blur-sm"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       {user.username !== "admin" && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30 backdrop-blur-sm"
-                            >
+                            <Button variant="destructive" size="sm">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </AlertDialogTrigger>
@@ -675,17 +610,10 @@ export default function UsersPage() {
 
         {/* 승인 대기 탭 */}
         <TabsContent value="pending" className="space-y-6">
-          <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-white">
-                <div className="p-2 rounded-lg bg-yellow-500/20">
-                  <Clock className="h-5 w-5 text-yellow-400" />
-                </div>
-                <span>승인 대기 사용자</span>
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                회원가입 신청을 한 사용자들의 승인 대기 목록입니다.
-              </CardDescription>
+              <CardTitle>승인 대기 사용자</CardTitle>
+              <CardDescription>회원가입 신청을 한 사용자들의 승인 대기 목록입니다.</CardDescription>
             </CardHeader>
             <CardContent>
               <PendingUsersSection />
@@ -695,42 +623,34 @@ export default function UsersPage() {
 
         {/* 페르소나 관리 탭 */}
         <TabsContent value="personas" className="space-y-6">
-          {/* 페르소나 목록 */}
-          <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-white">
-                <div className="p-2 rounded-lg bg-purple-500/20">
-                  <Bot className="h-5 w-5 text-purple-400" />
-                </div>
-                <span>페르소나 목록</span>
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                사용자의 AI 페르소나를 관리합니다. 각 페르소나는 시스템 메시지를 포함합니다.
-              </CardDescription>
+              <CardTitle>페르소나 목록</CardTitle>
+              <CardDescription>사용자의 AI 페르소나를 관리합니다. 각 페르소나는 시스템 메시지를 포함합니다.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {personas.map((persona) => (
                   <div
                     key={persona.persona_id}
-                    className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 hover:from-slate-700/50 hover:to-slate-600/50 transition-all duration-300"
+                    className="flex items-center justify-between p-4 rounded-lg border"
                   >
                     <div className="flex items-center space-x-4">
                       <Avatar>
-                        <AvatarFallback className="bg-purple-500/20 text-purple-300">
+                        <AvatarFallback className="bg-primary/10 text-primary">
                           {persona.name.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
-                          <h4 className="text-sm font-semibold text-white">{persona.name}</h4>
-                          <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">페르소나</Badge>
+                          <h4 className="text-sm font-semibold">{persona.name}</h4>
+                          <Badge variant="secondary">페르소나</Badge>
                         </div>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-muted-foreground">
                           {persona.description || "설명 없음"}
                         </p>
                         {persona.system_message && (
-                          <p className="text-xs text-slate-400 max-w-md truncate">
+                          <p className="text-xs text-muted-foreground max-w-md truncate">
                             시스템 메시지: {persona.system_message}
                           </p>
                         )}
@@ -741,17 +661,12 @@ export default function UsersPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEditPersonaDialog(persona)}
-                        className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30 backdrop-blur-sm"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30 backdrop-blur-sm"
-                          >
+                          <Button variant="destructive" size="sm">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -1158,7 +1073,7 @@ function PendingUsersSection() {
     return (
       <div className="flex items-center justify-center h-40">
         <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-muted-foreground">승인 대기 사용자 목록을 불러오는 중...</p>
         </div>
       </div>
@@ -1168,7 +1083,7 @@ function PendingUsersSection() {
   if (pendingUsers.length === 0) {
     return (
       <div className="text-center py-8">
-        <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <Clock className="h-12 w-12 text-green-500 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-foreground mb-2">승인 대기 중인 사용자가 없습니다</h3>
         <p className="text-muted-foreground">새로운 회원가입 신청이 있으면 여기에 표시됩니다.</p>
       </div>
@@ -1178,12 +1093,12 @@ function PendingUsersSection() {
   return (
     <div className="space-y-4">
       {pendingUsers.map((user) => (
-        <Card key={user.user_id} className="border-l-4 border-l-yellow-400">
+        <Card key={user.user_id} className="border-l-4 border-accent">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Avatar className="h-12 w-12">
-                  <AvatarFallback className="bg-yellow-100 text-yellow-700">
+                  <AvatarFallback className="bg-accent/20 text-accent-foreground">
                     {user.full_name ? user.full_name[0].toUpperCase() : user.username[0].toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -1210,14 +1125,14 @@ function PendingUsersSection() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-yellow-700 border-yellow-300 bg-yellow-50">
+                <Badge variant="outline">
                   <Clock className="h-3 w-3 mr-1" />
                   승인 대기
                 </Badge>
                 <div className="flex gap-2 ml-4">
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                      <Button size="sm">
                         <UserCheck className="h-4 w-4 mr-1" />
                         승인
                       </Button>
@@ -1232,7 +1147,7 @@ function PendingUsersSection() {
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>취소</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleApprove(user.user_id)} className="bg-green-600 hover:bg-green-700">
+                        <AlertDialogAction onClick={() => handleApprove(user.user_id)}>
                           승인
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -1241,7 +1156,7 @@ function PendingUsersSection() {
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                      <Button size="sm" variant="destructive">
                         <UserX className="h-4 w-4 mr-1" />
                         거부
                       </Button>
@@ -1256,7 +1171,7 @@ function PendingUsersSection() {
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>취소</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleReject(user.user_id)} className="bg-red-600 hover:bg-red-700">
+                        <AlertDialogAction onClick={() => handleReject(user.user_id)}>
                           거부
                         </AlertDialogAction>
                       </AlertDialogFooter>

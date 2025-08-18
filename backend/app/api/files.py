@@ -489,17 +489,171 @@ async def download_file(file_id: str):
 
 @router.get("/{file_id}/view")
 async def view_file(file_id: str):
-    """파일 보기"""
+    """파일 보기 - 다양한 파일 타입 지원"""
     try:
-        file_path = await get_file_service_instance().get_file_path(file_id)
-        if not file_path:
+        # 파일 정보 조회
+        file_info = await get_file_service_instance().get_file_info(file_id)
+        if not file_info:
             raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        file_path = file_info.file_path
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        # 파일 확장자에 따른 MIME 타입 결정
+        filename_lower = file_info.filename.lower()
+        
+        if filename_lower.endswith('.pdf'):
+            media_type = 'application/pdf'
+        elif filename_lower.endswith(('.jpg', '.jpeg')):
+            media_type = 'image/jpeg'
+        elif filename_lower.endswith('.png'):
+            media_type = 'image/png'
+        elif filename_lower.endswith('.gif'):
+            media_type = 'image/gif'
+        elif filename_lower.endswith('.bmp'):
+            media_type = 'image/bmp'
+        elif filename_lower.endswith(('.txt', '.md')):
+            media_type = 'text/plain'
+        elif filename_lower.endswith('.html'):
+            media_type = 'text/html'
+        elif filename_lower.endswith(('.doc', '.docx')):
+            media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        else:
+            media_type = 'application/octet-stream'
         
         from fastapi.responses import FileResponse
         return FileResponse(
             path=file_path,
-            media_type='application/pdf'
+            media_type=media_type,
+            filename=file_info.filename,
+            headers={
+                "Content-Disposition": f"inline; filename={file_info.filename}",
+                "Cache-Control": "no-cache"
+            }
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{file_id}/preview")
+async def preview_file(file_id: str):
+    """파일 미리보기 (브라우저 인라인 표시용)"""
+    try:
+        # 파일 정보 조회
+        file_info = await get_file_service_instance().get_file_info(file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        file_path = file_info.file_path
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        # 파일 확장자에 따른 MIME 타입 결정
+        filename_lower = file_info.filename.lower()
+        
+        if filename_lower.endswith('.pdf'):
+            media_type = 'application/pdf'
+        elif filename_lower.endswith(('.jpg', '.jpeg')):
+            media_type = 'image/jpeg'
+        elif filename_lower.endswith('.png'):
+            media_type = 'image/png'
+        elif filename_lower.endswith('.gif'):
+            media_type = 'image/gif'
+        elif filename_lower.endswith('.bmp'):
+            media_type = 'image/bmp'
+        elif filename_lower.endswith(('.txt', '.md')):
+            media_type = 'text/plain; charset=utf-8'
+        elif filename_lower.endswith('.html'):
+            media_type = 'text/html; charset=utf-8'
+        else:
+            media_type = 'application/octet-stream'
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": "inline",
+                "Cache-Control": "public, max-age=3600",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{file_id}/content")
+async def get_file_content(file_id: str):
+    """텍스트 파일 내용 조회 (전처리 에디터용)"""
+    try:
+        # 파일 정보 조회
+        file_info = await get_file_service_instance().get_file_info(file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        file_path = file_info.file_path
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        filename_lower = file_info.filename.lower()
+        
+        # 텍스트 파일인 경우 내용 읽기
+        if filename_lower.endswith(('.txt', '.md', '.html', '.json', '.xml', '.csv')):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                return {
+                    "success": True,
+                    "file_type": "text",
+                    "content": content,
+                    "filename": file_info.filename,
+                    "file_size": file_info.file_size
+                }
+            except UnicodeDecodeError:
+                # UTF-8로 읽기 실패시 다른 인코딩 시도
+                try:
+                    with open(file_path, 'r', encoding='cp949') as f:
+                        content = f.read()
+                    return {
+                        "success": True,
+                        "file_type": "text",
+                        "content": content,
+                        "filename": file_info.filename,
+                        "file_size": file_info.file_size,
+                        "encoding": "cp949"
+                    }
+                except:
+                    return {
+                        "success": False,
+                        "error": "텍스트 파일을 읽을 수 없습니다. 인코딩 문제일 수 있습니다."
+                    }
+        # PDF 파일인 경우
+        elif filename_lower.endswith('.pdf'):
+            return {
+                "success": True,
+                "file_type": "pdf",
+                "message": "PDF 파일은 뷰어를 통해 표시됩니다.",
+                "view_url": f"/api/v1/files/{file_id}/view",
+                "filename": file_info.filename,
+                "file_size": file_info.file_size
+            }
+        # 이미지 파일인 경우
+        elif filename_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+            return {
+                "success": True,
+                "file_type": "image",
+                "message": "이미지 파일입니다.",
+                "view_url": f"/api/v1/files/{file_id}/view",
+                "filename": file_info.filename,
+                "file_size": file_info.file_size
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"지원되지 않는 파일 형식입니다: {file_info.filename}"
+            }
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

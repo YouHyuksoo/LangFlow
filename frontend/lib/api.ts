@@ -1418,4 +1418,85 @@ export const modelProfileAPI = {
   },
 };
 
+// 수동 전처리 워크스페이스 API
+export const preprocessingAPI = {
+  // 전처리 대상 파일 목록 조회
+  getFiles: async (limit?: number) => {
+    const response = await api.get("/api/v1/preprocessing/files", {
+      params: limit ? { limit } : {}
+    });
+    return response.data;
+  },
+
+  // 전처리 작업 시작
+  startPreprocessing: async (fileId: string) => {
+    const response = await api.post(`/api/v1/preprocessing/files/${fileId}/start`);
+    return response.data;
+  },
+
+  // 전처리 메타데이터 조회
+  getPreprocessingMetadata: async (fileId: string) => {
+    const response = await api.get(`/api/v1/preprocessing/files/${fileId}/metadata`);
+    return response.data;
+  },
+
+  // 전처리 메타데이터 저장
+  savePreprocessingMetadata: async (fileId: string, data: {
+    annotations: Array<{
+      order: number;
+      label: string;
+      type: string;
+      coordinates: object;
+      ocr_text?: string;
+      extracted_text?: string;
+      processing_options?: object;
+      temp_id?: string;
+    }>;
+    relationships?: Array<{
+      from_annotation_id: string;
+      to_annotation_id: string;
+      type: string;
+      description?: string;
+      weight?: number;
+    }>;
+  }) => {
+    const response = await api.post(`/api/v1/preprocessing/files/${fileId}/metadata`, data);
+    return response.data;
+  },
+
+  // 청킹 시뮬레이션
+  simulateChunking: async (data: {
+    file_id: string;
+    annotations: Array<{
+      order: number;
+      label: string;
+      type: string;
+      coordinates: object;
+      ocr_text?: string;
+      extracted_text?: string;
+    }>;
+  }) => {
+    const response = await api.post("/api/v1/preprocessing/simulate_chunking", data);
+    return response.data;
+  },
+
+  // 전처리 워크스페이스 통계
+  getStats: async () => {
+    const response = await api.get("/api/v1/preprocessing/stats");
+    return response.data;
+  },
+
+  // 주석 타입 목록
+  getAnnotationTypes: async () => {
+    const response = await api.get("/api/v1/preprocessing/annotation-types");
+    return response.data;
+  },
+
+  // 관계 타입 목록  
+  getRelationshipTypes: async () => {
+    const response = await api.get("/api/v1/preprocessing/relationship-types");
+    return response.data;
+  }
+};
+
 export default api;

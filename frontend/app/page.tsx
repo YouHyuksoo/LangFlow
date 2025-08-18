@@ -63,37 +63,31 @@ export default function LandingPage() {
       icon: Brain,
       title: "AI 기반 지능형 검색",
       description: "고도화된 AI 기술로 사내 문서를 분석하고 정확한 답변을 제공합니다.",
-      color: "from-blue-500 to-cyan-500",
     },
     {
       icon: Database,
       title: "벡터 기반 문서 검색",
       description: "ChromaDB를 활용한 빠르고 정확한 문서 검색 시스템입니다.",
-      color: "from-purple-500 to-pink-500",
     },
     {
       icon: Shield,
       title: "보안 우선 설계",
       description: "기업용 보안 기준을 만족하는 안전한 문서 관리 시스템입니다.",
-      color: "from-green-500 to-teal-500",
     },
     {
       icon: Cpu,
       title: "ThinkFlow 통합",
       description: "노코드 AI 워크플로우 구성으로 맞춤형 응답 처리가 가능합니다.",
-      color: "from-orange-500 to-red-500",
     },
     {
       icon: Users,
       title: "사용자 맞춤형",
       description: "개인별 관심 분야와 권한에 따른 개인화된 응답을 제공합니다.",
-      color: "from-indigo-500 to-purple-500",
     },
     {
       icon: BarChart3,
       title: "실시간 분석",
       description: "사용 패턴 분석과 성능 모니터링으로 지속적인 개선을 지원합니다.",
-      color: "from-yellow-500 to-orange-500",
     },
   ];
 
@@ -146,7 +140,7 @@ export default function LandingPage() {
               <span className="text-sm font-medium text-primary">AI 기반 지식 관리 시스템</span>
             </div>
             
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-foreground via-primary to-secondary bg-clip-text text-transparent mb-6 leading-tight">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary to-foreground bg-clip-text text-transparent mb-6 leading-tight">
               ThinkFlow
               <br />
               <span className="text-3xl md:text-5xl lg:text-6xl">스마트 문서 어시스턴트</span>
@@ -179,15 +173,15 @@ export default function LandingPage() {
             
             <div className="mt-12 flex items-center justify-center space-x-8 text-sm text-muted-foreground">
               <div className="flex items-center">
-                <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
+                <CheckCircle className="h-4 w-4 text-primary mr-2" />
                 무료 체험
               </div>
               <div className="flex items-center">
-                <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
+                <CheckCircle className="h-4 w-4 text-primary mr-2" />
                 설치 불필요
               </div>
               <div className="flex items-center">
-                <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
+                <CheckCircle className="h-4 w-4 text-primary mr-2" />
                 보안 인증
               </div>
             </div>
@@ -229,7 +223,7 @@ export default function LandingPage() {
             {features.map((feature, index) => (
               <Card key={index} className="group hover:shadow-lg transition-all duration-300 border-0 bg-gradient-to-br from-card to-muted/30">
                 <CardHeader>
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${feature.color} p-2.5 mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-primary to-accent p-2.5 mb-4 group-hover:scale-110 transition-transform duration-300">
                     <feature.icon className="h-7 w-7 text-white" />
                   </div>
                   <CardTitle className="text-xl group-hover:text-primary transition-colors">
@@ -314,7 +308,7 @@ export default function LandingPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center mb-4">
                     {[...Array(testimonial.rating)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
+                      <Star key={i} className="h-4 w-4 text-primary fill-primary" />
                     ))}
                   </div>
                   <blockquote className="text-base mb-4 italic">
@@ -332,7 +326,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 bg-gradient-to-r from-primary to-secondary text-primary-foreground">
+      <section className="py-24 bg-primary text-primary-foreground">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             지금 바로 시작하세요

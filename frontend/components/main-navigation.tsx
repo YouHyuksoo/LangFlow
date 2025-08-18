@@ -107,26 +107,20 @@ export function MainNavigation() {
                     className={cn(
                       "inline-flex items-center px-4 py-2 text-sm font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
                       isActive
-                        ? item.isAdmin
-                          ? "text-white dark:text-white light:text-orange-700 bg-gradient-to-r from-orange-500/20 to-red-500/20 dark:from-orange-500/20 dark:to-red-500/20 light:from-orange-100 light:to-red-100 border border-orange-500/30 dark:border-orange-500/30 light:border-orange-300 shadow-lg shadow-orange-500/20 dark:shadow-orange-500/20 light:shadow-orange-300/30"
-                          : "text-white dark:text-white light:text-purple-700 bg-gradient-to-r from-purple-500/20 to-cyan-500/20 dark:from-purple-500/20 dark:to-cyan-500/20 light:from-purple-100 light:to-blue-100 border border-purple-500/30 dark:border-purple-500/30 light:border-purple-300 shadow-lg shadow-purple-500/20 dark:shadow-purple-500/20 light:shadow-purple-300/30"
-                        : "text-slate-300 dark:text-slate-300 light:text-slate-600 hover:text-white dark:hover:text-white light:hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 light:hover:from-white light:hover:to-slate-50 border border-transparent hover:border-slate-600/30 dark:hover:border-slate-600/30 light:hover:border-slate-300/50 hover:shadow-lg dark:hover:shadow-lg light:hover:shadow-md"
+                        ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300 dark:border-purple-500/30 shadow-lg shadow-purple-300/50 dark:shadow-purple-500/20"
+                        : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30 hover:shadow-md dark:hover:shadow-lg"
                     )}
                     title={item.description}
                   >
                     <div className={`p-1.5 rounded-lg mr-2 ${
                       isActive 
-                        ? item.isAdmin 
-                          ? 'bg-orange-500/20' 
-                          : 'bg-purple-500/20'
-                        : 'bg-white/10 group-hover:bg-white/20'
+                        ? 'bg-purple-200/60 dark:bg-purple-500/20'
+                        : 'bg-slate-100/80 dark:bg-white/10 group-hover:bg-slate-200/80 dark:group-hover:bg-white/20'
                     }`}>
                       <Icon className={`h-4 w-4 ${
                         isActive 
-                          ? item.isAdmin 
-                            ? 'text-orange-400' 
-                            : 'text-purple-400'
-                          : 'text-slate-400 group-hover:text-white'
+                          ? 'text-purple-600 dark:text-purple-400'
+                          : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
                       }`} />
                     </div>
                     {item.name}
@@ -151,7 +145,7 @@ export function MainNavigation() {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="relative h-auto px-3 py-2 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 hover:from-slate-700/50 hover:to-slate-600/50 hover:border-slate-500/50 transition-all duration-300 hover:shadow-lg backdrop-blur-sm"
+                        className="relative h-auto px-3 py-2 rounded-xl bg-gradient-to-r from-slate-100/80 to-slate-200/80 dark:from-slate-800/50 dark:to-slate-700/50 border border-slate-300/50 dark:border-slate-600/30 hover:from-slate-200/80 hover:to-slate-300/80 dark:hover:from-slate-700/50 dark:hover:to-slate-600/50 hover:border-slate-400/60 dark:hover:border-slate-500/50 transition-all duration-300 hover:shadow-lg backdrop-blur-sm"
                       >
                         <div className="flex items-center space-x-3">
                           <Avatar className="h-8 w-8 ring-2 ring-purple-500/20">
@@ -166,11 +160,11 @@ export function MainNavigation() {
                             </AvatarFallback>
                           </Avatar>
                           <div className="hidden sm:flex flex-col text-left">
-                            <span className="text-sm font-medium max-w-[120px] truncate text-white">
+                            <span className="text-sm font-medium max-w-[120px] truncate text-slate-700 dark:text-white">
                               {getUserDisplayName()}
                             </span>
                             {isAdminUser && (
-                              <span className="text-xs text-orange-400 flex items-center">
+                              <span className="text-xs text-purple-600 dark:text-purple-400 flex items-center">
                                 <Shield className="h-3 w-3 mr-1" />
                                 관리자
                               </span>
@@ -180,18 +174,18 @@ export function MainNavigation() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                      className="w-56 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl"
+                      className="w-56 bg-gradient-to-br from-white/95 to-slate-50/95 dark:from-slate-900/95 dark:to-slate-800/95 backdrop-blur-xl border-slate-300/50 dark:border-slate-700/50 shadow-2xl"
                       align="end"
                       forceMount
                     >
-                      <div className="flex items-center justify-start gap-2 p-3 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-lg m-2">
+                      <div className="flex items-center justify-start gap-2 p-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-slate-800/50 dark:to-slate-700/50 rounded-lg m-2 border border-purple-200/50 dark:border-slate-600/30">
                         <div className="flex flex-col space-y-1 leading-none">
-                          <p className="font-medium text-white">{getUserDisplayName()}</p>
-                          <p className="w-[200px] truncate text-sm text-slate-400">
+                          <p className="font-medium text-slate-800 dark:text-white">{getUserDisplayName()}</p>
+                          <p className="w-[200px] truncate text-sm text-slate-600 dark:text-slate-400">
                             {user.email}
                           </p>
                           {isAdminUser && (
-                            <div className="flex items-center gap-1 text-xs text-orange-400">
+                            <div className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400">
                               <Shield className="h-3 w-3" />
                               관리자
                             </div>
@@ -278,26 +272,20 @@ export function MainNavigation() {
                   className={cn(
                     "flex items-center px-4 py-4 text-base font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
                     isActive
-                      ? item.isAdmin
-                        ? "text-white bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 shadow-lg shadow-orange-500/20"
-                        : "text-white bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/20"
-                      : "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 hover:shadow-lg"
+                      ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300 dark:border-purple-500/30 shadow-lg shadow-purple-300/50 dark:shadow-purple-500/20"
+                      : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30 hover:shadow-md dark:hover:shadow-lg"
                   )}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   <div className={`p-2 rounded-lg mr-3 ${
                     isActive 
-                      ? item.isAdmin 
-                        ? 'bg-orange-500/20' 
-                        : 'bg-purple-500/20'
-                      : 'bg-white/10 group-hover:bg-white/20'
+                      ? 'bg-purple-200/60 dark:bg-purple-500/20'
+                      : 'bg-slate-100/80 dark:bg-white/10 group-hover:bg-slate-200/80 dark:group-hover:bg-white/20'
                   }`}>
                     <Icon className={`h-5 w-5 ${
                       isActive 
-                        ? item.isAdmin 
-                          ? 'text-orange-400' 
-                          : 'text-purple-400'
-                        : 'text-slate-400 group-hover:text-white'
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
                     }`} />
                   </div>
                   <div className="flex-1">

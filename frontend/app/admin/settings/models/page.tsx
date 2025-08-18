@@ -110,7 +110,7 @@ function ModelProfileCard({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Bot className="h-5 w-5" />
+            <Bot className="h-5 w-5 text-purple-500" />
             {profile.name}
             {isActive && <Badge variant="default" className="text-xs">활성</Badge>}
           </CardTitle>
@@ -123,30 +123,30 @@ function ModelProfileCard({
             </Button>
           </div>
         </div>
-        <CardDescription>
+        <CardDescription className="text-muted-foreground">
           {providerInfo?.name} • {modelInfo?.name || profile.model}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
-            <span className="text-muted-foreground">온도:</span>
+            <span className="text-slate-600 dark:text-slate-400">온도:</span>
             <span className="ml-2 font-mono">{profile.temperature}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">토큰:</span>
+            <span className="text-slate-600 dark:text-slate-400">토큰:</span>
             <span className="ml-2 font-mono">{profile.max_tokens}</span>
           </div>
         </div>
         <div className="flex gap-2">
           {!isActive && (
             <Button size="sm" variant="outline" onClick={onActivate} className="flex-1">
-              <Star className="h-4 w-4 mr-1" />
+              <Star className="h-4 w-4 mr-1 text-orange-500" />
               활성화
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={onTest} className="flex-1">
-            <TestTube className="h-4 w-4 mr-1" />
+            <TestTube className="h-4 w-4 mr-1 text-blue-500" />
             테스트
           </Button>
         </div>
@@ -621,7 +621,7 @@ export default function ModelsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-            <Settings className="h-8 w-8" />
+            <Settings className="h-8 w-8 text-purple-500" />
             모델 프로필 관리
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
@@ -637,7 +637,7 @@ export default function ModelsPage() {
       {profiles.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Bot className="h-12 w-12 text-muted-foreground mb-4" />
+            <Bot className="h-12 w-12 text-purple-500 mb-4" />
             <p className="text-lg font-medium mb-2">등록된 모델 프로필이 없습니다</p>
             <p className="text-slate-600 dark:text-slate-400 mb-4">첫 번째 모델 프로필을 등록해보세요.</p>
             <Button onClick={() => setFormOpen(true)}>
@@ -666,7 +666,7 @@ export default function ModelsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
+            <Zap className="h-5 w-5 text-orange-500" />
             임베딩 모델 설정
           </CardTitle>
           <CardDescription>

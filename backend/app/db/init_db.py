@@ -32,7 +32,61 @@ def initialize_database():
         )
         """)
         
-        print("Database initialized and 'chat_history' table is ready.")
+        # 수동 전처리 워크스페이스 테이블들 생성
+        # preprocessing_runs 테이블
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS preprocessing_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'NOT_STARTED', -- NOT_STARTED, IN_PROGRESS, COMPLETED, FAILED
+            started_at DATETIME,
+            completed_at DATETIME,
+            processing_time REAL DEFAULT 0.0,
+            error_message TEXT,
+            error_details TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(file_id)
+        )
+        """)
+        
+        # annotations 테이블
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS annotations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            order_index INTEGER NOT NULL DEFAULT 0,
+            label TEXT NOT NULL DEFAULT '',
+            annotation_type TEXT NOT NULL DEFAULT 'paragraph',
+            coordinates TEXT, -- JSON 형태로 저장: {"x": 0, "y": 0, "width": 0, "height": 0}
+            ocr_text TEXT,
+            extracted_text TEXT,
+            processing_options TEXT, -- JSON 형태로 저장
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES preprocessing_runs (id) ON DELETE CASCADE
+        )
+        """)
+        
+        # annotation_relationships 테이블
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS annotation_relationships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            from_annotation_id INTEGER NOT NULL,
+            to_annotation_id INTEGER NOT NULL,
+            relationship_type TEXT NOT NULL DEFAULT 'connects_to',
+            description TEXT,
+            weight REAL DEFAULT 1.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES preprocessing_runs (id) ON DELETE CASCADE,
+            FOREIGN KEY (from_annotation_id) REFERENCES annotations (id) ON DELETE CASCADE,
+            FOREIGN KEY (to_annotation_id) REFERENCES annotations (id) ON DELETE CASCADE
+        )
+        """)
+        
+        print("Database initialized with chat_history and manual preprocessing tables ready.")
         conn.commit()
         
     except sqlite3.Error as e:

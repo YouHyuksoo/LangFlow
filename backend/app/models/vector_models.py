@@ -612,3 +612,424 @@ class FileMetadataService:
         except Exception as e:
             print(f"전체 파일 메타데이터 삭제 실패: {e}")
             return False
+
+
+# ==================== 수동 전처리 워크스페이스 모델들 ====================
+
+class PreprocessingRunStatus(str, Enum):
+    """전처리 작업 상태"""
+    NOT_STARTED = "NOT_STARTED"    # 작업 미시작
+    IN_PROGRESS = "IN_PROGRESS"    # 작업 진행중
+    COMPLETED = "COMPLETED"        # 작업 완료
+    FAILED = "FAILED"              # 작업 실패
+
+
+class AnnotationType(str, Enum):
+    """주석 타입"""
+    TITLE = "title"              # 제목
+    PARAGRAPH = "paragraph"      # 본문 단락
+    LIST = "list"               # 목록
+    TABLE = "table"             # 표
+    IMAGE = "image"             # 이미지
+    CAPTION = "caption"         # 캡션
+    HEADER = "header"           # 헤더
+    FOOTER = "footer"           # 푸터
+    SIDEBAR = "sidebar"         # 사이드바
+    CUSTOM = "custom"           # 사용자 정의
+
+
+class AnnotationRelationType(str, Enum):
+    """주석 관계 타입"""
+    CONNECTS_TO = "connects_to"    # 연결됨
+    PART_OF = "part_of"           # 부분임
+    FOLLOWS = "follows"           # 뒤따름
+    REFERENCES = "references"      # 참조함
+    CAPTION_OF = "caption_of"      # 캡션임
+
+
+class PreprocessingRun(SQLModel, table=True):
+    """수동 전처리 작업 실행 기록"""
+    __tablename__ = "preprocessing_runs"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    file_id: str = Field(index=True, foreign_key="file_metadata.file_id")
+    status: PreprocessingRunStatus = Field(default=PreprocessingRunStatus.NOT_STARTED, index=True)
+    
+    # 작업 정보
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    processing_time: float = Field(default=0.0)  # 초 단위
+    
+    # 에러 정보
+    error_message: Optional[str] = None
+    error_details: Optional[str] = None  # JSON string for detailed error info
+    
+    # 메타데이터
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    
+    def set_error_details(self, details: Dict[str, Any]):
+        """에러 상세 정보를 JSON 문자열로 저장"""
+        self.error_details = json.dumps(details) if details else None
+    
+    def get_error_details(self) -> Optional[Dict[str, Any]]:
+        """에러 상세 정보를 딕셔너리로 반환"""
+        if self.error_details:
+            try:
+                return json.loads(self.error_details)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+
+class Annotation(SQLModel, table=True):
+    """문서 주석 메타데이터"""
+    __tablename__ = "annotations"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="preprocessing_runs.id", index=True)
+    
+    # 주석 순서 및 식별
+    order: int = Field(index=True)  # 처리 순서
+    label: str  # 사용자 정의 레이블
+    annotation_type: AnnotationType = Field(default=AnnotationType.PARAGRAPH)
+    
+    # 좌표 정보 (JSON string)
+    coordinates: str  # {"x": 100, "y": 200, "width": 300, "height": 150} 형태
+    
+    # OCR/추출된 텍스트
+    ocr_text: Optional[str] = None
+    extracted_text: Optional[str] = None
+    
+    # 처리 옵션
+    processing_options: Optional[str] = None  # JSON string
+    
+    # 메타데이터
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    
+    def set_coordinates(self, coords: Dict[str, float]):
+        """좌표 정보를 JSON 문자열로 저장"""
+        self.coordinates = json.dumps(coords)
+    
+    def get_coordinates(self) -> Optional[Dict[str, float]]:
+        """좌표 정보를 딕셔너리로 반환"""
+        try:
+            return json.loads(self.coordinates) if self.coordinates else None
+        except json.JSONDecodeError:
+            return None
+    
+    def set_processing_options(self, options: Dict[str, Any]):
+        """처리 옵션을 JSON 문자열로 저장"""
+        self.processing_options = json.dumps(options) if options else None
+    
+    def get_processing_options(self) -> Optional[Dict[str, Any]]:
+        """처리 옵션을 딕셔너리로 반환"""
+        if self.processing_options:
+            try:
+                return json.loads(self.processing_options)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+
+class AnnotationRelationship(SQLModel, table=True):
+    """주석 간 관계 정의"""
+    __tablename__ = "annotation_relationships"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="preprocessing_runs.id", index=True)
+    
+    # 관계 정의
+    from_annotation_id: int = Field(foreign_key="annotations.id")
+    to_annotation_id: int = Field(foreign_key="annotations.id")
+    relationship_type: AnnotationRelationType
+    
+    # 관계 메타데이터
+    description: Optional[str] = None  # 관계 설명
+    weight: float = Field(default=1.0)  # 관계 가중치
+    
+    # 메타데이터
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    class Config:
+        # 동일한 주석 간 중복 관계 방지
+        indexes = [
+            ("run_id", "from_annotation_id", "to_annotation_id", "relationship_type")
+        ]
+
+
+class ManualPreprocessingService:
+    """수동 전처리 워크스페이스 서비스"""
+    
+    def __init__(self):
+        # SQLite 데이터베이스 경로 (users.db 사용)
+        import sqlite3
+        self.db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
+        # 기존 파일 메타데이터 서비스와 동일한 데이터베이스 사용
+        self.file_service = FileMetadataService()
+        print("Manual preprocessing service initialized")
+    
+    def get_files_for_preprocessing(self, limit: Optional[int] = None) -> list[Dict[str, Any]]:
+        """전처리 가능한 파일 목록 조회 (상태 정보 포함)"""
+        import sqlite3
+        try:
+            # 두 개의 데이터베이스에서 조회: users.db(전처리 상태)와 file_metadata.db(파일 목록)
+            files_data = []
+            
+            # 1. 먼저 file_metadata.db에서 파일 목록 가져오기
+            with Session(self.file_service.engine) as session:
+                basic_query = """
+                SELECT 
+                    file_id,
+                    filename,
+                    upload_time,
+                    file_size,
+                    category_name
+                FROM file_metadata
+                WHERE status != 'DELETED'
+                ORDER BY upload_time DESC
+                """
+                
+                if limit:
+                    basic_query += f" LIMIT {limit}"
+                
+                file_result = session.execute(text(basic_query)).fetchall()
+                
+                # 2. users.db에서 전처리 상태 가져오기
+                preprocessing_status_map = {}
+                try:
+                    with sqlite3.connect(self.db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT file_id, status, completed_at, processing_time
+                            FROM preprocessing_runs
+                        """)
+                        for row in cursor.fetchall():
+                            preprocessing_status_map[row[0]] = {
+                                "status": row[1],
+                                "completed_at": row[2],
+                                "processing_time": row[3] or 0.0
+                            }
+                except sqlite3.Error as e:
+                    print(f"전처리 상태 조회 실패: {e}")
+                
+                # 3. 파일 목록과 전처리 상태 결합
+                for row in file_result:
+                    file_id = row[0]
+                    preprocessing_info = preprocessing_status_map.get(file_id, {
+                        "status": "NOT_STARTED",
+                        "completed_at": None,
+                        "processing_time": 0.0
+                    })
+                    
+                    files_data.append({
+                        "file_id": file_id,
+                        "filename": row[1],
+                        "upload_time": row[2],
+                        "file_size": row[3],
+                        "category_name": row[4],
+                        "preprocessing_status": preprocessing_info["status"],
+                        "preprocessing_completed_at": preprocessing_info["completed_at"],
+                        "processing_time": preprocessing_info["processing_time"]
+                    })
+                
+            return files_data
+            
+        except Exception as e:
+            print(f"전처리 파일 목록 조회 실패: {e}")
+            return []
+    
+    def start_preprocessing(self, file_id: str) -> Optional[int]:
+        """전처리 작업 시작"""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 기존 전처리 작업이 있는지 확인
+                cursor.execute("""
+                    SELECT id, status FROM preprocessing_runs WHERE file_id = ?
+                """, (file_id,))
+                existing_run = cursor.fetchone()
+                
+                if existing_run and existing_run[1] == 'COMPLETED':
+                    # 이미 완료된 작업이 있으면 기존 ID 반환
+                    return existing_run[0]
+                
+                current_time = datetime.now().isoformat()
+                
+                if existing_run:
+                    # 기존 작업을 IN_PROGRESS로 업데이트
+                    cursor.execute("""
+                        UPDATE preprocessing_runs 
+                        SET status = 'IN_PROGRESS', started_at = ?, updated_at = ?,
+                            error_message = NULL, error_details = NULL
+                        WHERE id = ?
+                    """, (current_time, current_time, existing_run[0]))
+                    return existing_run[0]
+                else:
+                    # 새로운 전처리 작업 생성
+                    cursor.execute("""
+                        INSERT INTO preprocessing_runs 
+                        (file_id, status, started_at, created_at, updated_at) 
+                        VALUES (?, 'IN_PROGRESS', ?, ?, ?)
+                    """, (file_id, current_time, current_time, current_time))
+                    return cursor.lastrowid
+                    
+        except sqlite3.Error as e:
+            print(f"전처리 작업 시작 실패: {e}")
+            return None
+    
+    def get_preprocessing_data(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """파일의 전처리 데이터 조회 (수정용)"""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 전처리 작업 조회
+                cursor.execute("""
+                    SELECT id, status, completed_at FROM preprocessing_runs 
+                    WHERE file_id = ?
+                """, (file_id,))
+                run = cursor.fetchone()
+                
+                if not run:
+                    return None
+                
+                run_id = run[0]
+                
+                # 주석들 조회
+                cursor.execute("""
+                    SELECT id, order_index, label, annotation_type, coordinates, 
+                           ocr_text, extracted_text, processing_options
+                    FROM annotations 
+                    WHERE run_id = ?
+                    ORDER BY order_index
+                """, (run_id,))
+                annotations = cursor.fetchall()
+                
+                # 관계들 조회
+                cursor.execute("""
+                    SELECT from_annotation_id, to_annotation_id, relationship_type, 
+                           description, weight
+                    FROM annotation_relationships 
+                    WHERE run_id = ?
+                """, (run_id,))
+                relationships = cursor.fetchall()
+                
+                return {
+                    "run_id": run_id,
+                    "status": run[1],
+                    "completed_at": run[2],
+                    "annotations": [
+                        {
+                            "id": ann[0],
+                            "order": ann[1],
+                            "label": ann[2],
+                            "type": ann[3],
+                            "coordinates": json.loads(ann[4]) if ann[4] else {},
+                            "ocr_text": ann[5],
+                            "extracted_text": ann[6],
+                            "processing_options": json.loads(ann[7]) if ann[7] else {}
+                        } for ann in annotations
+                    ],
+                    "relationships": [
+                        {
+                            "from_annotation_id": rel[0],
+                            "to_annotation_id": rel[1],
+                            "type": rel[2],
+                            "description": rel[3],
+                            "weight": rel[4]
+                        } for rel in relationships
+                    ]
+                }
+                
+        except sqlite3.Error as e:
+            print(f"전처리 데이터 조회 실패: {e}")
+            return None
+    
+    def save_preprocessing_data(self, file_id: str, annotations_data: list, relationships_data: list = None) -> bool:
+        """전처리 데이터 저장"""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 전처리 작업 조회/생성
+                cursor.execute("SELECT id FROM preprocessing_runs WHERE file_id = ?", (file_id,))
+                run = cursor.fetchone()
+                
+                if not run:
+                    current_time = datetime.now().isoformat()
+                    cursor.execute("""
+                        INSERT INTO preprocessing_runs (file_id, status, created_at, updated_at)
+                        VALUES (?, 'COMPLETED', ?, ?)
+                    """, (file_id, current_time, current_time))
+                    run_id = cursor.lastrowid
+                else:
+                    run_id = run[0]
+                    # 기존 데이터 삭제
+                    cursor.execute("DELETE FROM annotation_relationships WHERE run_id = ?", (run_id,))
+                    cursor.execute("DELETE FROM annotations WHERE run_id = ?", (run_id,))
+                
+                # 주석 데이터 저장
+                for ann_data in annotations_data:
+                    cursor.execute("""
+                        INSERT INTO annotations 
+                        (run_id, order_index, label, annotation_type, coordinates, 
+                         ocr_text, extracted_text, processing_options, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        run_id,
+                        ann_data.get("order", 0),
+                        ann_data.get("label", ""),
+                        ann_data.get("type", "paragraph"),
+                        json.dumps(ann_data.get("coordinates", {})),
+                        ann_data.get("ocr_text"),
+                        ann_data.get("extracted_text"),
+                        json.dumps(ann_data.get("processing_options", {})),
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat()
+                    ))
+                
+                # 관계 데이터 저장 (있다면)
+                if relationships_data:
+                    for rel_data in relationships_data:
+                        cursor.execute("""
+                            INSERT INTO annotation_relationships 
+                            (run_id, from_annotation_id, to_annotation_id, relationship_type,
+                             description, weight, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            run_id,
+                            rel_data.get("from_annotation_id"),
+                            rel_data.get("to_annotation_id"),
+                            rel_data.get("type", "connects_to"),
+                            rel_data.get("description"),
+                            rel_data.get("weight", 1.0),
+                            datetime.now().isoformat(),
+                            datetime.now().isoformat()
+                        ))
+                
+                # 전처리 작업 완료 표시
+                cursor.execute("""
+                    UPDATE preprocessing_runs 
+                    SET status = 'COMPLETED', completed_at = ?, updated_at = ?
+                    WHERE id = ?
+                """, (datetime.now().isoformat(), datetime.now().isoformat(), run_id))
+                
+                return True
+                
+        except sqlite3.Error as e:
+            print(f"전처리 데이터 저장 실패: {e}")
+            return False
+
+
+# 전역 서비스 인스턴스
+vector_metadata_service = VectorMetadataService()
+file_metadata_service = FileMetadataService()
+manual_preprocessing_service = ManualPreprocessingService()

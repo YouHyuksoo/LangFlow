@@ -60,6 +60,7 @@
   
   body {
     @apply bg-background text-foreground;
+    overflow: hidden !important;
   }
 }
 
@@ -165,6 +166,8 @@
 .dark textarea, 
 .dark select {
   border: 1px solid rgb(71 85 105) !important; /* slate-600 */
+  background-color: rgb(30 41 59) !important; /* slate-800 */
+  color: rgb(248 250 252) !important; /* slate-50 */
 }
 
 .dark input:focus, 
@@ -172,4 +175,88 @@
 .dark select:focus {
   border-color: rgb(148 163 184) !important; /* slate-400 */
   box-shadow: 0 0 0 1px rgb(148 163 184) !important;
+}
+
+/* 다크모드에서 select option 스타일링 */
+.dark select option {
+  background-color: rgb(30 41 59) !important; /* slate-800 */
+  color: rgb(248 250 252) !important; /* slate-50 */
+  border: none !important;
+}
+
+.dark select option:hover,
+.dark select option:checked {
+  background-color: rgb(51 65 85) !important; /* slate-700 */
+  color: rgb(255 255 255) !important;
+}
+
+/* 드롭다운 메뉴 아이템 텍스트 가시성 개선 */
+[data-radix-dropdown-menu-content] {
+  /* 라이트 모드 */
+  color: rgb(30 41 59) !important; /* slate-800 */
+}
+
+.dark [data-radix-dropdown-menu-content] {
+  /* 다크 모드 */
+  color: rgb(248 250 252) !important; /* slate-50 */
+}
+
+[data-radix-dropdown-menu-item] {
+  /* 라이트 모드 */
+  color: rgb(30 41 59) !important; /* slate-800 */
+}
+
+.dark [data-radix-dropdown-menu-item] {
+  /* 다크 모드 */
+  color: rgb(248 250 252) !important; /* slate-50 */
+}
+
+[data-radix-dropdown-menu-item]:hover {
+  /* 라이트 모드 hover */
+  color: rgb(15 23 42) !important; /* slate-900 */
+  background-color: rgb(241 245 249) !important; /* slate-100 */
+}
+
+.dark [data-radix-dropdown-menu-item]:hover {
+  /* 다크 모드 hover */
+  color: rgb(255 255 255) !important; /* white */
+  background-color: rgb(51 65 85) !important; /* slate-700 */
+}
+
+/* 다크모드에서 정보카드를 네비게이션과 같은 보라색-시안색 그라데이션으로 통일 */
+@layer components {
+  /* 정보카드 스타일 - 네비게이션 활성 상태와 동일 */
+  .dark .stat-card {
+    @apply bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/20;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease-in-out;
+  }
+  
+  /* hover 효과 */
+  .dark .stat-card:hover {
+    @apply from-purple-500/30 to-cyan-500/30 border-purple-400/40 shadow-xl shadow-purple-500/30;
+    transform: translateY(-1px);
+  }
+  
+  /* 추가 반짝임 효과 */
+  .dark .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(168, 85, 247, 0.1) 50%, transparent 70%);
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+  
+  .dark .stat-card:hover::before {
+    opacity: 1;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }

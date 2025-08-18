@@ -204,7 +204,7 @@ export default function UnstructuredSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-            <FileSearch className="h-8 w-8" />
+            <FileSearch className="h-8 w-8 text-blue-500" />
             Unstructured 전처리 설정
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
@@ -213,7 +213,7 @@ export default function UnstructuredSettingsPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={testUnstructuredProcessor} disabled={testing}>
-            <TestTube className="h-4 w-4 mr-2" />
+            <TestTube className="h-4 w-4 mr-2 text-blue-500" />
             {testing ? "테스트 중..." : "연결 테스트"}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
@@ -266,7 +266,7 @@ export default function UnstructuredSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
+              <Settings className="h-5 w-5 text-purple-500" />
               처리 전략
             </CardTitle>
             <CardDescription>
@@ -337,7 +337,7 @@ export default function UnstructuredSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Eye className="h-5 w-5" />
+            <Eye className="h-5 w-5 text-blue-500" />
             추출 설정
           </CardTitle>
           <CardDescription>
@@ -419,9 +419,9 @@ export default function UnstructuredSettingsPage() {
                 onClick={() => toggleLanguage(lang)}
               >
                 {settings.ocr_languages.includes(lang) ? (
-                  <CheckCircle className="h-3 w-3 mr-1" />
+                  <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
                 ) : (
-                  <XCircle className="h-3 w-3 mr-1" />
+                  <XCircle className="h-3 w-3 mr-1 text-red-500" />
                 )}
                 {lang === "kor" ? "한국어" : lang === "eng" ? "영어" : lang === "jpn" ? "일본어" : lang === "chi_sim" ? "중국어(간체)" : "중국어(번체)"}
               </Badge>
@@ -510,9 +510,9 @@ export default function UnstructuredSettingsPage() {
                 onClick={() => toggleFormat(format)}
               >
                 {settings.supported_formats.includes(format) ? (
-                  <CheckCircle className="h-3 w-3 mr-1" />
+                  <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
                 ) : (
-                  <XCircle className="h-3 w-3 mr-1" />
+                  <XCircle className="h-3 w-3 mr-1 text-red-500" />
                 )}
                 {format.toUpperCase()}
               </Badge>
@@ -556,9 +556,9 @@ export default function UnstructuredSettingsPage() {
                     onClick={() => toggleFallback(option)}
                   >
                     {settings.fallback_order.includes(option) ? (
-                      <CheckCircle className="h-3 w-3 mr-1" />
+                      <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
                     ) : (
-                      <XCircle className="h-3 w-3 mr-1" />
+                      <XCircle className="h-3 w-3 mr-1 text-red-500" />
                     )}
                     {option === "docling" ? "Docling" : "Basic"}
                   </Badge>
@@ -591,7 +591,7 @@ export default function UnstructuredSettingsPage() {
             }
             className="mb-2"
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             단위: MB (권장: 100MB 이하)
           </p>
           <div className="p-4 bg-purple-50 rounded-lg mt-4">

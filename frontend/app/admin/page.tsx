@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -147,7 +148,6 @@ interface StatCardProps {
   colorClass?: string;
 }
 
-// StatCard: 주요 통계 정보를 보여주는 현대적인 그라디언트 카드
 const StatCard = ({
   icon: Icon,
   title,
@@ -155,35 +155,15 @@ const StatCard = ({
   description,
   colorClass,
 }: StatCardProps) => {
-  const getCardClasses = () => {
-    switch(colorClass) {
-      case "text-blue-500":
-        return "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/30";
-      case "text-green-500":
-        return "bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30";
-      case "text-purple-500":
-        return "bg-gradient-to-br from-purple-500/20 to-violet-600/20 border-purple-500/30";
-      case "text-orange-500":
-        return "bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-500/30";
-      default:
-        return "bg-gradient-to-br from-gray-500/20 to-gray-600/20 border-gray-500/30";
-    }
-  };
-  
   return (
-    <Card className={`${getCardClasses()} backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm font-medium text-slate-800 dark:text-white/90">{title}</CardTitle>
-        <div className="p-2 rounded-lg bg-white/10">
-          <Icon className={`h-5 w-5 ${colorClass || "text-slate-600 dark:text-white/70"}`} />
-        </div>
+    <Card className="stat-card relative overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className={`h-4 w-4 text-muted-foreground ${colorClass}`} />
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{value}</div>
-        <p className="text-xs text-slate-600 dark:text-white/70">{description}</p>
-        <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
-        </div>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
   );
@@ -193,71 +173,56 @@ interface OverviewChartProps {
   data: DashboardData | null;
 }
 
-// OverviewChart: 일일 질문 수를 보여주는 현대적인 그라디언트 바 차트
 const OverviewChart = ({ data }: OverviewChartProps) => {
   const chartData = [
-    { name: "지난 달", questions: data?.usage.daily_questions.last_month || 0, color: "#8B5CF6" },
-    { name: "이번 달", questions: data?.usage.daily_questions.this_month || 0, color: "#A855F7" },
-    { name: "지난 주", questions: data?.usage.daily_questions.last_week || 0, color: "#C084FC" },
-    { name: "이번 주", questions: data?.usage.daily_questions.this_week || 0, color: "#D8B4FE" },
-    { name: "어제", questions: data?.usage.daily_questions.yesterday || 0, color: "#E879F9" },
-    { name: "오늘", questions: data?.usage.daily_questions.today || 0, color: "#F472B6" },
+    { name: "지난 달", questions: data?.usage.daily_questions.last_month || 0 },
+    { name: "이번 달", questions: data?.usage.daily_questions.this_month || 0 },
+    { name: "지난 주", questions: data?.usage.daily_questions.last_week || 0 },
+    { name: "이번 주", questions: data?.usage.daily_questions.this_week || 0 },
+    { name: "어제", questions: data?.usage.daily_questions.yesterday || 0 },
+    { name: "오늘", questions: data?.usage.daily_questions.today || 0 },
   ];
 
   return (
-    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
+    <Card className="stat-card relative overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
-          <div className="p-2 rounded-lg bg-purple-500/20">
-            <BarChart3 className="h-5 w-5 text-purple-400" />
-          </div>
-          <span>사용량 개요</span>
-          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">+12.5%</Badge>
-        </CardTitle>
-        <CardDescription className="text-slate-600 dark:text-slate-400">기간별 질문 수 추이와 성장률을 확인하세요.</CardDescription>
+        <CardTitle>사용량 개요</CardTitle>
+        <CardDescription>기간별 질문 수 추이입니다.</CardDescription>
       </CardHeader>
       <CardContent className="pl-2">
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={chartData}>
             <defs>
-              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.8}/>
-                <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.3}/>
+              <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#1d4ed8" stopOpacity={0.6}/>
               </linearGradient>
             </defs>
             <XAxis
               dataKey="name"
-              stroke="#94A3B8"
-              fontSize={11}
+              stroke="#888888"
+              fontSize={12}
               tickLine={false}
               axisLine={false}
-              tick={{ fill: '#94A3B8' }}
             />
             <YAxis
-              stroke="#94A3B8"
-              fontSize={11}
+              stroke="#888888"
+              fontSize={12}
               tickLine={false}
               axisLine={false}
-              tick={{ fill: '#94A3B8' }}
-              tickFormatter={(value) => `${value}건`}
+              tickFormatter={(value) => `${value}`}
             />
             <Tooltip
-              cursor={{ fill: "rgba(139, 92, 246, 0.1)" }}
               contentStyle={{
-                background: "rgba(15, 23, 42, 0.95)",
-                border: "1px solid rgba(139, 92, 246, 0.3)",
-                borderRadius: "12px",
-                backdropFilter: "blur(16px)",
-                color: "white",
-                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)"
+                background: "hsl(var(--background))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: "var(--radius)",
               }}
             />
-            <Bar
-              dataKey="questions"
-              fill="url(#barGradient)"
-              radius={[6, 6, 0, 0]}
-              stroke="#8B5CF6"
-              strokeWidth={1}
+            <Bar 
+              dataKey="questions" 
+              fill="url(#colorGradient)" 
+              radius={[4, 4, 0, 0]} 
             />
           </BarChart>
         </ResponsiveContainer>
@@ -270,7 +235,6 @@ interface CategoryDistributionChartProps {
   data: DashboardData | null;
 }
 
-// CategoryDistributionChart: 카테고리별 파일 분포를 보여주는 현대적인 도넉 차트
 const CategoryDistributionChart = ({
   data,
 }: CategoryDistributionChartProps) => {
@@ -278,95 +242,59 @@ const CategoryDistributionChart = ({
     if (!data?.categories?.categories) {
       return [];
     }
-
-    const filteredData = data.categories.categories
+    return data.categories.categories
       .filter((cat) => cat.file_count > 0)
       .map((cat) => ({ name: cat.name, value: cat.file_count }));
-
-    return filteredData;
   }, [data]);
 
   const COLORS = [
-    "#8B5CF6", // Purple
-    "#EC4899", // Pink  
-    "#06B6D4", // Cyan
-    "#10B981", // Emerald
-    "#F59E0B", // Amber
-    "#EF4444", // Red
+    "#3b82f6", // blue-500
+    "#10b981", // emerald-500  
+    "#8b5cf6", // violet-500
+    "#f59e0b", // amber-500
+    "#ef4444", // red-500
+    "#06b6d4", // cyan-500
+    "#84cc16", // lime-500
+    "#ec4899", // pink-500
   ];
 
   return (
-    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
+    <Card className="stat-card relative overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
-          <div className="p-2 rounded-lg bg-cyan-500/20">
-            <PieChart className="h-5 w-5 text-cyan-400" />
-          </div>
-          <span>카테고리 분포</span>
-          {chartData.length > 0 && (
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-              {chartData.length}개 카테고리
-            </Badge>
-          )}
-        </CardTitle>
-        <CardDescription className="text-slate-600 dark:text-slate-400">파일이 포함된 카테고리별 분산 현황입니다.</CardDescription>
+        <CardTitle>카테고리 분포</CardTitle>
+        <CardDescription>파일이 포함된 카테고리별 분산 현황입니다.</CardDescription>
       </CardHeader>
       <CardContent>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <RechartsPieChart>
-              <defs>
-                {COLORS.map((color, index) => (
-                  <linearGradient key={index} id={`gradient${index}`} x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.8}/>
-                    <stop offset="100%" stopColor={color} stopOpacity={0.4}/>
-                  </linearGradient>
-                ))}
-              </defs>
               <Pie
                 data={chartData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                outerRadius={85}
-                innerRadius={35}
+                outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
-                stroke="none"
-                label={({ name, percent }: { name: string; percent: number }) =>
-                  `${name} ${(percent * 100).toFixed(0)}%`
-                }
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >
                 {chartData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={`url(#gradient${index % COLORS.length})`}
-                  />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip
                 contentStyle={{
-                  background: "rgba(15, 23, 42, 0.95)",
-                  border: "1px solid rgba(139, 92, 246, 0.3)",
-                  borderRadius: "12px",
-                  backdropFilter: "blur(16px)",
-                  color: "white",
-                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)"
+                  background: "hsl(var(--background))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "var(--radius)",
                 }}
               />
+              <Legend />
             </RechartsPieChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex items-center justify-center h-[300px] text-slate-400">
-            <div className="text-center">
-              <div className="p-4 rounded-full bg-slate-800/50 w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                <PieChart className="h-8 w-8 text-slate-500" />
-              </div>
-              <p className="text-sm font-medium text-white mb-1">카테고리 데이터가 없습니다</p>
-              <p className="text-xs text-slate-500">
-                파일을 업로드하고 카테고리를 설정해주세요
-              </p>
-            </div>
+          <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+            <p>데이터가 없습니다.</p>
           </div>
         )}
       </CardContent>
@@ -382,7 +310,6 @@ interface SystemHealthWidgetProps {
   onReset: () => void;
 }
 
-// SystemHealthWidget: 시스템 상태 정보를 보여주는 현대적인 위젯
 const SystemHealthWidget = ({
   chromaStatus,
   sqliteStatus,
@@ -396,142 +323,41 @@ const SystemHealthWidget = ({
     fileMetadataStatus?.db_available && 
     vectorMetadataStatus?.db_available;
     
+  const StatusIndicator = ({ healthy }: { healthy: boolean }) => (
+    <div className="flex items-center gap-2">
+      <div className={`w-2 h-2 rounded-full ${healthy ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-red-500 shadow-sm shadow-red-500/50'}`} />
+      <span className={`text-sm font-medium ${healthy ? 'text-emerald-500' : 'text-red-500'}`}>{healthy ? "정상" : "오류"}</span>
+    </div>
+  );
+
   return (
-    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
+    <Card className="stat-card relative overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
-          <div className={`p-2 rounded-lg ${overallHealth ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-            <Server className={`h-5 w-5 ${overallHealth ? 'text-green-400' : 'text-red-400'}`} />
-          </div>
-          <span>시스템 상태</span>
-          <div className={`w-2 h-2 rounded-full ${overallHealth ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-        </CardTitle>
+        <CardTitle>시스템 상태</CardTitle>
+        <div className="flex items-center gap-2">
+          <StatusIndicator healthy={!!overallHealth} />
+          <span className="text-xs text-muted-foreground">전체 상태</span>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-      {/* ChromaDB Status */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">벡터 DB (ChromaDB)</h4>
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-          <div className="flex items-center gap-2">
-            {chromaStatus?.connected ? (
-              <CheckCircle className="h-4 w-4 text-green-500" />
-            ) : (
-              <XCircle className="h-4 w-4 text-red-500" />
-            )}
-            <span className="text-sm font-medium">
-              {chromaStatus?.connected ? "연결됨" : "연결 끊김"}
-            </span>
-          </div>
-          <Badge variant={chromaStatus?.connected ? "default" : "destructive"}>
-            {chromaStatus?.error || "정상"}
-          </Badge>
+      <CardContent className="space-y-4 text-sm">
+        <div className="flex justify-between items-center">
+          <span>벡터 DB (ChromaDB)</span>
+          <StatusIndicator healthy={!!chromaStatus?.connected} />
         </div>
-        {chromaStatus?.error && (
-          <div className="p-2 bg-destructive/10 text-xs text-destructive rounded-lg">
-            {chromaStatus.error}
-          </div>
-        )}
-        {/* Removed requires_migration as it's not directly available in the new ChromaDBStatus */}
-      </div>
-
-      {/* SQLite DB Status */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">통계 DB (SQLite)</h4>
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-          <div className="flex items-center gap-2">
-            {sqliteStatus?.db_available && sqliteStatus?.table_found ? (
-              <CheckCircle className="h-4 w-4 text-green-500" />
-            ) : (
-              <XCircle className="h-4 w-4 text-red-500" />
-            )}
-            <span className="text-sm font-medium">
-              {sqliteStatus?.db_available && sqliteStatus?.table_found
-                ? "정상"
-                : "오류"}
-            </span>
-          </div>
-          <Badge
-            variant={
-              sqliteStatus?.db_available && sqliteStatus?.table_found
-                ? "default"
-                : "destructive"
-            }
-          >
-            {sqliteStatus?.message}
-          </Badge>
+        <div className="flex justify-between items-center">
+          <span>통계 DB (SQLite)</span>
+          <StatusIndicator healthy={!!(sqliteStatus?.db_available && sqliteStatus?.table_found)} />
         </div>
-        {sqliteStatus?.error && (
-          <div className="p-2 bg-destructive/10 text-xs text-destructive rounded-lg">
-            {sqliteStatus.error}
-          </div>
-        )}
-      </div>
-
-      {/* File Metadata DB Status */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-white/90 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-cyan-400" />
-          파일 메타데이터 DB
-        </h4>
-        <div className="p-4 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${fileMetadataStatus?.db_available && fileMetadataStatus?.table_found ? 'bg-green-400 shadow-green-400/50 shadow-lg animate-pulse' : 'bg-red-400 shadow-red-400/50 shadow-lg'}`}></div>
-              <span className="text-sm font-medium text-white">
-                {fileMetadataStatus?.db_available && fileMetadataStatus?.table_found
-                  ? "정상"
-                  : "오류"}
-              </span>
-            </div>
-            <Badge className={`${
-              fileMetadataStatus?.db_available && fileMetadataStatus?.table_found
-                ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                : 'bg-red-500/20 text-red-400 border-red-500/30'
-            }`}>
-              {fileMetadataStatus?.record_count || 0}개 파일
-            </Badge>
-          </div>
+        <div className="flex justify-between items-center">
+          <span>파일 메타데이터 DB</span>
+          <StatusIndicator healthy={!!(fileMetadataStatus?.db_available && fileMetadataStatus?.table_found)} />
         </div>
-        {fileMetadataStatus?.error && (
-          <div className="p-3 bg-red-500/10 text-xs text-red-400 rounded-xl border border-red-500/20">
-            {fileMetadataStatus.error}
-          </div>
-        )}
-      </div>
-
-      {/* Vector Metadata DB Status */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-white/90 flex items-center gap-2">
-          <Target className="h-4 w-4 text-emerald-400" />
-          벡터 메타데이터 DB
-        </h4>
-        <div className="p-4 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${vectorMetadataStatus?.db_available && vectorMetadataStatus?.chroma_available ? 'bg-green-400 shadow-green-400/50 shadow-lg animate-pulse' : 'bg-red-400 shadow-red-400/50 shadow-lg'}`}></div>
-              <span className="text-sm font-medium text-white">
-                {vectorMetadataStatus?.db_available && vectorMetadataStatus?.chroma_available
-                  ? "정상"
-                  : "오류"}
-              </span>
-            </div>
-            <Badge className={`${
-              vectorMetadataStatus?.db_available && vectorMetadataStatus?.chroma_available
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                : 'bg-red-500/20 text-red-400 border-red-500/30'
-            }`}>
-              {vectorMetadataStatus?.collection_count || 0}개 컬렉션
-            </Badge>
-          </div>
+        <div className="flex justify-between items-center">
+          <span>벡터 메타데이터 DB</span>
+          <StatusIndicator healthy={!!(vectorMetadataStatus?.db_available && vectorMetadataStatus?.chroma_available)} />
         </div>
-        {vectorMetadataStatus?.error && (
-          <div className="p-3 bg-red-500/10 text-xs text-red-400 rounded-xl border border-red-500/20">
-            {vectorMetadataStatus.error}
-          </div>
-        )}
-      </div>
-    </CardContent>
-  </Card>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -539,55 +365,32 @@ interface ActivityFeedProps {
   data: DashboardData | null;
 }
 
-// ActivityFeed: 최근 활동 내역을 보여주는 현대적인 피드
 const ActivityFeed = ({ data }: ActivityFeedProps) => (
-  <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+  <Card className="stat-card relative overflow-hidden">
     <CardHeader>
-      <CardTitle className="flex items-center gap-3 text-white">
-        <div className="p-2 rounded-lg bg-orange-500/20">
-          <Activity className="h-5 w-5 text-orange-400" />
-        </div>
-        <span>최근 활동</span>
-        <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
-      </CardTitle>
+      <CardTitle>최근 활동</CardTitle>
     </CardHeader>
-    <CardContent className="space-y-6">
+    <CardContent className="space-y-4">
       <div>
-        <h4 className="text-sm font-medium mb-3 text-white/90 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400"></div>
-          최근 업로드
-        </h4>
-        <div className="space-y-3 text-xs">
+        <h4 className="text-sm font-medium mb-2">최근 업로드</h4>
+        <div className="space-y-2 text-xs text-muted-foreground">
           {data?.recent_activity.recent_uploads.slice(0, 3).map((upload, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/30 hover:bg-slate-700/50 transition-colors">
-              <div className="p-1.5 rounded-md bg-blue-500/20">
-                <FileText className="h-3 w-3 text-blue-400" />
-              </div>
-              <span className="truncate flex-1 text-white font-medium">{upload.filename}</span>
-              <span className="text-slate-400 font-mono text-[10px]">
-                {new Date(upload.upload_time).toLocaleTimeString()}
-              </span>
+            <div key={i} className="flex justify-between">
+              <span className="truncate">{upload.filename}</span>
+              <span>{new Date(upload.upload_time).toLocaleTimeString()}</span>
             </div>
           ))}
         </div>
       </div>
-      <div className="border-t border-slate-700/50 pt-4">
-        <h4 className="text-sm font-medium mb-3 text-white/90 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
-          최근 검색
-        </h4>
-        <div className="space-y-3 text-xs">
+      <div className="border-t pt-4">
+        <h4 className="text-sm font-medium mb-2">최근 검색</h4>
+        <div className="space-y-2 text-xs text-muted-foreground">
           {data?.recent_activity.recent_searches
             .slice(0, 3)
             .map((search, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/30 hover:bg-slate-700/50 transition-colors">
-                <div className="p-1.5 rounded-md bg-purple-500/20">
-                  <Search className="h-3 w-3 text-purple-400" />
-                </div>
-                <span className="truncate flex-1 text-white font-medium">{search.query}</span>
-                <span className="text-slate-400 font-mono text-[10px]">
-                  {new Date(search.time).toLocaleTimeString()}
-                </span>
+              <div key={i} className="flex justify-between">
+                <span className="truncate">{search.query}</span>
+                <span>{new Date(search.time).toLocaleTimeString()}</span>
               </div>
             ))}
         </div>
@@ -596,78 +399,39 @@ const ActivityFeed = ({ data }: ActivityFeedProps) => (
   </Card>
 );
 
-// FastActionWidget: 빠른 액션을 위한 현대적인 위젯
-const FastActionWidget = () => {
-  const actions = [
-    {
-      title: "파일 업로드",
-      description: "새 문서 추가",
-      icon: Factory,
-      href: "/admin/upload",
-      gradient: "from-blue-500 to-cyan-500",
-      iconBg: "bg-blue-500/20",
-      iconColor: "text-blue-400"
-    },
-    {
-      title: "벡터 관리",
-      description: "벡터 데이터 관리",
-      icon: Database,
-      href: "/admin/vectors",
-      gradient: "from-purple-500 to-pink-500",
-      iconBg: "bg-purple-500/20",
-      iconColor: "text-purple-400"
-    },
-    {
-      title: "설정",
-      description: "시스템 설정",
-      icon: Settings,
-      href: "/admin/settings",
-      gradient: "from-emerald-500 to-teal-500",
-      iconBg: "bg-emerald-500/20",
-      iconColor: "text-emerald-400"
-    },
-    {
-      title: "데이터베이스",
-      description: "DB 관리",
-      icon: Server,
-      href: "/admin/settings/database",
-      gradient: "from-orange-500 to-red-500",
-      iconBg: "bg-orange-500/20",
-      iconColor: "text-orange-400"
-    }
-  ];
+interface FastActionWidgetProps {
+  actions: Array<{
+    title: string;
+    description: string;
+    icon: React.ElementType;
+    href: string;
+  }>;
+}
 
+const FastActionWidget = ({ actions }: FastActionWidgetProps) => {
   return (
-    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
+    <Card className="stat-card relative overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
-          <div className="p-2 rounded-lg bg-violet-500/20">
-            <ArrowRight className="h-5 w-5 text-violet-400" />
-          </div>
-          <span>빠른 액션</span>
-          <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></div>
-        </CardTitle>
+        <CardTitle>빠른 액션</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {actions.map((action, index) => (
-          <div
-            key={index}
-            className={`group relative overflow-hidden rounded-xl bg-gradient-to-r ${action.gradient} p-[1px] cursor-pointer hover:scale-105 transition-all duration-300`}
-            onClick={() => window.location.href = action.href}
-          >
-            <div className="bg-slate-900/90 rounded-xl p-4 hover:bg-slate-800/90 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${action.iconBg}`}>
-                  <action.icon className={`h-4 w-4 ${action.iconColor}`} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-white">{action.title}</h4>
-                  <p className="text-xs text-slate-400">{action.description}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all" />
+          <Link href={action.href} key={index} className="block">
+            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent">
+              <action.icon className={`h-4 w-4 ${
+                action.title === '파일 업로드' ? 'text-blue-500' :
+                action.title === '벡터 관리' ? 'text-green-500' :
+                action.title === '설정' ? 'text-purple-500' :
+                action.title === '데이터베이스' ? 'text-orange-500' :
+                'text-muted-foreground'
+              }`} />
+              <div>
+                <h4 className="text-sm font-medium">{action.title}</h4>
+                <p className="text-xs text-muted-foreground">{action.description}</p>
               </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground ml-auto" />
             </div>
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>
@@ -689,7 +453,6 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       const [chromaStatus, dashboardStats] = await Promise.all([
-        // 기존 파일 API의 ChromaDB 상태 사용
         fileAPI.getChromaDBStatus(),
         statsAPI.getDashboardStats(),
       ]);
@@ -729,6 +492,13 @@ export default function AdminDashboard() {
     }
   };
 
+  const fastActions = [
+    { title: "파일 업로드", description: "새 문서 추가", icon: Factory, href: "/admin/upload" },
+    { title: "벡터 관리", description: "벡터 데이터 관리", icon: Database, href: "/admin/vectors" },
+    { title: "설정", description: "시스템 설정", icon: Settings, href: "/admin/settings" },
+    { title: "데이터베이스", description: "DB 관리", icon: Server, href: "/admin/settings/database" },
+  ];
+
   if (loading) {
     return (
       <div className="space-y-6 p-4 md:p-6">
@@ -737,7 +507,7 @@ export default function AdminDashboard() {
         </div>
         <div className="text-center py-16">
           <div className="animate-pulse flex flex-col items-center gap-4">
-            <Database className="h-12 w-12 text-muted-foreground" />
+            <Database className="h-12 w-12 text-blue-500" />
             <p className="text-muted-foreground">데이터를 불러오는 중...</p>
           </div>
         </div>
@@ -752,43 +522,34 @@ export default function AdminDashboard() {
     : "healthy";
 
   return (
-    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">
-            관리자 대시보드
-          </h1>
-          <p className="text-slate-400 mt-2 text-lg">
+          <h1 className="text-2xl font-bold tracking-tight">관리자 대시보드</h1>
+          <p className="text-muted-foreground">
             시스템의 현재 상태와 주요 지표를 확인하세요.
           </p>
         </div>
-        <Button 
-          onClick={loadDashboardData} 
-          className="bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-          size="sm"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
+        <Button onClick={loadDashboardData} size="sm">
+          <RefreshCw className="h-4 w-4 mr-2 text-blue-500" />
           새로고침
         </Button>
       </div>
 
       {/* 시스템 상태 알림 */}
       {systemHealth !== "healthy" && (
-        <Card className="bg-gradient-to-r from-amber-500/10 to-red-500/10 border-amber-500/30 backdrop-blur-sm shadow-lg">
+        <Card className="bg-destructive/10 border-destructive/20">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/20">
-                <AlertTriangle className="h-5 w-5 text-amber-400" />
-              </div>
-              <span className="text-amber-200 font-medium text-lg">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span className="text-destructive font-medium">
                 시스템 상태: {systemHealth === "warning" ? "주의" : "오류"}
               </span>
-              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
             </div>
             {chromaDBStatus?.error && (
-              <div className="mt-4 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                <p className="text-sm text-red-300 font-medium">
+              <div className="mt-4 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+                <p className="text-sm text-destructive font-medium">
                   ChromaDB: {chromaDBStatus.error}
                 </p>
               </div>
@@ -848,7 +609,7 @@ export default function AdminDashboard() {
 
         {/* 오른쪽 사이드바 */}
         <div className="space-y-6">
-          <FastActionWidget />
+          <FastActionWidget actions={fastActions} />
           <SystemHealthWidget
             chromaStatus={chromaDBStatus}
             sqliteStatus={dashboardData?.system.sqlite_status}

@@ -118,11 +118,11 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
   const getIcon = () => {
     const dbName = database.name.toUpperCase();
     switch (dbName) {
-      case "FILE_METADATA": return <File className="h-6 w-6" />;
-      case "METADATA": return <FileText className="h-6 w-6" />;
-      case "USERS": return <Users className="h-6 w-6" />;
-      case "CHROMADB_MAIN": return <Database className="h-6 w-6" />;
-      default: return <Server className="h-6 w-6" />;
+      case "FILE_METADATA": return <File className="h-6 w-6 text-blue-500" />;
+      case "METADATA": return <FileText className="h-6 w-6 text-blue-500" />;
+      case "USERS": return <Users className="h-6 w-6 text-purple-500" />;
+      case "CHROMADB_MAIN": return <Database className="h-6 w-6 text-green-500" />;
+      default: return <Server className="h-6 w-6 text-green-500" />;
     }
   };
 
@@ -147,16 +147,16 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
         {/* 기본 정보 */}
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">경로:</span>
+            <span className="text-slate-600 dark:text-slate-400">경로:</span>
             <span className="font-mono text-xs break-all">{database.path}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">크기:</span>
+            <span className="text-slate-600 dark:text-slate-400">크기:</span>
             <span>{database.size_formatted}</span>
           </div>
           {database.last_modified && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">수정:</span>
+              <span className="text-slate-600 dark:text-slate-400">수정:</span>
               <span>{new Date(database.last_modified).toLocaleString()}</span>
             </div>
           )}
@@ -166,11 +166,11 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
         {database.name.toUpperCase() === "CHROMADB_MAIN" && database.exists && (
           <div className="space-y-2 text-sm border-t pt-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">타입:</span>
+              <span className="text-slate-600 dark:text-slate-400">타입:</span>
               <span>ChromaDB SQLite</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">용도:</span>
+              <span className="text-slate-600 dark:text-slate-400">용도:</span>
               <span>벡터 데이터베이스</span>
             </div>
           </div>
@@ -179,11 +179,11 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
         {database.name.toUpperCase() === "METADATA" && database.exists && (
           <div className="space-y-2 text-sm border-t pt-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">레코드:</span>
+              <span className="text-slate-600 dark:text-slate-400">레코드:</span>
               <span>{database.record_count?.toLocaleString() || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">테이블:</span>
+              <span className="text-slate-600 dark:text-slate-400">테이블:</span>
               <span>{database.tables?.length || 0}개</span>
             </div>
           </div>
@@ -192,11 +192,11 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
         {database.name.toUpperCase() === "USERS" && database.exists && (
           <div className="space-y-2 text-sm border-t pt-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">사용자:</span>
+              <span className="text-slate-600 dark:text-slate-400">사용자:</span>
               <span>{database.user_count?.toLocaleString() || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">테이블:</span>
+              <span className="text-slate-600 dark:text-slate-400">테이블:</span>
               <span>{database.tables?.length || 0}개</span>
             </div>
           </div>
@@ -205,11 +205,11 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
         {database.name.toUpperCase() === "FILE_METADATA" && database.exists && (
           <div className="space-y-2 text-sm border-t pt-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">파일 수:</span>
+              <span className="text-slate-600 dark:text-slate-400">파일 수:</span>
               <span>{database.file_count?.toLocaleString() || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">테이블:</span>
+              <span className="text-slate-600 dark:text-slate-400">테이블:</span>
               <span>{database.tables?.length || 0}개</span>
             </div>
           </div>
@@ -233,7 +233,7 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
             size="sm"
             className="flex-1"
           >
-            <Download className="h-4 w-4 mr-1" />
+            <Download className="h-4 w-4 mr-1 text-blue-500" />
             백업
           </Button>
           
@@ -258,10 +258,10 @@ const DatabaseCard = ({ database, onBackup, onReset, isLoading }: DatabaseCardPr
                 <DialogDescription>
                   정말로 {database.name.toUpperCase()} 데이터베이스를 초기화하시겠습니까? 
                   {database.name.toUpperCase() === "USERS" && (
-                    <span className="text-red-600 font-medium"> 모든 사용자 데이터가 삭제됩니다!</span>
+                    <span className="text-red-500 font-medium"> 모든 사용자 데이터가 삭제됩니다!</span>
                   )}
                   <br />
-                  <span className="text-green-600 font-medium">
+                  <span className="text-green-500 font-medium">
                     안전을 위해 초기화 전에 자동으로 백업이 생성됩니다.
                   </span>
                   <br />
@@ -693,7 +693,7 @@ export default function DatabaseManagementPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-            <DatabaseZap className="h-8 w-8" />
+            <DatabaseZap className="h-8 w-8 text-green-500" />
             데이터베이스 관리
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
@@ -714,7 +714,7 @@ export default function DatabaseManagementPage() {
             {actionLoading.backup_all ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
-              <Archive className="h-4 w-4 mr-2" />
+              <Archive className="h-4 w-4 mr-2 text-green-500" />
             )}
             전체 백업
           </Button>
@@ -761,7 +761,7 @@ export default function DatabaseManagementPage() {
               <ul className="text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                 <li>• 데이터베이스 초기화는 되돌릴 수 없는 작업입니다.</li>
                 <li>• 사용자 DB 초기화 시 모든 사용자 계정이 삭제됩니다.</li>
-                <li>• <span className="text-green-600 font-medium">초기화 시 자동으로 백업이 생성되어 안전합니다.</span></li>
+                <li>• <span className="text-green-500 font-medium">초기화 시 자동으로 백업이 생성되어 안전합니다.</span></li>
                 <li>• 백업 파일은 data/backups 디렉토리에 저장됩니다.</li>
               </ul>
             </div>
@@ -773,7 +773,7 @@ export default function DatabaseManagementPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-            <Database className="h-6 w-6" />
+            <Database className="h-6 w-6 text-green-500" />
             데이터베이스 동기화
           </h2>
           <p className="text-slate-600 dark:text-slate-400">
@@ -786,7 +786,7 @@ export default function DatabaseManagementPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Info className="h-5 w-5" />
+                <Info className="h-5 w-5 text-blue-500" />
                 동기화 상태
               </CardTitle>
               <CardDescription>
@@ -798,7 +798,7 @@ export default function DatabaseManagementPage() {
                 <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div>
                     <p className="font-medium">메타데이터 DB</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
                       {syncStatus.metadata_files || 0}개 파일, {syncStatus.metadata_chunks || 0}개 청크
                     </p>
                   </div>
@@ -808,7 +808,7 @@ export default function DatabaseManagementPage() {
                 <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div>
                     <p className="font-medium">ChromaDB</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
                       {syncStatus.chromadb_vectors || 0}개 벡터
                     </p>
                   </div>
@@ -818,7 +818,7 @@ export default function DatabaseManagementPage() {
                 <div className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">동기화 상태</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
                       {syncStatus.sync_needed ? "동기화 필요" : "동기화됨"}
                       {syncStatus.difference && ` (차이: ${syncStatus.difference}개)`}
                     </p>
@@ -840,7 +840,7 @@ export default function DatabaseManagementPage() {
                   </>
                 ) : (
                   <>
-                    <Database className="h-4 w-4 mr-2" />
+                    <Database className="h-4 w-4 mr-2 text-green-500" />
                     데이터베이스 동기화
                   </>
                 )}
@@ -852,7 +852,7 @@ export default function DatabaseManagementPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
                 고아 데이터 정리
               </CardTitle>
               <CardDescription>
@@ -864,7 +864,7 @@ export default function DatabaseManagementPage() {
                 <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div>
                     <p className="font-medium">고아 메타데이터</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
                       {orphanedLoading ? "로딩 중..." : `${orphanedData.total_count || 0}개 파일`}
                     </p>
                   </div>
@@ -882,13 +882,13 @@ export default function DatabaseManagementPage() {
                         {orphanedData.orphaned_files?.slice(0, 5).map((file: any, index: number) => (
                           <div key={index} className="text-xs p-2 bg-white dark:bg-gray-800 rounded border">
                             <p className="font-medium">{file.filename}</p>
-                            <p className="text-muted-foreground">
+                            <p className="text-slate-600 dark:text-slate-400">
                               카테고리: {file.category_name || '없음'}
                             </p>
                           </div>
                         ))}
                         {orphanedData.total_count > 5 && (
-                          <div className="text-xs text-center text-muted-foreground">
+                          <div className="text-xs text-center text-slate-600 dark:text-slate-400">
                             외 {orphanedData.total_count - 5}개 파일...
                           </div>
                         )}
@@ -907,7 +907,7 @@ export default function DatabaseManagementPage() {
                     {orphanedLoading ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <Search className="h-4 w-4 mr-2" />
+                      <Search className="h-4 w-4 mr-2 text-blue-500" />
                     )}
                     다시 확인
                   </Button>
@@ -936,7 +936,7 @@ export default function DatabaseManagementPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-red-600" />
+                <Database className="h-5 w-5 text-red-500" />
                 컬렉션 삭제
               </CardTitle>
               <CardDescription>
@@ -999,14 +999,14 @@ export default function DatabaseManagementPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="p-3 text-center text-muted-foreground text-sm bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="p-3 text-center text-slate-600 dark:text-slate-400 text-sm bg-gray-50 dark:bg-gray-800 rounded-lg">
                       사용 가능한 컬렉션이 없습니다
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
+                  <span className="text-slate-600 dark:text-slate-400">
                     선택된 컬렉션: {selectedCollections.length}개
                   </span>
                   {selectedCollections.length > 0 && (
@@ -1043,7 +1043,7 @@ export default function DatabaseManagementPage() {
           <Card className="md:col-span-3">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-red-600" />
+                <FileText className="h-5 w-5 text-red-500" />
                 문서 관리
               </CardTitle>
               <CardDescription>
@@ -1155,7 +1155,7 @@ export default function DatabaseManagementPage() {
                               <Badge variant="outline" className="text-xs">
                                 {doc.chunk_count || 0}개 청크
                               </Badge>
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
                                 {new Date(doc.upload_time).toLocaleDateString()}
                               </span>
                             </div>
@@ -1164,14 +1164,14 @@ export default function DatabaseManagementPage() {
                       ))}
                       
                       {getFilteredDocuments().length === 0 && (
-                        <div className="text-center py-4 text-muted-foreground">
+                        <div className="text-center py-4 text-slate-600 dark:text-slate-400">
                           검색 결과가 없습니다
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="p-8 text-center text-muted-foreground bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <div className="p-8 text-center text-slate-600 dark:text-slate-400 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <FileText className="h-12 w-12 mx-auto mb-2 opacity-50 text-slate-400" />
                       <p>업로드된 문서가 없습니다</p>
                       <Button
                         onClick={fetchDocuments}
@@ -1179,7 +1179,7 @@ export default function DatabaseManagementPage() {
                         size="sm"
                         className="mt-4"
                       >
-                        <RefreshCw className="h-4 w-4 mr-2" />
+                        <RefreshCw className="h-4 w-4 mr-2 text-blue-500" />
                         새로고침
                       </Button>
                     </div>
@@ -1203,7 +1203,7 @@ export default function DatabaseManagementPage() {
 
                 {/* 액션 버튼 */}
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
                     {selectedDocuments.length > 0 && (
                       <span>{selectedDocuments.length}개 문서 선택됨</span>
                     )}
@@ -1241,7 +1241,7 @@ export default function DatabaseManagementPage() {
             <Card className="md:col-span-3">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
                   동기화 결과
                 </CardTitle>
                 <CardDescription>
@@ -1253,19 +1253,19 @@ export default function DatabaseManagementPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="font-medium">업데이트된 파일</p>
-                      <p className="text-muted-foreground">{syncResults.summary?.updated_files_count || 0}개</p>
+                      <p className="text-slate-600 dark:text-slate-400">{syncResults.summary?.updated_files_count || 0}개</p>
                     </div>
                     <div>
                       <p className="font-medium">고아 메타데이터</p>
-                      <p className="text-muted-foreground">{syncResults.summary?.orphaned_metadata_count || 0}개</p>
+                      <p className="text-slate-600 dark:text-slate-400">{syncResults.summary?.orphaned_metadata_count || 0}개</p>
                     </div>
                     <div>
                       <p className="font-medium">고아 벡터</p>
-                      <p className="text-muted-foreground">{syncResults.summary?.orphaned_vectors_count || 0}개</p>
+                      <p className="text-slate-600 dark:text-slate-400">{syncResults.summary?.orphaned_vectors_count || 0}개</p>
                     </div>
                     <div>
                       <p className="font-medium">오류</p>
-                      <p className="text-muted-foreground">{syncResults.summary?.errors_count || 0}개</p>
+                      <p className="text-slate-600 dark:text-slate-400">{syncResults.summary?.errors_count || 0}개</p>
                     </div>
                   </div>
 
@@ -1276,7 +1276,7 @@ export default function DatabaseManagementPage() {
                         {syncResults.updated_files.map((file: any, index: number) => (
                           <div key={index} className="text-xs p-2 bg-gray-50 dark:bg-gray-800 rounded">
                             <p className="font-medium">{file.filename}</p>
-                            <p className="text-muted-foreground">
+                            <p className="text-slate-600 dark:text-slate-400">
                               {file.recorded_chunks} → {file.actual_chunks} 
                               ({file.difference > 0 ? '+' : ''}{file.difference})
                             </p>
@@ -1288,7 +1288,7 @@ export default function DatabaseManagementPage() {
 
                   {syncResults.errors && syncResults.errors.length > 0 && (
                     <div className="mt-4">
-                      <h4 className="font-medium mb-2 text-red-600">오류</h4>
+                      <h4 className="font-medium mb-2 text-red-500">오류</h4>
                       <div className="space-y-1 max-h-32 overflow-y-auto">
                         {syncResults.errors.map((error: string, index: number) => (
                           <div key={index} className="text-xs p-2 bg-red-50 dark:bg-red-900/20 rounded text-red-800 dark:text-red-200">
@@ -1299,7 +1299,7 @@ export default function DatabaseManagementPage() {
                     </div>
                   )}
 
-                  <p className="text-xs text-muted-foreground mt-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-4">
                     동기화 시간: {syncResults.summary?.sync_timestamp ? 
                       new Date(syncResults.summary.sync_timestamp).toLocaleString('ko-KR') : 
                       '알 수 없음'
@@ -1317,7 +1317,7 @@ export default function DatabaseManagementPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-blue-600" />
+              <Database className="h-5 w-5 text-blue-500" />
               데이터베이스 동기화
             </DialogTitle>
             <DialogDescription>
@@ -1327,7 +1327,7 @@ export default function DatabaseManagementPage() {
           <div className="py-4">
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                <Info className="h-5 w-5 text-blue-500 mt-0.5" />
                 <div className="text-sm text-blue-800 dark:text-blue-200">
                   <p className="font-medium mb-2">동기화 과정</p>
                   <ul className="list-disc list-inside space-y-1">
@@ -1382,7 +1382,7 @@ export default function DatabaseManagementPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-red-600" />
+              <Trash2 className="h-5 w-5 text-red-500" />
               고아 데이터 정리 확인
             </DialogTitle>
             <DialogDescription>
@@ -1392,7 +1392,7 @@ export default function DatabaseManagementPage() {
           <div className="py-4">
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
                 <div className="text-sm text-red-800 dark:text-red-200">
                   <p className="font-medium mb-2">정리 대상</p>
                   <p className="mb-3">{orphanedData.total_count || 0}개의 고아 메타데이터</p>
@@ -1414,7 +1414,7 @@ export default function DatabaseManagementPage() {
                   {orphanedData.orphaned_files.slice(0, 5).map((file: any, index: number) => (
                     <div key={index} className="text-xs p-2 bg-white dark:bg-gray-800 rounded border">
                       <p className="font-medium">{file.filename}</p>
-                      <p className="text-muted-foreground">
+                      <p className="text-slate-600 dark:text-slate-400">
                         파일 ID: {file.file_id} | 카테고리: {file.category_name || '없음'}
                       </p>
                     </div>
@@ -1462,7 +1462,7 @@ export default function DatabaseManagementPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-red-600" />
+              <Database className="h-5 w-5 text-red-500" />
               컬렉션 삭제 확인
             </DialogTitle>
             <DialogDescription>
@@ -1472,7 +1472,7 @@ export default function DatabaseManagementPage() {
           <div className="py-4">
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
                 <div className="text-sm text-red-800 dark:text-red-200">
                   <p className="font-medium mb-2">삭제될 컬렉션</p>
                   <div className="mb-3 max-h-32 overflow-y-auto">
@@ -1536,7 +1536,7 @@ export default function DatabaseManagementPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-red-600" />
+              <FileText className="h-5 w-5 text-red-500" />
               문서 삭제 확인
             </DialogTitle>
             <DialogDescription>
@@ -1546,7 +1546,7 @@ export default function DatabaseManagementPage() {
           <div className="py-4">
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
                 <div className="text-sm text-red-800 dark:text-red-200">
                   <p className="font-medium mb-2">삭제될 문서</p>
                   <div className="mb-3 max-h-32 overflow-y-auto space-y-1">

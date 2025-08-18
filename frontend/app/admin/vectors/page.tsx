@@ -429,11 +429,10 @@ export default function VectorAnalysisPage() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">벡터 데이터 분석</h1>
-          <p className="text-slate-600 dark:text-slate-400">
+          <h1 className="text-2xl font-bold">벡터 데이터 분석</h1>
+          <p className="text-muted-foreground">
             ChromaDB와 메타데이터 저장소의 벡터화된 데이터를 분석하고 관리합니다.
           </p>
         </div>
@@ -458,10 +457,10 @@ export default function VectorAnalysisPage() {
         <TabsContent value="overview" className="space-y-6">
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
+            <Card className="stat-card relative overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">전체 파일</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
+                <FileText className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{metadataStats.total_files || 0}</div>
@@ -471,10 +470,10 @@ export default function VectorAnalysisPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="stat-card relative overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">총 청크</CardTitle>
-                <Database className="h-4 w-4 text-muted-foreground" />
+                <Database className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{metadataStats.total_chunks || 0}</div>
@@ -484,10 +483,10 @@ export default function VectorAnalysisPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="stat-card relative overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">총 용량</CardTitle>
-                <HardDrive className="h-4 w-4 text-muted-foreground" />
+                <HardDrive className="h-4 w-4 text-purple-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
@@ -499,10 +498,10 @@ export default function VectorAnalysisPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="stat-card relative overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">평균 처리시간</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Clock className="h-4 w-4 text-orange-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
@@ -575,7 +574,6 @@ export default function VectorAnalysisPage() {
             </Card>
           </div>
 
-          {/* ChromaDB 컬렉션 현황 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -593,16 +591,16 @@ export default function VectorAnalysisPage() {
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-semibold">{collection.name}</h3>
                       {collection.error ? (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
+                        <AlertCircle className="h-4 w-4 text-destructive" />
                       ) : (
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mb-1">
                       {collection.count.toLocaleString()}개 벡터
                     </p>
                     {collection.error && (
-                      <p className="text-xs text-red-600">{collection.error}</p>
+                      <p className="text-xs text-destructive">{collection.error}</p>
                     )}
                   </div>
                 ))}
@@ -747,7 +745,7 @@ export default function VectorAnalysisPage() {
                                 {item.docling_options && (
                                   <div>
                                     <strong>Docling 옵션:</strong>
-                                    <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                                    <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
                                       {JSON.stringify(item.docling_options, null, 2)}
                                     </pre>
                                   </div>
@@ -932,7 +930,7 @@ export default function VectorAnalysisPage() {
                 <CardDescription>
                   총 {collectionTotal}개 문서 • {Math.ceil(collectionTotal / collectionLimit)}페이지 중 {collectionPage}페이지
                   {(collectionCategoryFilter !== "all" || collectionFilenameFilter || collectionImageFilter !== "all" || collectionSearch) && (
-                    <span className="text-blue-600"> (필터 적용됨)</span>
+                    <span className="text-primary"> (필터 적용됨)</span>
                   )}
                 </CardDescription>
                 {/* 적용된 필터 표시 */}
@@ -1426,7 +1424,7 @@ export default function VectorAnalysisPage() {
                           <p className="text-xs font-medium mb-2">관련 이미지:</p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {result.related_images.slice(0, 3).map((image, imgIndex) => (
-                              <div key={imgIndex} className="border rounded p-2 bg-gray-50 text-xs">
+                              <div key={imgIndex} className="border rounded p-2 bg-muted text-xs">
                                 <div className="flex items-center gap-2 mb-1">
                                   <Badge variant="outline" className="text-xs">
                                     📄 페이지 {image.page}
@@ -1515,7 +1513,7 @@ export default function VectorAnalysisPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               메타데이터 삭제 확인
             </DialogTitle>
             <DialogDescription>
@@ -1523,10 +1521,10 @@ export default function VectorAnalysisPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div className="text-sm text-red-800">
+                <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
+                <div className="text-sm text-destructive-foreground">
                   <p className="font-medium mb-2">삭제할 파일</p>
                   <p className="mb-3">{showDeleteModal.filename}</p>
                   <p className="font-medium mb-1">주의사항</p>
