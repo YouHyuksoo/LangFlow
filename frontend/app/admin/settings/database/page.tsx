@@ -692,11 +692,11 @@ export default function DatabaseManagementPage() {
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
             <DatabaseZap className="h-8 w-8" />
             데이터베이스 관리
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             ChromaDB, 메타데이터, 사용자 데이터베이스를 통합 관리합니다.
           </p>
         </div>
@@ -723,7 +723,7 @@ export default function DatabaseManagementPage() {
 
       {/* 마지막 업데이트 시간 */}
       {databaseStatus && (
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-slate-600 dark:text-slate-400">
           마지막 업데이트: {new Date(databaseStatus.timestamp).toLocaleString()}
         </div>
       )}
@@ -772,11 +772,11 @@ export default function DatabaseManagementPage() {
       {/* 데이터베이스 동기화 섹션 */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
             <Database className="h-6 w-6" />
             데이터베이스 동기화
           </h2>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             메타데이터 DB와 ChromaDB 간의 동기화를 관리하고 데이터 일관성을 유지합니다.
           </p>
         </div>

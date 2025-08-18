@@ -620,11 +620,11 @@ export default function ModelsPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
             <Settings className="h-8 w-8" />
             모델 프로필 관리
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             여러 모델을 등록하고 필요에 따라 활성 모델을 전환하세요.
           </p>
         </div>
@@ -639,7 +639,7 @@ export default function ModelsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Bot className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-lg font-medium mb-2">등록된 모델 프로필이 없습니다</p>
-            <p className="text-muted-foreground mb-4">첫 번째 모델 프로필을 등록해보세요.</p>
+            <p className="text-slate-600 dark:text-slate-400 mb-4">첫 번째 모델 프로필을 등록해보세요.</p>
             <Button onClick={() => setFormOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               첫 프로필 등록

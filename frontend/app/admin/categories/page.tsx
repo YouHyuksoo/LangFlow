@@ -403,14 +403,14 @@ export default function CategoriesPage() {
   const stats = getCategoryStats();
 
   return (
-    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-slate-800 via-purple-600 to-blue-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">
             카테고리 관리
           </h1>
-          <p className="text-slate-400 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-400 mt-2 text-lg">
             파일 분류를 위한 카테고리를 생성하고 관리하세요.
           </p>
         </div>

@@ -120,11 +120,11 @@ export default function SettingsPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-slate-800 dark:text-white">
             <Settings className="h-8 w-8" />
             기본 설정
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             시스템 메시지와 기본 페르소나를 설정합니다.
           </p>
         </div>

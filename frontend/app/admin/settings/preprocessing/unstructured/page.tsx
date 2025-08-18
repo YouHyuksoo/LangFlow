@@ -203,11 +203,11 @@ export default function UnstructuredSettingsPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
             <FileSearch className="h-8 w-8" />
             Unstructured 전처리 설정
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             Unstructured 문서 전처리 프로세서를 설정하고 관리합니다.
           </p>
         </div>

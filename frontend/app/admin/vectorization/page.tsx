@@ -869,7 +869,7 @@ export default function VectorizationPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">벡터화 관리</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">벡터화 관리</h1>
         </div>
         <div className="text-center py-8">
           <div className="animate-pulse">
@@ -886,7 +886,7 @@ export default function VectorizationPage() {
     <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">벡터화 관리</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">벡터화 관리</h1>
         <div className="flex gap-2">
           <Button
             onClick={loadVectorizationData}

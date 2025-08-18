@@ -152,11 +152,11 @@ export default function DoclingSettingsPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
             <FileText className="h-8 w-8" />
             Docling 전처리 설정
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-slate-600 dark:text-slate-400">
             Docling 문서 전처리 프로세서를 설정하고 관리합니다.
           </p>
         </div>
@@ -201,7 +201,7 @@ export default function DoclingSettingsPage() {
               Docling 프로세서 사용
             </label>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
             비활성화하면 기본 문서 처리기가 사용됩니다.
           </p>
         </CardContent>
@@ -274,7 +274,7 @@ export default function DoclingSettingsPage() {
               OCR (광학 문자 인식) 사용
             </label>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             OCR은 이미지나 스캔된 문서의 텍스트를 추출할 때 사용됩니다.
           </p>
         </CardContent>
@@ -306,7 +306,7 @@ export default function DoclingSettingsPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
               Markdown 형식이 가장 구조화된 출력을 제공합니다.
             </p>
           </CardContent>
@@ -333,7 +333,7 @@ export default function DoclingSettingsPage() {
               }
               className="mb-2"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               단위: MB (권장: 50MB 이하)
             </p>
           </CardContent>
@@ -366,7 +366,7 @@ export default function DoclingSettingsPage() {
               </Badge>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
             클릭하여 지원 형식을 추가/제거할 수 있습니다.
           </p>
         </CardContent>

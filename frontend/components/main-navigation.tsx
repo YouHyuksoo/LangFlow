@@ -76,13 +76,14 @@ export function MainNavigation() {
   };
 
   return (
-    <nav className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-b border-slate-700/50 shadow-2xl backdrop-blur-sm sticky top-0 z-50">
+    <nav className="bg-gradient-to-br from-white via-slate-50 to-gray-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-b border-slate-200/80 dark:border-slate-700/50 shadow-lg dark:shadow-2xl backdrop-blur-sm sticky top-0 z-50">
+      {/* TODO(human): 라이트 모드 네비게이션 색상 수정 필요 - 기본은 라이트, dark: 접두사로 다크모드 오버라이드 */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
             {/* Logo/Brand */}
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">
+              <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-slate-800 via-blue-600 to-purple-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">
                 ThinkFlow
               </Link>
             </div>
@@ -107,9 +108,9 @@ export function MainNavigation() {
                       "inline-flex items-center px-4 py-2 text-sm font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
                       isActive
                         ? item.isAdmin
-                          ? "text-white bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 shadow-lg shadow-orange-500/20"
-                          : "text-white bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/20"
-                        : "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 hover:shadow-lg"
+                          ? "text-white dark:text-white light:text-orange-700 bg-gradient-to-r from-orange-500/20 to-red-500/20 dark:from-orange-500/20 dark:to-red-500/20 light:from-orange-100 light:to-red-100 border border-orange-500/30 dark:border-orange-500/30 light:border-orange-300 shadow-lg shadow-orange-500/20 dark:shadow-orange-500/20 light:shadow-orange-300/30"
+                          : "text-white dark:text-white light:text-purple-700 bg-gradient-to-r from-purple-500/20 to-cyan-500/20 dark:from-purple-500/20 dark:to-cyan-500/20 light:from-purple-100 light:to-blue-100 border border-purple-500/30 dark:border-purple-500/30 light:border-purple-300 shadow-lg shadow-purple-500/20 dark:shadow-purple-500/20 light:shadow-purple-300/30"
+                        : "text-slate-300 dark:text-slate-300 light:text-slate-600 hover:text-white dark:hover:text-white light:hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 light:hover:from-white light:hover:to-slate-50 border border-transparent hover:border-slate-600/30 dark:hover:border-slate-600/30 light:hover:border-slate-300/50 hover:shadow-lg dark:hover:shadow-lg light:hover:shadow-md"
                     )}
                     title={item.description}
                   >

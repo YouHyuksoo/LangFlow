@@ -348,8 +348,8 @@ export default function ChatHistoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">채팅 기록 관리</h1>
-        <p className="text-muted-foreground">사용자들의 채팅 기록을 조회하고 관리할 수 있습니다.</p>
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">채팅 기록 관리</h1>
+        <p className="text-slate-600 dark:text-slate-400">사용자들의 채팅 기록을 조회하고 관리할 수 있습니다.</p>
       </div>
 
       {/* 통계 카드 */}

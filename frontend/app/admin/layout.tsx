@@ -129,26 +129,26 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="flex h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* 사이드바 */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-r border-slate-700/50 shadow-2xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/95 to-slate-50/95 dark:from-slate-900/95 dark:to-slate-800/95 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/50 shadow-lg dark:shadow-2xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* 사이드바 헤더 */}
-        <div className="h-16 px-6 border-b border-slate-700/50">
+        <div className="h-16 px-6 border-b border-slate-200/50 dark:border-slate-700/50">
           <div className="flex items-center justify-between h-full">
             <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border border-purple-500/30">
-                <ShieldIcon className="h-5 w-5 text-purple-400" />
+              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-100/80 to-blue-100/80 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300/50 dark:border-purple-500/30">
+                <ShieldIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">관리자</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-800 via-purple-600 to-blue-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">관리자</h1>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-xl"
+              className="lg:hidden text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-slate-800/50 rounded-xl"
             >
               <ChevronLeftIcon className="h-4 w-4" />
             </Button>
@@ -157,7 +157,7 @@ export default function AdminLayout({
 
         {/* 네비게이션 메뉴 */}
         <nav className="mt-6 px-3">
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {navigation.map((item) => {
               const isActive = pathname === item.href
               const hasChildren = item.children && item.children.length > 0
@@ -171,29 +171,48 @@ export default function AdminLayout({
                       <button
                         onClick={() => toggleMenu(item.name)}
                         className={cn(
-                          "group flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                          "group flex items-center justify-between w-full px-4 py-3 text-sm font-medium rounded-xl transition-all duration-300 relative overflow-hidden",
                           isActive || isChildActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100/80 to-blue-100/80 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300/50 dark:border-purple-500/30 shadow-lg shadow-purple-300/20 dark:shadow-purple-500/10"
+                            : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-white hover:to-slate-100/50 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30"
                         )}
                       >
                         <div className="flex items-center">
-                          <item.icon
-                            className={cn(
-                              "mr-3 h-5 w-5 transition-colors",
-                              isActive || isChildActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                            )}
-                          />
+                          <div className={`p-1.5 rounded-lg mr-3 ${
+                            isActive || isChildActive 
+                              ? 'bg-purple-200/50 dark:bg-purple-500/20' 
+                              : 'bg-slate-200/30 dark:bg-white/10 group-hover:bg-slate-300/40 dark:group-hover:bg-white/20'
+                          }`}>
+                            <item.icon
+                              className={cn(
+                                "h-4 w-4 transition-colors",
+                                isActive || isChildActive ? "text-purple-600 dark:text-purple-400" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
+                              )}
+                            />
+                          </div>
                           {item.name}
                         </div>
-                        {isExpanded ? (
-                          <ChevronDownIcon className="h-4 w-4" />
-                        ) : (
-                          <ChevronRightIcon className="h-4 w-4" />
+                        <div className={`p-1 rounded-md ${
+                          isActive || isChildActive 
+                            ? 'bg-purple-200/50 dark:bg-purple-500/20' 
+                            : 'bg-slate-200/30 dark:bg-white/10 group-hover:bg-slate-300/40 dark:group-hover:bg-white/20'
+                        }`}>
+                          {isExpanded ? (
+                            <ChevronDownIcon className={`h-3 w-3 ${
+                              isActive || isChildActive ? "text-purple-600 dark:text-purple-400" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
+                            }`} />
+                          ) : (
+                            <ChevronRightIcon className={`h-3 w-3 ${
+                              isActive || isChildActive ? "text-purple-600 dark:text-purple-400" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
+                            }`} />
+                          )}
+                        </div>
+                        {(isActive || isChildActive) && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
                         )}
                       </button>
                       {isExpanded && (
-                        <ul className="mt-1 ml-6 space-y-1">
+                        <ul className="mt-2 ml-6 space-y-1">
                           {item.children.map((child) => {
                             const isChildItemActive = pathname === child.href
                             return (
@@ -201,20 +220,29 @@ export default function AdminLayout({
                                 <Link
                                   href={child.href}
                                   className={cn(
-                                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                                    "group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 relative overflow-hidden",
                                     isChildItemActive
-                                      ? "bg-primary/10 text-primary border-r-2 border-primary"
-                                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                      ? "text-cyan-700 dark:text-white bg-gradient-to-r from-cyan-100/70 to-blue-100/70 dark:from-cyan-500/20 dark:to-blue-500/20 border-l-2 border-cyan-500 dark:border-cyan-400 shadow-lg shadow-cyan-300/20 dark:shadow-cyan-500/10"
+                                      : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-white hover:to-slate-100/30 dark:hover:from-slate-800/30 dark:hover:to-slate-700/30 hover:border-l-2 hover:border-slate-400 dark:hover:border-slate-500"
                                   )}
                                   onClick={() => setSidebarOpen(false)}
                                 >
-                                  <child.icon
-                                    className={cn(
-                                      "mr-3 h-4 w-4 transition-colors",
-                                      isChildItemActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                                    )}
-                                  />
+                                  <div className={`p-1 rounded-md mr-3 ${
+                                    isChildItemActive 
+                                      ? 'bg-cyan-200/50 dark:bg-cyan-500/20' 
+                                      : 'bg-slate-200/20 dark:bg-white/5 group-hover:bg-slate-300/30 dark:group-hover:bg-white/15'
+                                  }`}>
+                                    <child.icon
+                                      className={cn(
+                                        "h-3.5 w-3.5 transition-colors",
+                                        isChildItemActive ? "text-cyan-600 dark:text-cyan-400" : "text-slate-600 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300"
+                                      )}
+                                    />
+                                  </div>
                                   {child.name}
+                                  {isChildItemActive && (
+                                    <div className="absolute inset-0 bg-gradient-to-r from-white/3 to-transparent rounded-lg animate-pulse"></div>
+                                  )}
                                 </Link>
                               </li>
                             )
@@ -226,20 +254,29 @@ export default function AdminLayout({
                     <Link
                       href={item.href}
                       className={cn(
-                        "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                        "group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-300 relative overflow-hidden",
                         isActive
-                          ? "bg-primary/10 text-primary border-r-2 border-primary"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100/80 to-blue-100/80 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300/50 dark:border-purple-500/30 shadow-lg shadow-purple-300/20 dark:shadow-purple-500/10"
+                          : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-white hover:to-slate-100/50 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30"
                       )}
                       onClick={() => setSidebarOpen(false)}
                     >
-                      <item.icon
-                        className={cn(
-                          "mr-3 h-5 w-5 transition-colors",
-                          isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                        )}
-                      />
+                      <div className={`p-1.5 rounded-lg mr-3 ${
+                        isActive 
+                          ? 'bg-purple-200/50 dark:bg-purple-500/20' 
+                          : 'bg-slate-200/30 dark:bg-white/10 group-hover:bg-slate-300/40 dark:group-hover:bg-white/20'
+                      }`}>
+                        <item.icon
+                          className={cn(
+                            "h-4 w-4 transition-colors",
+                            isActive ? "text-purple-600 dark:text-purple-400" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
+                          )}
+                        />
+                      </div>
                       {item.name}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
+                      )}
                     </Link>
                   )}
                 </li>
@@ -248,15 +285,6 @@ export default function AdminLayout({
           </ul>
         </nav>
 
-        {/* 홈으로 돌아가기 */}
-        <div className="absolute bottom-6 left-6 right-6">
-          <Link href="/">
-            <Button variant="outline" className="w-full">
-              <ChevronLeftIcon className="mr-2 h-4 w-4" />
-              홈으로 돌아가기
-            </Button>
-          </Link>
-        </div>
       </div>
 
       {/* 모바일 오버레이 */}
@@ -270,20 +298,21 @@ export default function AdminLayout({
       {/* 메인 컨텐츠 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 상단 헤더 (모바일) */}
-        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-card border-b border-border">
+        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-gradient-to-r from-white/95 to-slate-50/95 dark:from-slate-900/95 dark:to-slate-800/95 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSidebarOpen(true)}
+            className="text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-slate-800/50 rounded-xl"
           >
             <MenuIcon className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold text-foreground">관리자 대시보드</h1>
+          <h1 className="text-lg font-semibold bg-gradient-to-r from-slate-800 via-purple-600 to-blue-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">관리자 대시보드</h1>
           <div /> {/* 스페이서 */}
         </div>
 
         {/* 메인 컨텐츠 영역 */}
-        <main className="flex-1 overflow-y-auto p-6 bg-background">
+        <main className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
           {children}
         </main>
       </div>

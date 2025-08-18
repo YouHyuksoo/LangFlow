@@ -164,16 +164,24 @@ const ChatHistory = memo(
     getCategoryName: (id: string) => string;
     inputRef: React.RefObject<HTMLTextAreaElement>;
   }) => (
-    <aside className="w-80 h-full flex-col border-r bg-muted/40 p-4 flex overflow-hidden">
-      <Button onClick={onNewChat} className="mb-4 flex-shrink-0">
-        <Plus className="mr-2 h-4 w-4" /> 새 대화
+    <aside className="w-80 h-full flex-col border-r border-slate-200/50 dark:border-slate-700/50 bg-gradient-to-b from-white/95 to-slate-50/95 dark:from-slate-900/95 dark:to-slate-800/95 backdrop-blur-xl p-4 flex overflow-hidden shadow-lg dark:shadow-2xl">
+      <Button onClick={onNewChat} className="mb-4 flex-shrink-0 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl">
+        <div className="p-1 rounded-md bg-white/10 mr-2">
+          <Plus className="h-4 w-4" />
+        </div>
+        새 대화
       </Button>
       
       {/* 대화 주제 선택 섹션 */}
-      <div className="flex-shrink-0 mb-4 p-3 bg-background rounded-lg border space-y-3">
+      <div className="flex-shrink-0 mb-4 p-4 bg-gradient-to-r from-white to-slate-50/80 dark:from-slate-800/50 dark:to-slate-700/50 rounded-xl border border-slate-300/50 dark:border-slate-600/30 space-y-3 backdrop-blur-sm">
         {isEditingCategories ? (
           <>
-            <h3 className="text-sm font-medium">대화 주제 선택</h3>
+            <h3 className="text-sm font-medium text-slate-800 dark:text-white flex items-center gap-2">
+              <div className="p-1 rounded-md bg-purple-500/20">
+                <Settings className="h-3 w-3 text-purple-400" />
+              </div>
+              대화 주제 선택
+            </h3>
             <CategorySelector
               selectedCategories={selectedCategories}
               onCategoryChange={onCategoryChange}
@@ -185,16 +193,16 @@ const ChatHistory = memo(
             {/* 페르소나 선택 */}
             <div className="space-y-2">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">페르소나</label>
+                <label className="text-xs font-medium text-slate-400">페르소나</label>
                 <select
-                  className="w-full border rounded-md p-2 text-sm mt-1"
+                  className="w-full bg-slate-700/50 border border-slate-600/30 rounded-lg p-2 text-sm mt-1 text-white focus:border-purple-500/50 focus:ring-purple-500/20"
                   value={selectedPersonaId || ""}
                   onChange={(e) =>
                     setSelectedPersonaId(e.target.value || undefined)
                   }
                 >
                   {personas.map((p: any) => (
-                    <option key={p.persona_id} value={p.persona_id}>
+                    <option key={p.persona_id} value={p.persona_id} className="bg-slate-800">
                       {p.name}
                     </option>
                   ))}
@@ -203,24 +211,24 @@ const ChatHistory = memo(
               
               {/* 검색 개수 설정 */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">검색 개수</label>
+                <label className="text-xs font-medium text-slate-400">검색 개수</label>
                 <select
-                  className="w-full border rounded-md p-2 text-sm mt-1"
+                  className="w-full bg-slate-700/50 border border-slate-600/30 rounded-lg p-2 text-sm mt-1 text-white focus:border-purple-500/50 focus:ring-purple-500/20"
                   value={topK}
                   onChange={(e) => setTopK(parseInt(e.target.value))}
                 >
-                  <option value={3}>3개</option>
-                  <option value={5}>5개</option>
-                  <option value={10}>10개</option>
-                  <option value={15}>15개</option>
-                  <option value={20}>20개</option>
+                  <option value={3} className="bg-slate-800">3개</option>
+                  <option value={5} className="bg-slate-800">5개</option>
+                  <option value={10} className="bg-slate-800">10개</option>
+                  <option value={15} className="bg-slate-800">15개</option>
+                  <option value={20} className="bg-slate-800">20개</option>
                 </select>
               </div>
             </div>
             
             <Button
               size="sm"
-              className="w-full"
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-lg"
               onClick={() => {
                 setIsEditingCategories(false);
                 setTimeout(() => {
@@ -236,12 +244,17 @@ const ChatHistory = memo(
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">대화 설정</h3>
+              <h3 className="text-sm font-medium text-slate-800 dark:text-white flex items-center gap-2">
+                <div className="p-1 rounded-md bg-cyan-500/20">
+                  <Settings className="h-3 w-3 text-cyan-400" />
+                </div>
+                대화 설정
+              </h3>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => setIsEditingCategories(true)}
-                className="h-6 w-6 p-0"
+                className="h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg"
               >
                 <Settings className="h-3 w-3" />
               </Button>
@@ -249,25 +262,25 @@ const ChatHistory = memo(
             
             {/* 선택된 주제 표시 */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground">대화 주제</label>
+              <label className="text-xs font-medium text-slate-400">대화 주제</label>
               <div className="flex flex-wrap gap-1 mt-1">
                 {selectedCategories.length > 0 ? (
                   selectedCategories.map((id) => (
-                    <Badge key={id} variant="secondary" className="text-xs">
+                    <Badge key={id} className="text-xs bg-purple-500/20 text-purple-400 border-purple-500/30 hover:bg-purple-500/30">
                       {getCategoryName(id)}
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-xs text-muted-foreground">주제를 선택해주세요</span>
+                  <span className="text-xs text-slate-500">주제를 선택해주세요</span>
                 )}
               </div>
             </div>
             
             {/* 선택된 페르소나 표시 */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground">페르소나</label>
+              <label className="text-xs font-medium text-slate-400">페르소나</label>
               <div className="mt-1">
-                <Badge variant="outline" className="text-xs">
+                <Badge className="text-xs bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
                   {personas.find(p => p.persona_id === selectedPersonaId)?.name || "기본"}
                 </Badge>
               </div>
@@ -282,10 +295,10 @@ const ChatHistory = memo(
             <button
               key={session.id}
               onClick={() => onSelectSession(session.id)}
-              className="w-full text-left p-2 rounded-lg hover:bg-accent transition-colors"
+              className="w-full text-left p-3 rounded-lg hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 transition-all duration-300"
             >
-              <p className="text-sm font-medium truncate">{session.title}</p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-sm font-medium truncate text-white">{session.title}</p>
+              <p className="text-xs text-slate-400 truncate">
                 {session.lastMessage}
               </p>
             </button>
@@ -1070,7 +1083,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden" style={{height: 'calc(100vh - 64px)'}}>
+    <div className="flex h-screen w-full bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 overflow-hidden" style={{height: 'calc(100vh - 64px)'}}>
       {/* 사이드바 - 조건부 렌더링 */}
       {sidebarVisible && (
         <ChatHistory
@@ -1121,13 +1134,13 @@ export default function ChatPage() {
           </div>
         )}
         
-        <header className="flex-shrink-0 flex items-center justify-between border-b p-4">
+        <header className="flex-shrink-0 flex items-center justify-between border-b border-slate-200/50 dark:border-slate-700/50 p-4 bg-gradient-to-r from-white/95 to-slate-50/95 dark:from-slate-900/95 dark:to-slate-800/95 backdrop-blur-xl">
           <div className="flex items-center">
             {/* 사이드바 토글 버튼 */}
             <Button
               variant="ghost"
               size="icon"
-              className="mr-3"
+              className="mr-3 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-xl"
               onClick={() => setSidebarVisible(!sidebarVisible)}
             >
               {sidebarVisible ? (
@@ -1136,26 +1149,30 @@ export default function ChatPage() {
                 <Menu className="h-5 w-5" />
               )}
             </Button>
-            <h1 className="text-xl font-semibold">AI 챗봇</h1>
+            <h1 className="text-xl font-semibold bg-gradient-to-r from-white via-purple-200 to-cyan-200 dark:from-white dark:via-purple-200 dark:to-cyan-200 light:from-slate-800 light:via-purple-600 light:to-blue-600 bg-clip-text text-transparent">AI 챗봇</h1>
           </div>
 
           {/* 모델 선택 드롭다운 */}
           <div className="flex items-center gap-3">
             {activeModelProfile && (
-              <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-                <Bot className="h-4 w-4" />
-                <span>{activeModelProfile.name}</span>
+              <div className="hidden sm:flex items-center gap-2 text-sm text-slate-400">
+                <div className="p-1 rounded-md bg-emerald-500/20">
+                  <Bot className="h-3 w-3 text-emerald-400" />
+                </div>
+                <span className="text-white">{activeModelProfile.name}</span>
               </div>
             )}
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Settings className="h-4 w-4" />
+                <Button className="gap-2 bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 hover:from-slate-700/50 hover:to-slate-600/50 hover:border-slate-500/50 text-slate-300 hover:text-white transition-all duration-300 rounded-xl shadow-lg hover:shadow-xl backdrop-blur-sm" size="sm">
+                  <div className="p-1 rounded-md bg-white/10">
+                    <Settings className="h-3 w-3" />
+                  </div>
                   <span className="hidden sm:inline">모델 선택</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuContent align="end" className="w-64 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl">
                 {modelProfiles.length > 0 ? (
                   modelProfiles.map((profile) => (
                     <DropdownMenuItem
@@ -1234,21 +1251,23 @@ export default function ChatPage() {
           <FloatingNavigation scrollContainerRef={scrollAreaRef} />
         </div>
 
-        <div className="flex-shrink-0 border-t p-4 bg-background">
+        <div className="flex-shrink-0 border-t border-slate-700/50 p-4 bg-gradient-to-r from-slate-900/95 to-slate-800/95 backdrop-blur-xl">
           <div className="max-w-4xl mx-auto">
             {/* 이미지 미리보기 영역 */}
             {imagePreviewUrls.length > 0 && (
-              <div className="mb-3 p-3 bg-muted rounded-lg">
+              <div className="mb-3 p-3 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-lg border border-slate-600/30 backdrop-blur-sm">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium flex items-center gap-2">
-                    <Image className="h-4 w-4" />
+                  <span className="text-sm font-medium flex items-center gap-2 text-white">
+                    <div className="p-1 rounded-md bg-blue-500/20">
+                      <Image className="h-3 w-3 text-blue-400" />
+                    </div>
                     첨부된 이미지 ({imagePreviewUrls.length}/3)
                   </span>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={clearImages}
-                    className="h-6 w-6 p-0"
+                    className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg"
                   >
                     <X className="h-3 w-3" />
                   </Button>

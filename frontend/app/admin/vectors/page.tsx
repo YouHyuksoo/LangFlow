@@ -432,8 +432,8 @@ export default function VectorAnalysisPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">벡터 데이터 분석</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">벡터 데이터 분석</h1>
+          <p className="text-slate-600 dark:text-slate-400">
             ChromaDB와 메타데이터 저장소의 벡터화된 데이터를 분석하고 관리합니다.
           </p>
         </div>

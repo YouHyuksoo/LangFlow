@@ -496,7 +496,7 @@ export default function UploadPage() {
     <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">파일 업로드</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white/90">파일 업로드</h1>
       </div>
 
       {/* 통계 카드들 */}

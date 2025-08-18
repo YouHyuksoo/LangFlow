@@ -155,26 +155,32 @@ const StatCard = ({
   description,
   colorClass,
 }: StatCardProps) => {
-  const gradientClasses = {
-    "text-blue-500": "from-blue-500/20 to-blue-600/20 border-blue-500/30",
-    "text-green-500": "from-green-500/20 to-emerald-600/20 border-green-500/30",
-    "text-purple-500": "from-purple-500/20 to-violet-600/20 border-purple-500/30",
-    "text-orange-500": "from-orange-500/20 to-red-500/20 border-orange-500/30",
+  const getCardClasses = () => {
+    switch(colorClass) {
+      case "text-blue-500":
+        return "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/30";
+      case "text-green-500":
+        return "bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30";
+      case "text-purple-500":
+        return "bg-gradient-to-br from-purple-500/20 to-violet-600/20 border-purple-500/30";
+      case "text-orange-500":
+        return "bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-500/30";
+      default:
+        return "bg-gradient-to-br from-gray-500/20 to-gray-600/20 border-gray-500/30";
+    }
   };
   
-  const gradientClass = gradientClasses[colorClass as keyof typeof gradientClasses] || "from-gray-500/20 to-gray-600/20 border-gray-500/30";
-  
   return (
-    <Card className={`bg-gradient-to-br ${gradientClass} backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+    <Card className={`${getCardClasses()} backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm font-medium text-white/90">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium text-slate-800 dark:text-white/90">{title}</CardTitle>
         <div className="p-2 rounded-lg bg-white/10">
-          <Icon className={`h-5 w-5 ${colorClass || "text-white/70"}`} />
+          <Icon className={`h-5 w-5 ${colorClass || "text-slate-600 dark:text-white/70"}`} />
         </div>
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold text-white mb-1">{value}</div>
-        <p className="text-xs text-white/70">{description}</p>
+        <div className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{value}</div>
+        <p className="text-xs text-slate-600 dark:text-white/70">{description}</p>
         <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
           <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
         </div>
@@ -199,16 +205,16 @@ const OverviewChart = ({ data }: OverviewChartProps) => {
   ];
 
   return (
-    <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-white">
+        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
           <div className="p-2 rounded-lg bg-purple-500/20">
             <BarChart3 className="h-5 w-5 text-purple-400" />
           </div>
           <span>사용량 개요</span>
           <Badge className="bg-green-500/20 text-green-400 border-green-500/30">+12.5%</Badge>
         </CardTitle>
-        <CardDescription className="text-slate-400">기간별 질문 수 추이와 성장률을 확인하세요.</CardDescription>
+        <CardDescription className="text-slate-600 dark:text-slate-400">기간별 질문 수 추이와 성장률을 확인하세요.</CardDescription>
       </CardHeader>
       <CardContent className="pl-2">
         <ResponsiveContainer width="100%" height={320}>
@@ -290,9 +296,9 @@ const CategoryDistributionChart = ({
   ];
 
   return (
-    <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-white">
+        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
           <div className="p-2 rounded-lg bg-cyan-500/20">
             <PieChart className="h-5 w-5 text-cyan-400" />
           </div>
@@ -303,7 +309,7 @@ const CategoryDistributionChart = ({
             </Badge>
           )}
         </CardTitle>
-        <CardDescription className="text-slate-400">파일이 포함된 카테고리별 분산 현황입니다.</CardDescription>
+        <CardDescription className="text-slate-600 dark:text-slate-400">파일이 포함된 카테고리별 분산 현황입니다.</CardDescription>
       </CardHeader>
       <CardContent>
         {chartData.length > 0 ? (
@@ -391,9 +397,9 @@ const SystemHealthWidget = ({
     vectorMetadataStatus?.db_available;
     
   return (
-    <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-white">
+        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
           <div className={`p-2 rounded-lg ${overallHealth ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
             <Server className={`h-5 w-5 ${overallHealth ? 'text-green-400' : 'text-red-400'}`} />
           </div>
@@ -632,9 +638,9 @@ const FastActionWidget = () => {
   ];
 
   return (
-    <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
+    <Card className="bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-900/50 dark:to-slate-800/50 backdrop-blur-sm border-slate-300/50 dark:border-slate-700/50 shadow-lg dark:shadow-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-white">
+        <CardTitle className="flex items-center gap-3 text-slate-800 dark:text-white">
           <div className="p-2 rounded-lg bg-violet-500/20">
             <ArrowRight className="h-5 w-5 text-violet-400" />
           </div>
@@ -746,7 +752,7 @@ export default function AdminDashboard() {
     : "healthy";
 
   return (
-    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
