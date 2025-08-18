@@ -17,10 +17,10 @@ import { settingsAPI } from "@/lib/api";
 
 interface DoclingSettings {
   enabled: boolean;
-  default_extract_tables: boolean;
-  default_extract_images: boolean;
-  default_ocr_enabled: boolean;
-  default_output_format: string;
+  extract_tables: boolean;
+  extract_images: boolean;
+  ocr_enabled: boolean;
+  output_format: string;
   max_file_size_mb: number;
   supported_formats: string[];
   
@@ -34,10 +34,10 @@ export default function DoclingSettingsPage() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<DoclingSettings>({
     enabled: true,
-    default_extract_tables: true,
-    default_extract_images: false,
-    default_ocr_enabled: true,
-    default_output_format: "markdown",
+    extract_tables: true,
+    extract_images: false,
+    ocr_enabled: true,
+    output_format: "markdown",
     max_file_size_mb: 50,
     supported_formats: ["pdf", "docx", "pptx", "xlsx"],
     chunk_size: 1000,
@@ -53,10 +53,10 @@ export default function DoclingSettingsPage() {
       const data = await settingsAPI.getDoclingSettings();
       setSettings({
         enabled: data.enabled ?? true,
-        default_extract_tables: data.default_extract_tables ?? true,
-        default_extract_images: data.default_extract_images ?? false,
-        default_ocr_enabled: data.default_ocr_enabled ?? true,
-        default_output_format: data.default_output_format || "markdown",
+        extract_tables: data.extract_tables ?? true,
+        extract_images: data.extract_images ?? false,
+        ocr_enabled: data.ocr_enabled ?? true,
+        output_format: data.output_format || "markdown",
         max_file_size_mb: data.max_file_size_mb || 50,
         supported_formats: data.supported_formats || ["pdf", "docx", "pptx", "xlsx"],
         chunk_size: data.chunk_size || 1000,
@@ -224,11 +224,11 @@ export default function DoclingSettingsPage() {
               <input
                 type="checkbox"
                 id="extract-tables"
-                checked={settings.default_extract_tables}
+                checked={settings.extract_tables}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    default_extract_tables: e.target.checked,
+                    extract_tables: e.target.checked,
                   })
                 }
                 className="rounded"
@@ -242,11 +242,11 @@ export default function DoclingSettingsPage() {
               <input
                 type="checkbox"
                 id="extract-images"
-                checked={settings.default_extract_images}
+                checked={settings.extract_images}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    default_extract_images: e.target.checked,
+                    extract_images: e.target.checked,
                   })
                 }
                 className="rounded"
@@ -261,11 +261,11 @@ export default function DoclingSettingsPage() {
             <input
               type="checkbox"
               id="ocr-enabled"
-              checked={settings.default_ocr_enabled}
+              checked={settings.ocr_enabled}
               onChange={(e) =>
                 setSettings({
                   ...settings,
-                  default_ocr_enabled: e.target.checked,
+                  ocr_enabled: e.target.checked,
                 })
               }
               className="rounded"
@@ -292,11 +292,11 @@ export default function DoclingSettingsPage() {
           <CardContent>
             <select
               className="w-full border rounded-md p-2 text-sm"
-              value={settings.default_output_format}
+              value={settings.output_format}
               onChange={(e) =>
                 setSettings({
                   ...settings,
-                  default_output_format: e.target.value,
+                  output_format: e.target.value,
                 })
               }
             >

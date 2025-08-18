@@ -39,13 +39,13 @@ docling-ibm-models==3.9.0
 lxml<6.0.0
 
 # 통합 문서 처리 (주요)
-unstructured[all-docs]==0.15.12
+unstructured[all-docs]==0.17.2
 unstructured-client==0.25.9
 
 # 기존 문서 처리 (폴백용)
 pymupdf==1.25.0
 pypdf==5.1.0
-pdfminer.six==20240706
+pdfminer.six==20250506
 python-docx==1.2.0
 python-pptx==1.0.2
 openpyxl==3.1.5

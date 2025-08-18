@@ -129,24 +129,26 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       {/* 사이드바 */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-r border-slate-700/50 shadow-2xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* 사이드바 헤더 */}
-        <div className="h-16 px-6 border-b border-border">
+        <div className="h-16 px-6 border-b border-slate-700/50">
           <div className="flex items-center justify-between h-full">
             <div className="flex items-center space-x-3">
-              <ShieldIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold text-foreground">관리자</h1>
+              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border border-purple-500/30">
+                <ShieldIcon className="h-5 w-5 text-purple-400" />
+              </div>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">관리자</h1>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden"
+              className="lg:hidden text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-xl"
             >
               <ChevronLeftIcon className="h-4 w-4" />
             </Button>

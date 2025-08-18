@@ -29,7 +29,7 @@ async def get_vector_metadata(
     """벡터 메타데이터 조회 (관리자용)"""
     try:
         # SQLite에서 메타데이터 조회
-        db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         
         if not os.path.exists(db_path):
             return {
@@ -124,7 +124,7 @@ async def get_vector_metadata(
 async def get_vector_metadata_stats(admin_user = Depends(get_admin_user)):
     """벡터 메타데이터 통계 조회"""
     try:
-        db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         
         if not os.path.exists(db_path):
             return {
@@ -264,6 +264,10 @@ async def get_chromadb_collection_data(
     page: int = Query(1, ge=1, description="페이지 번호"),
     limit: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
     search: Optional[str] = Query(None, description="문서 내용 검색"),
+    category_id: Optional[str] = Query(None, description="카테고리 ID 필터"),
+    category_name: Optional[str] = Query(None, description="카테고리명 필터"),
+    filename: Optional[str] = Query(None, description="파일명 필터"),
+    has_images: Optional[bool] = Query(None, description="이미지 존재 여부 필터"),
     admin_user = Depends(get_admin_user)
 ):
     """특정 ChromaDB 컬렉션의 데이터 조회"""
@@ -289,70 +293,224 @@ async def get_chromadb_collection_data(
         file_id_to_name = {}
         category_id_to_name = {}
         
-        # 메타데이터 DB에서 파일명과 카테고리명 매핑 조회
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        # 통합 파일 메타데이터 DB에서 파일명과 카테고리명 매핑 조회
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'file_metadata.db')
         if os.path.exists(metadata_db_path):
             with sqlite3.connect(metadata_db_path) as conn:
                 cursor = conn.cursor()
                 # 파일 매핑
-                cursor.execute("SELECT file_id, filename FROM vector_metadata")
+                cursor.execute("SELECT file_id, filename FROM file_metadata WHERE status != 'deleted'")
                 for row in cursor.fetchall():
                     file_id_to_name[row[0]] = row[1]
                 
                 # 카테고리 매핑 (중복 제거)
-                cursor.execute("SELECT DISTINCT category_id, category_name FROM vector_metadata WHERE category_id IS NOT NULL AND category_name IS NOT NULL")
+                cursor.execute("SELECT DISTINCT category_id, category_name FROM file_metadata WHERE category_id IS NOT NULL AND category_name IS NOT NULL AND status != 'deleted'")
                 for row in cursor.fetchall():
                     category_id_to_name[row[0]] = row[1]
 
         def enhance_metadata(metadata):
-            """메타데이터에 실제 이름 추가"""
-            enhanced = metadata.copy()
+            """메타데이터에 실제 이름 추가하고 순서 정렬"""
+            # 메타데이터 표시 순서 정의
+            ordered_fields = [
+                'filename', 'file_id', 'category_name', 'category_id', 
+                'flow_id', 'chunk_index', 'vectorization_method', 
+                'created_at', 'updated_at', 'processing_method'
+            ]
+            
+            enhanced = {}
+            
+            # 파일명과 카테고리명 추가
             if 'file_id' in metadata and metadata['file_id'] in file_id_to_name:
                 enhanced['filename'] = file_id_to_name[metadata['file_id']]
             if 'category_id' in metadata and metadata['category_id'] in category_id_to_name:
                 enhanced['category_name'] = category_id_to_name[metadata['category_id']]
+            
+            # 정의된 순서대로 메타데이터 추가
+            for field in ordered_fields:
+                if field in metadata:
+                    enhanced[field] = metadata[field]
+                elif field in enhanced:
+                    # filename, category_name은 이미 추가됨
+                    continue
+            
+            # 정의되지 않은 나머지 필드들 추가 (알파벳 순)
+            remaining_fields = sorted([k for k in metadata.keys() if k not in ordered_fields and k not in enhanced])
+            for field in remaining_fields:
+                enhanced[field] = metadata[field]
+            
             return enhanced
 
         # 데이터 조회
         if search:
-            # 검색 쿼리
-            results = collection.query(
-                query_texts=[search],
-                n_results=min(limit, total_count),
-                include=['metadatas', 'documents', 'distances']
+            # VectorService를 통한 검색 (1536차원 임베딩 사용)
+            search_results = await vector_service.search_similar_chunks(
+                query=search,
+                top_k=min(limit, total_count),
+                category_ids=None
             )
             
             documents = []
-            if results['documents'] and len(results['documents']) > 0:
-                for i, doc in enumerate(results['documents'][0]):
-                    original_metadata = results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {}
-                    enhanced_metadata = enhance_metadata(original_metadata)
-                    
-                    documents.append({
-                        "document": doc,
-                        "metadata": enhanced_metadata,
-                        "distance": results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None
-                    })
+            for result in search_results:
+                original_metadata = result.get('metadata', {})
+                enhanced_metadata = enhance_metadata(original_metadata)
+                
+                documents.append({
+                    "document": result['content'],
+                    "metadata": enhanced_metadata,
+                    "distance": 1 - result['similarity'] if result.get('similarity') else None
+                })
         else:
-            # 일반 조회
-            results = collection.get(
-                limit=limit,
-                offset=offset,
-                include=['metadatas', 'documents']
-            )
+            # 메타데이터 필터 조건 구성 (ChromaDB $and 연산자 사용)
+            where_conditions = []
+            
+            # 카테고리 ID 필터
+            if category_id:
+                where_conditions.append({"category_id": {"$eq": category_id}})
+            
+            # 카테고리명 필터 (category_name을 category_id로 변환)
+            if category_name:
+                try:
+                    from ..services.category_service import CategoryService
+                    category_service = CategoryService()
+                    all_categories = await category_service.list_categories()
+                    category_id_for_name = None
+                    for cat in all_categories:
+                        if cat.name == category_name:
+                            category_id_for_name = cat.category_id
+                            break
+                    
+                    if category_id_for_name:
+                        where_conditions.append({"category_id": {"$eq": category_id_for_name}})
+                        _clog.info(f"카테고리 필터 적용: {category_name} -> category_id: {category_id_for_name}")
+                    else:
+                        _clog.warning(f"카테고리 '{category_name}'에 해당하는 ID를 찾을 수 없습니다.")
+                except Exception as e:
+                    _clog.error(f"카테고리 ID 조회 실패: {e}")
+                    # 폴백으로 category_name 직접 사용 (작동하지 않을 가능성 높음)
+                    where_conditions.append({"category_name": {"$eq": category_name}})
+            
+            # 파일명 필터 (부분 매칭을 위해 먼저 전체 조회 후 필터링)
+            filename_filter = filename
+            
+            # 이미지 존재 여부 필터
+            if has_images is not None:
+                if has_images:
+                    # 이미지가 존재하는 문서만
+                    where_conditions.append({"has_images": {"$eq": True}})
+                else:
+                    # 이미지가 없는 문서만 (has_images가 False이거나 존재하지 않음)
+                    pass  # ChromaDB에서 NOT 조건은 복잡하므로 후처리에서 필터링
+            
+            # 일반 조회 (필터 조건 적용)
+            query_params = {
+                "include": ['metadatas', 'documents']
+            }
+            
+            # where 조건 설정 (조건이 있는 경우)
+            if where_conditions:
+                if len(where_conditions) == 1:
+                    # 단일 조건인 경우 직접 사용
+                    query_params["where"] = where_conditions[0]
+                else:
+                    # 여러 조건인 경우 $and 연산자 사용
+                    query_params["where"] = {"$and": where_conditions}
+                _clog.info(f"ChromaDB where 조건: {query_params['where']}")
+            
+            # 디버깅: 카테고리 필터 사용 시 샘플 데이터 확인
+            if category_name:
+                sample_data = collection.get(limit=5, include=['metadatas'])
+                if sample_data.get('metadatas'):
+                    sample_categories = [meta.get('category_name') for meta in sample_data['metadatas'][:3]]
+                    _clog.info(f"ChromaDB 샘플 카테고리들: {sample_categories}")
+                    _clog.info(f"요청된 카테고리: '{category_name}'")
+            
+            # 필터링된 전체 데이터 조회 (페이징을 위해 먼저 전체 개수 파악)
+            if where_conditions or filename_filter or (has_images is False):
+                # 필터링이 있는 경우 전체 조회 후 처리
+                all_results = collection.get(**query_params)
+                
+                # 파일명 필터링 (부분 매칭)
+                if filename_filter or (has_images is False):
+                    filtered_docs = []
+                    filtered_metadatas = []
+                    
+                    for i, metadata in enumerate(all_results.get('metadatas', [])):
+                        # 파일명 매핑
+                        file_id = metadata.get('file_id')
+                        actual_filename = file_id_to_name.get(file_id, metadata.get('filename', ''))
+                        
+                        # 파일명 필터 체크
+                        filename_match = True
+                        if filename_filter:
+                            filename_match = filename_filter.lower() in actual_filename.lower()
+                        
+                        # 이미지 존재 여부 필터 체크 (has_images=False인 경우)
+                        images_match = True
+                        if has_images is False:
+                            has_img = metadata.get('has_images', False)
+                            images_match = not has_img
+                        
+                        if filename_match and images_match:
+                            filtered_docs.append(all_results['documents'][i])
+                            filtered_metadatas.append(metadata)
+                    
+                    # 필터링된 결과로 교체
+                    filtered_total = len(filtered_docs)
+                    
+                    # 페이징 적용
+                    start_idx = offset
+                    end_idx = offset + limit
+                    
+                    results = {
+                        'documents': filtered_docs[start_idx:end_idx],
+                        'metadatas': filtered_metadatas[start_idx:end_idx]
+                    }
+                    
+                    # 전체 개수 업데이트
+                    total_count = filtered_total
+                else:
+                    # 필터링 후 페이징
+                    filtered_total = len(all_results.get('documents', []))
+                    
+                    # 페이징 적용
+                    start_idx = offset
+                    end_idx = offset + limit
+                    
+                    results = {
+                        'documents': all_results['documents'][start_idx:end_idx],
+                        'metadatas': all_results['metadatas'][start_idx:end_idx]
+                    }
+                    
+                    total_count = filtered_total
+            else:
+                # 필터링이 없는 경우 기존 방식
+                query_params.update({
+                    "limit": limit,
+                    "offset": offset
+                })
+                results = collection.get(**query_params)
             
             documents = []
-            if results['documents']:
+            if results.get('documents'):
+                # 문서 데이터를 정렬 가능한 형태로 먼저 수집
+                temp_documents = []
                 for i, doc in enumerate(results['documents']):
                     original_metadata = results['metadatas'][i] if i < len(results['metadatas']) else {}
                     enhanced_metadata = enhance_metadata(original_metadata)
                     
-                    documents.append({
-                        "id": results['ids'][i] if i < len(results['ids']) else None,
+                    temp_documents.append({
+                        "id": f"doc_{i}",  # ChromaDB에서 직접 ID를 가져올 수 없으므로 인덱스 기반으로 생성
                         "document": doc[:500] + "..." if len(doc) > 500 else doc,
                         "metadata": enhanced_metadata,
                         "full_document_length": len(doc)
                     })
+                
+                # 메타데이터 기준으로 정렬 (파일명 → 청크 인덱스 순)
+                documents = sorted(temp_documents, key=lambda x: (
+                    x['metadata'].get('filename', ''),
+                    x['metadata'].get('chunk_index', 0),
+                    x['metadata'].get('file_id', '')
+                ))
         
         return {
             "collection_name": collection_name,
@@ -363,7 +521,13 @@ async def get_chromadb_collection_data(
                 "total": total_count,
                 "total_pages": (total_count + limit - 1) // limit
             },
-            "search": search
+            "filters": {
+                "search": search,
+                "category_id": category_id,
+                "category_name": category_name,
+                "filename": filename,
+                "has_images": has_images
+            }
         }
     
     except HTTPException:
@@ -372,14 +536,9 @@ async def get_chromadb_collection_data(
         _clog.error(f"ChromaDB 컬렉션 데이터 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/search")
-async def search_vectors(
-    query: str = Query(..., description="검색 쿼리"),
-    collection_name: Optional[str] = Query(None, description="대상 컬렉션"),
-    top_k: int = Query(10, ge=1, le=100, description="반환할 결과 수"),
-    admin_user = Depends(get_admin_user)
-):
-    """벡터 유사도 검색"""
+@router.get("/chromadb/categories")
+async def get_chromadb_categories(admin_user = Depends(get_admin_user)):
+    """ChromaDB에서 실제 사용되는 카테고리 목록 조회"""
     try:
         await vector_service._ensure_client()
         chroma_client = vector_service._client
@@ -387,23 +546,79 @@ async def search_vectors(
         if not chroma_client:
             raise HTTPException(status_code=503, detail="ChromaDB에 연결할 수 없습니다")
         
-        # 컬렉션 선택
-        if collection_name:
-            try:
-                collection = chroma_client.get_collection(collection_name)
-                collections = [collection]
-            except Exception:
-                raise HTTPException(status_code=404, detail=f"컬렉션 '{collection_name}'을 찾을 수 없습니다")
-        else:
-            # 모든 컬렉션에서 검색
-            all_collections = chroma_client.list_collections()
-            collections = [chroma_client.get_collection(c.name) for c in all_collections]
+        # 모든 컬렉션에서 카테고리 정보 수집
+        categories = set()
+        
+        # 먼저 모든 카테고리를 조회해서 ID -> 이름 매핑 생성
+        try:
+            from ..services.category_service import CategoryService
+            category_service = CategoryService()
+            all_categories = await category_service.list_categories()
+            category_map = {cat.category_id: cat.name for cat in all_categories}
+            _clog.info(f"카테고리 매핑: {category_map}")
+        except Exception as e:
+            _clog.warning(f"카테고리 매핑 생성 실패: {e}")
+            category_map = {}
+        
+        try:
+            collections = chroma_client.list_collections()
+            _clog.info(f"ChromaDB 컬렉션 개수: {len(collections)}")
+            
+            for collection_info in collections:
+                try:
+                    collection = chroma_client.get_collection(collection_info.name)
+                    # 샘플 메타데이터 조회 (카테고리 정보 추출용)
+                    sample_data = collection.get(limit=100, include=['metadatas'])
+                    _clog.info(f"컬렉션 {collection_info.name}: {len(sample_data.get('metadatas', []))}개 메타데이터")
+                    
+                    if sample_data.get('metadatas'):
+                        for i, metadata in enumerate(sample_data['metadatas'][:3]):  # 처음 3개만 로그
+                            _clog.info(f"메타데이터 샘플 {i+1}: {metadata}")
+                            
+                            # category_name이 있으면 사용, 없으면 category_id로 매핑에서 조회
+                            category_name = metadata.get('category_name')
+                            if not category_name:
+                                category_id = metadata.get('category_id')
+                                if category_id and category_id in category_map:
+                                    category_name = category_map[category_id]
+                                    _clog.info(f"category_id {category_id}에서 카테고리명 매핑: {category_name}")
+                            
+                            if category_name:
+                                categories.add(category_name)
+                                _clog.info(f"카테고리 추가: {category_name}")
+                except Exception as e:
+                    _clog.warning(f"컬렉션 {collection_info.name} 카테고리 조회 실패: {e}")
+                    continue
+        except Exception as e:
+            _clog.error(f"ChromaDB 카테고리 조회 오류: {e}")
+            
+        _clog.info(f"수집된 카테고리: {sorted(list(categories))}")
+        return {
+            "categories": sorted(list(categories))
+        }
+    
+    except Exception as e:
+        _clog.error(f"ChromaDB 카테고리 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/search")
+async def search_vectors(
+    query: str = Query(..., description="검색 쿼리"),
+    top_k: int = Query(10, ge=1, le=100, description="반환할 결과 수"),
+    admin_user = Depends(get_admin_user)
+):
+    """벡터 유사도 검색"""
+    try:
+        # VectorService 초기화 확인
+        await vector_service._ensure_client()
+        if not vector_service._client:
+            raise HTTPException(status_code=503, detail="벡터 서비스에 연결할 수 없습니다")
         
         # UUID 매핑용 데이터 준비 (검색용)
         file_id_to_name = {}
         category_id_to_name = {}
         
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if os.path.exists(metadata_db_path):
             with sqlite3.connect(metadata_db_path) as conn:
                 cursor = conn.cursor()
@@ -424,31 +639,30 @@ async def search_vectors(
                 enhanced['category_name'] = category_id_to_name[metadata['category_id']]
             return enhanced
 
-        # 각 컬렉션에서 검색 수행
+        # VectorService를 통한 검색 수행 (384차원 임베딩 사용)
         all_results = []
-        for collection in collections:
-            try:
-                results = collection.query(
-                    query_texts=[query],
-                    n_results=min(top_k, collection.count()),
-                    include=['metadatas', 'documents', 'distances']
-                )
-                
-                if results['documents'] and len(results['documents']) > 0:
-                    for i, doc in enumerate(results['documents'][0]):
-                        original_metadata = results['metadatas'][0][i] if i < len(results['metadatas'][0]) else {}
-                        enhanced_metadata = enhance_search_metadata(original_metadata)
-                        
-                        all_results.append({
-                            "collection": collection.name,
-                            "document": doc[:300] + "..." if len(doc) > 300 else doc,
-                            "metadata": enhanced_metadata,
-                            "distance": results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None,
-                            "similarity": 1 - results['distances'][0][i] if results['distances'] and i < len(results['distances'][0]) else None
-                        })
-            except Exception as e:
-                _clog.warning(f"컬렉션 {collection.name} 검색 실패: {e}")
-                continue
+        
+        # VectorService의 search_similar_chunks 메서드 사용
+        search_results = await vector_service.search_similar_chunks(
+            query=query,
+            top_k=top_k,
+            category_ids=None
+        )
+        
+        for result in search_results:
+            original_metadata = result.get('metadata', {})
+            enhanced_metadata = enhance_search_metadata(original_metadata)
+            
+            all_results.append({
+                "collection": "default",  # VectorService는 기본 컬렉션 사용
+                "document": result['content'][:300] + "..." if len(result['content']) > 300 else result['content'],
+                "metadata": enhanced_metadata,
+                "distance": 1 - result['similarity'] if result.get('similarity') else None,
+                "similarity": result.get('similarity', 0),
+                "has_images": result.get('has_images', False),
+                "related_images": result.get('related_images', []),
+                "image_count": result.get('image_count', 0)
+            })
         
         # 거리순 정렬 (가장 가까운 것부터)
         all_results.sort(key=lambda x: x['distance'] if x['distance'] is not None else float('inf'))
@@ -457,7 +671,7 @@ async def search_vectors(
             "query": query,
             "results": all_results[:top_k],
             "total_results": len(all_results),
-            "searched_collections": [c.name for c in collections]
+            "search_method": "VectorService"
         }
     
     except HTTPException:
@@ -487,7 +701,7 @@ async def sync_metadata_with_chromadb(admin_user = Depends(get_admin_user)):
         }
         
         # 1. 메타데이터 DB에서 모든 파일 조회
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if not os.path.exists(metadata_db_path):
             raise HTTPException(status_code=404, detail="메타데이터 데이터베이스를 찾을 수 없습니다")
         
@@ -600,7 +814,7 @@ async def get_sync_status(admin_user = Depends(get_admin_user)):
             }
         
         # 메타데이터 DB 확인
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if not os.path.exists(metadata_db_path):
             return {
                 "chromadb_available": True,
@@ -651,7 +865,7 @@ async def get_orphaned_metadata(admin_user = Depends(get_admin_user)):
     """청크가 0개인 고아 메타데이터 조회"""
     try:
         # 메타데이터 DB에서 청크가 0개인 파일들 조회
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         
         if not os.path.exists(metadata_db_path):
             raise HTTPException(status_code=404, detail="메타데이터 데이터베이스를 찾을 수 없습니다")
@@ -699,7 +913,7 @@ async def get_orphaned_metadata(admin_user = Depends(get_admin_user)):
 async def cleanup_orphaned_metadata(admin_user = Depends(get_admin_user)):
     """청크가 0개인 고아 메타데이터 일괄 삭제"""
     try:
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         
         if not os.path.exists(metadata_db_path):
             raise HTTPException(status_code=404, detail="메타데이터 데이터베이스를 찾을 수 없습니다")
@@ -743,86 +957,96 @@ async def cleanup_orphaned_metadata(admin_user = Depends(get_admin_user)):
         _clog.error(f"고아 메타데이터 삭제 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/debug/flow-detection")
-async def debug_flow_detection(admin_user = Depends(get_admin_user)):
-    """Flow 결정 로직 디버깅 (테스트용)"""
+@router.delete("/collections/all")
+async def delete_all_collections(admin_user = Depends(get_admin_user)):
+    """ChromaDB 모든 컬렉션 삭제"""
     try:
-        from ..services.file_service import FileService
-        file_service = FileService()
+        # ChromaDB에서 모든 컬렉션 삭제
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
         
-        print("=== Flow 결정 디버깅 시작 ===")
-        default_flow_id = await file_service._determine_vectorization_flow(None)
-        print(f"결정된 Flow ID: {default_flow_id}")
-        print("=== Flow 결정 디버깅 완료 ===")
+        if not chroma_client:
+            raise HTTPException(status_code=503, detail="ChromaDB에 연결할 수 없습니다")
         
-        return {
-            "detected_flow_id": default_flow_id,
-            "success": default_flow_id is not None,
-            "message": f"Flow ID: {default_flow_id}" if default_flow_id else "Flow를 찾을 수 없습니다"
-        }
-    except Exception as e:
-        _clog.error(f"Flow 결정 디버깅 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "detected_flow_id": None,
-            "success": False,
-            "error": str(e)
-        }
-
-@router.post("/update-flow-ids")
-async def update_missing_flow_ids(admin_user = Depends(get_admin_user)):
-    """flow_id가 누락된 메타데이터를 업데이트"""
-    try:
-        # 현재 기본 벡터화 Flow ID 확인
-        from ..services.file_service import FileService
-        file_service = FileService()
-        
-        # 가장 적절한 Flow ID 결정
-        default_flow_id = await file_service._determine_vectorization_flow(None)
-        
-        if not default_flow_id:
-            raise HTTPException(status_code=404, detail="사용 가능한 벡터화 Flow를 찾을 수 없습니다")
-        
-        # 메타데이터 DB에서 flow_id가 없는 레코드들 조회 및 업데이트
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
-        if not os.path.exists(metadata_db_path):
-            raise HTTPException(status_code=404, detail="메타데이터 데이터베이스를 찾을 수 없습니다")
-        
-        updated_count = 0
-        with sqlite3.connect(metadata_db_path) as conn:
-            cursor = conn.cursor()
-            
-            # flow_id가 NULL이거나 빈 문자열인 레코드 조회
-            cursor.execute("""
-                SELECT file_id, filename FROM vector_metadata 
-                WHERE flow_id IS NULL OR flow_id = ''
-            """)
-            
-            records_to_update = cursor.fetchall()
-            
-            # 각 레코드에 기본 flow_id 설정
-            for file_id, filename in records_to_update:
-                cursor.execute("""
-                    UPDATE vector_metadata 
-                    SET flow_id = ?, updated_at = ?
-                    WHERE file_id = ?
-                """, (default_flow_id, datetime.now().isoformat(), file_id))
-                updated_count += 1
-            
-            conn.commit()
+        deleted_collections = []
+        try:
+            collections = chroma_client.list_collections()
+            for collection in collections:
+                try:
+                    chroma_client.delete_collection(collection.name)
+                    deleted_collections.append(collection.name)
+                    _clog.info(f"컬렉션 '{collection.name}' 삭제 완료")
+                except Exception as e:
+                    _clog.warning(f"컬렉션 {collection.name} 삭제 실패: {e}")
+        except Exception as e:
+            _clog.error(f"ChromaDB 컬렉션 목록 조회 오류: {e}")
+            raise HTTPException(status_code=500, detail=f"컬렉션 목록 조회 실패: {str(e)}")
         
         return {
-            "message": f"{updated_count}개 레코드의 flow_id가 업데이트되었습니다",
-            "updated_count": updated_count,
-            "used_flow_id": default_flow_id
+            "status": "success",
+            "message": f"{len(deleted_collections)}개의 컬렉션이 삭제되었습니다",
+            "deleted_collections": deleted_collections,
+            "deleted_count": len(deleted_collections),
+            "deleted_at": datetime.now().isoformat()
         }
     
     except HTTPException:
         raise
     except Exception as e:
-        _clog.error(f"flow_id 업데이트 오류: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        _clog.error(f"컬렉션 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"컬렉션 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@router.delete("/collections/selected")
+async def delete_selected_collections(
+    request_data: Dict[str, List[str]], 
+    admin_user = Depends(get_admin_user)
+):
+    """ChromaDB 선택된 컬렉션들 삭제"""
+    try:
+        collection_names = request_data.get("collection_names", [])
+        
+        if not collection_names:
+            raise HTTPException(status_code=400, detail="삭제할 컬렉션을 선택해주세요")
+        
+        # ChromaDB에서 선택된 컬렉션들 삭제
+        await vector_service._ensure_client()
+        chroma_client = vector_service._client
+        
+        if not chroma_client:
+            raise HTTPException(status_code=503, detail="ChromaDB에 연결할 수 없습니다")
+        
+        deleted_collections = []
+        failed_collections = []
+        
+        for collection_name in collection_names:
+            try:
+                chroma_client.delete_collection(collection_name)
+                deleted_collections.append(collection_name)
+                _clog.info(f"컬렉션 '{collection_name}' 삭제 완료")
+            except Exception as e:
+                failed_collections.append({"name": collection_name, "error": str(e)})
+                _clog.warning(f"컬렉션 {collection_name} 삭제 실패: {e}")
+        
+        result = {
+            "status": "success" if len(deleted_collections) > 0 else "failed",
+            "message": f"{len(deleted_collections)}개의 컬렉션이 삭제되었습니다",
+            "deleted_collections": deleted_collections,
+            "deleted_count": len(deleted_collections),
+            "deleted_at": datetime.now().isoformat()
+        }
+        
+        if failed_collections:
+            result["failed_collections"] = failed_collections
+            result["failed_count"] = len(failed_collections)
+            result["message"] += f" ({len(failed_collections)}개 실패)"
+        
+        return result
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"선택된 컬렉션 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"컬렉션 삭제 중 오류가 발생했습니다: {str(e)}")
 
 @router.delete("/metadata/{file_id}")
 async def delete_vector_metadata(
@@ -994,7 +1218,7 @@ async def get_database_stats(admin_user = Depends(get_admin_user)):
                 stats["health_status"] = "error"
         
         # 메타데이터 DB에서 문서 수 조회
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if os.path.exists(metadata_db_path):
             try:
                 with sqlite3.connect(metadata_db_path) as conn:
@@ -1056,7 +1280,7 @@ async def create_database_backup(admin_user = Depends(get_admin_user)):
         backup_path = os.path.join(backup_dir, backup_filename)
         
         # 메타데이터 DB 백업 (SQLite 파일 복사)
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if os.path.exists(metadata_db_path):
             import shutil
             shutil.copy2(metadata_db_path, backup_path)
@@ -1078,7 +1302,7 @@ async def optimize_database(admin_user = Depends(get_admin_user)):
     """데이터베이스 최적화"""
     try:
         # 메타데이터 SQLite DB 최적화
-        metadata_db_path = os.path.join(settings.DATA_DIR, 'vectors', 'metadata.db')
+        metadata_db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         if os.path.exists(metadata_db_path):
             with sqlite3.connect(metadata_db_path) as conn:
                 conn.execute("VACUUM")
@@ -1129,6 +1353,173 @@ async def delete_all_vectors(admin_user = Depends(get_admin_user)):
     except Exception as e:
         _clog.error(f"벡터 데이터 삭제 오류: {e}")
         raise HTTPException(status_code=500, detail=f"벡터 데이터 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@router.delete("/documents/{file_id}")
+async def delete_document(
+    file_id: str,
+    admin_user = Depends(get_admin_user)
+):
+    """개별 문서(파일) 삭제 - 파일 데이터와 벡터 데이터 모두 삭제"""
+    try:
+        from ..services.file_service import FileService
+        
+        file_service = FileService()
+        
+        # 파일 정보 조회
+        file_info = await file_service.get_file_info(file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
+        
+        # 파일 삭제 (물리 파일 + 메타데이터 + 벡터 데이터)
+        success = await file_service.delete_file(file_id)
+        
+        if success:
+            _clog.info(f"문서 삭제 완료: {file_id} ({file_info.filename})")
+            return {
+                "status": "success",
+                "message": f"문서 '{file_info.filename}'이 성공적으로 삭제되었습니다",
+                "file_id": file_id,
+                "filename": file_info.filename,
+                "deleted_at": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="문서 삭제에 실패했습니다")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"문서 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"문서 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@router.get("/documents")
+async def get_documents_list(
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    limit: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
+    search: Optional[str] = Query(None, description="파일명 검색"),
+    category_id: Optional[str] = Query(None, description="카테고리 필터"),
+    status: Optional[str] = Query(None, description="상태 필터"),
+    admin_user = Depends(get_admin_user)
+):
+    """문서 목록 조회 (관리자용)"""
+    try:
+        from ..services.file_service import FileService
+        from ..models.vector_models import FileMetadataService
+        
+        file_metadata_service = FileMetadataService()
+        
+        # 필터 조건에 따라 파일 조회
+        if status == "deleted":
+            files = file_metadata_service.list_files(include_deleted=True, limit=None)
+            files = [f for f in files if f.status.value == "deleted"]
+        else:
+            files = file_metadata_service.list_files(
+                category_id=category_id,
+                include_deleted=False,
+                limit=None
+            )
+            
+        # 검색 필터 적용
+        if search:
+            files = [f for f in files if search.lower() in f.filename.lower()]
+        
+        # 상태 필터 적용
+        if status and status != "deleted":
+            files = [f for f in files if f.status.value == status]
+        
+        # 페이징 처리
+        total_count = len(files)
+        offset = (page - 1) * limit
+        paginated_files = files[offset:offset + limit]
+        
+        # 응답 형식으로 변환
+        documents = []
+        for file_metadata in paginated_files:
+            documents.append({
+                "file_id": file_metadata.file_id,
+                "filename": file_metadata.filename,
+                "category_id": file_metadata.category_id,
+                "category_name": file_metadata.category_name,
+                "status": file_metadata.status.value,
+                "vectorized": file_metadata.vectorized,
+                "file_size": file_metadata.file_size,
+                "chunk_count": file_metadata.chunk_count,
+                "upload_time": file_metadata.upload_time.isoformat() if file_metadata.upload_time else None,
+                "preprocessing_method": file_metadata.preprocessing_method,
+                "error_message": file_metadata.error_message
+            })
+        
+        return {
+            "documents": documents,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "filters": {
+                "search": search,
+                "category_id": category_id,
+                "status": status
+            }
+        }
+        
+    except Exception as e:
+        _clog.error(f"문서 목록 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"문서 목록 조회 중 오류가 발생했습니다: {str(e)}")
+
+@router.delete("/documents/selected")
+async def delete_selected_documents(
+    request_data: Dict[str, Any],
+    admin_user = Depends(get_admin_user)
+):
+    """선택된 문서들 일괄 삭제"""
+    try:
+        file_ids = request_data.get("file_ids", [])
+        if not file_ids:
+            raise HTTPException(status_code=400, detail="삭제할 문서를 선택해주세요")
+        
+        from ..services.file_service import FileService
+        file_service = FileService()
+        
+        deleted_files = []
+        failed_files = []
+        
+        for file_id in file_ids:
+            try:
+                # 파일 정보 조회
+                file_info = await file_service.get_file_info(file_id)
+                if not file_info:
+                    failed_files.append({"file_id": file_id, "reason": "파일을 찾을 수 없음"})
+                    continue
+                
+                # 파일 삭제
+                success = await file_service.delete_file(file_id)
+                if success:
+                    deleted_files.append({
+                        "file_id": file_id,
+                        "filename": file_info.filename
+                    })
+                    _clog.info(f"문서 삭제 완료: {file_id} ({file_info.filename})")
+                else:
+                    failed_files.append({"file_id": file_id, "filename": file_info.filename, "reason": "삭제 실패"})
+            except Exception as e:
+                failed_files.append({"file_id": file_id, "reason": str(e)})
+        
+        return {
+            "status": "success" if len(deleted_files) > 0 else "failed",
+            "message": f"{len(deleted_files)}개 문서가 삭제되었습니다",
+            "deleted_files": deleted_files,
+            "failed_files": failed_files,
+            "deleted_count": len(deleted_files),
+            "failed_count": len(failed_files),
+            "deleted_at": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"선택된 문서 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"문서 삭제 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/status")
 async def get_vector_status():

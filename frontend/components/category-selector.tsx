@@ -363,6 +363,7 @@ interface CategorySelectorProps {
   showDocumentCount?: boolean;
   multiSelect?: boolean;
   showManageButtons?: boolean;
+  compactMode?: boolean; // 사이드바용 컴팩트 모드 추가
 }
 
 export function CategorySelector({
@@ -373,6 +374,7 @@ export function CategorySelector({
   showDocumentCount = false,
   multiSelect = true,
   showManageButtons = false,
+  compactMode = false,
 }: CategorySelectorProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ [key: string]: any }>(
@@ -457,6 +459,55 @@ export function CategorySelector({
     return categories.find((cat) => cat.category_id === id);
   };
 
+  const refreshCategories = async () => {
+    setHasLoadedCategories(false);
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log("카테고리 새로고침 시작...");
+      
+      // 카테고리 목록 가져오기
+      console.log("카테고리 목록 요청 중...");
+      const categoriesData = await categoryAPI.getCategories();
+      console.log("카테고리 목록 응답:", categoriesData);
+      setCategories(categoriesData);
+      
+      // 카테고리 통계 가져오기 (실패해도 목록은 표시)
+      try {
+        console.log("카테고리 통계 요청 중...");
+        const statsData = await categoryAPI.getCategoryStats();
+        console.log("카테고리 통계 응답:", statsData);
+        setCategoryStats(statsData);
+      } catch (statsError) {
+        console.warn("카테고리 통계 로드 실패, 기본값 사용:", statsError);
+        setCategoryStats({});
+      }
+      setHasLoadedCategories(true);
+      console.log("카테고리 새로고침 완료!");
+    } catch (error) {
+      console.error("카테고리 새로고침 실패 - 상세 정보:", error);
+      console.error("에러 타입:", typeof error);
+      
+      const errorObj = error as any;
+      console.error("에러 메시지:", errorObj?.message);
+      console.error("에러 응답:", errorObj?.response);
+      console.error("에러 스택:", errorObj?.stack);
+      
+      let errorMessage = "카테고리 데이터를 새로고침하는데 실패했습니다.";
+      if (errorObj?.response?.status) {
+        errorMessage += ` (HTTP ${errorObj.response.status})`;
+      }
+      if (errorObj?.message) {
+        errorMessage += ` - ${errorObj.message}`;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const getIconComponent = (iconName?: string) => {
     const iconComponent = iconName ? iconMap[iconName] || FileText : FileText;
     return iconComponent;
@@ -484,7 +535,7 @@ export function CategorySelector({
             variant="outline"
             size="sm"
             className="mt-2"
-            onClick={() => window.location.reload()}
+            onClick={refreshCategories}
           >
             다시 시도
           </Button>
@@ -496,17 +547,29 @@ export function CategorySelector({
   return (
     <div className="space-y-3">
       {/* 카테고리 관리 버튼 */}
-      {showManageButtons && (
-        <div className="flex justify-end space-x-2">
-          <Button variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-1" />새 카테고리
-          </Button>
-          <Button variant="outline" size="sm">
-            <Edit className="h-4 w-4 mr-1" />
-            편집
-          </Button>
-        </div>
-      )}
+      <div className="flex justify-between items-center">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={refreshCategories}
+          disabled={isLoading}
+        >
+          <Search className="h-4 w-4 mr-1" />
+          새로고침
+        </Button>
+        
+        {showManageButtons && (
+          <div className="flex space-x-2">
+            <Button variant="outline" size="sm">
+              <Plus className="h-4 w-4 mr-1" />새 카테고리
+            </Button>
+            <Button variant="outline" size="sm">
+              <Edit className="h-4 w-4 mr-1" />
+              편집
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* 단일 선택 모드 (드롭다운) */}
       {!multiSelect && (
@@ -544,7 +607,11 @@ export function CategorySelector({
 
       {/* 다중 선택 모드 (버튼 그리드) */}
       {multiSelect && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <div className={`grid gap-3 ${
+          compactMode 
+            ? "grid-cols-2" // 컴팩트 모드: 한 줄에 2개 고정
+            : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" // 기본 모드: 반응형
+        }`}>
           {categories.map((category) => {
             const isSelected = selectedCategories.includes(
               category.category_id
@@ -558,19 +625,31 @@ export function CategorySelector({
                 key={category.category_id}
                 variant="outline"
                 size="default"
-                className={`h-auto px-3 py-2 flex items-center justify-between space-x-2 transition-all duration-200 ease-in-out transform hover:scale-105 ${
+                className={`h-auto transition-all duration-200 ease-in-out transform hover:scale-105 ${
+                  compactMode 
+                    ? "px-2 py-2 min-h-[50px] flex items-center space-x-2" // 컴팩트 모드: 가로 레이아웃, 작은 높이
+                    : "px-3 py-2 flex flex-col items-center justify-center space-y-2" // 기본 모드: 세로 레이아웃
+                } ${
                   isSelected
                     ? `${colorClass} text-white shadow-md hover:brightness-110 border-transparent`
                     : `bg-muted/50 hover:bg-muted`
                 }`}
                 onClick={() => handleCategoryToggle(category.category_id)}
               >
-                <div className="flex items-center space-x-2 truncate">
-                  <IconComponent className={`h-4 w-4 flex-shrink-0 ${
+                <div className={`flex items-center ${
+                  compactMode 
+                    ? "space-x-2 truncate flex-1" // 컴팩트 모드: 가로 정렬
+                    : "flex-col space-y-1" // 기본 모드: 세로 정렬
+                }`}>
+                  <IconComponent className={`${
+                    compactMode ? "h-4 w-4" : "h-5 w-5"
+                  } flex-shrink-0 ${
                       isSelected ? 'text-white' : textColorClass
                     }`}
                   />
-                  <span className={`text-sm font-medium truncate ${
+                  <span className={`${
+                    compactMode ? "text-sm truncate" : "text-xs text-center leading-tight"
+                  } font-medium ${
                       isSelected ? 'text-white' : 'text-foreground'
                     }`}
                   >
@@ -580,7 +659,7 @@ export function CategorySelector({
                 {showDocumentCount && (
                   <Badge
                     variant={isSelected ? "default" : "secondary"}
-                    className="text-xs flex-shrink-0"
+                    className="text-xs flex-shrink-0 ml-auto"
                   >
                     {categoryStats[category.category_id]?.document_count || 0}개
                   </Badge>

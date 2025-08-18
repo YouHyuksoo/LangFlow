@@ -72,6 +72,8 @@ export default function VectorizationPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<any>(null);
   const [systemSettings, setSystemSettings] = useState<any>(null);
+  const [vectorizationSettings, setVectorizationSettings] = useState<any>(null);
+  const [vectorDbInfo, setVectorDbInfo] = useState<any>(null);
   const [confirmRevectorize, setConfirmRevectorize] = useState<{
     isOpen: boolean;
     fileId: string;
@@ -94,6 +96,9 @@ export default function VectorizationPage() {
         fileAPI.getChromaDBStatus().catch(() => ({ collection_count: 0 })), // ChromaDB 상태 조회 실패 시 기본값 사용
       ]);
 
+      // Vector DB 정보 설정
+      setVectorDbInfo(chromaStatus);
+
       setFiles(filesResponse);
 
       // 디버그: 받은 파일 데이터 확인
@@ -110,7 +115,7 @@ export default function VectorizationPage() {
 
       // 통계 계산 (벡터화 상태를 더 정확히 분류)
       const vectorizedFiles = filesResponse.filter(
-        (f: VectorizationFile) => f.vectorized === true
+        (f: VectorizationFile) => f.vectorized === true || f.status === "completed"
       );
       const vectorizedCount = vectorizedFiles.length;
       console.log(
@@ -258,18 +263,20 @@ export default function VectorizationPage() {
     };
   }, [loadVectorizationData]);
 
-  // 설정 로드 (Docling 및 기본 설정)
+  // 설정 로드 (Docling, 기본 설정, 벡터화 설정)
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        // Docling 설정과 기본 설정을 동시에 로드
-        const [doclingSettings, basicSettings] = await Promise.all([
+        // Docling 설정, 기본 설정, 벡터화 설정을 동시에 로드
+        const [doclingSettings, basicSettings, vecSettings] = await Promise.all([
           doclingAPI.getDoclingSettings(),
-          settingsAPI.getSettings()
+          settingsAPI.getSettings(),
+          settingsAPI.getVectorizationSettings()
         ]);
         
         setCurrentSettings(doclingSettings);
         setSystemSettings(basicSettings);
+        setVectorizationSettings(vecSettings);
       } catch (error) {
         console.error("설정 로드 실패:", error);
       }
@@ -469,8 +476,87 @@ export default function VectorizationPage() {
     }
   };
 
+  const handleForceReprocess = async (fileId: string, filename: string) => {
+    console.log(`🔄 강제 재처리 시작: ${filename} (${fileId})`);
+
+    // 이미 처리 중인 파일인지 확인 (중복 클릭 방지)
+    if (processing.has(fileId)) {
+      console.log(`⚠️ 강제 재처리 중복 클릭 방지: ${filename}`);
+      return;
+    }
+
+    try {
+      setProcessing((prev) => {
+        const newSet = new Set(Array.from(prev));
+        newSet.add(fileId);
+        return newSet;
+      });
+
+      const response = await fileAPI.forceReprocessFile(fileId);
+
+      // 백엔드 응답 메시지를 사용한 알림
+      toast({
+        title: "강제 재처리 시작",
+        description:
+          response?.message ||
+          `"${filename}" 파일의 강제 재처리가 시작되었습니다.`,
+      });
+
+      // 즉시 데이터 새로고침
+      await loadVectorizationData();
+
+      // SSE가 연결된 경우 폴링하지 않음 (실시간 업데이트 대기)
+      if (isConnected) {
+        console.log("✅ SSE 연결됨 - 실시간 상태 업데이트 대기");
+      } else {
+        console.log("⚠️ SSE 미연결 - 백업 폴링 로직으로 상태 확인");
+        // SSE가 연결되지 않은 경우에만 간단한 백업 확인
+        setTimeout(async () => {
+          await loadVectorizationData();
+          const updatedFiles = await fileAPI.getFiles();
+          const updatedFile = updatedFiles.find(
+            (f: any) => f.file_id === fileId
+          );
+
+          if (updatedFile?.vectorized || updatedFile?.error_message) {
+            setProcessing((prev) => {
+              const newSet = new Set(Array.from(prev));
+              newSet.delete(fileId);
+              return newSet;
+            });
+          }
+        }, 5000);
+      }
+    } catch (error: any) {
+      console.error("강제 재처리 요청 오류:", error);
+
+      // HTTP 타임아웃이나 네트워크 오류 vs 실제 처리 실패 구분
+      const isNetworkError =
+        error?.code === "NETWORK_ERROR" || error?.code === "TIMEOUT_ERROR";
+
+      toast({
+        title: isNetworkError ? "네트워크 오류" : "강제 재처리 요청 실패",
+        description:
+          error?.response?.data?.detail ||
+          (isNetworkError
+            ? `"${filename}" 파일 강제 재처리 요청 중 네트워크 오류가 발생했습니다.`
+            : `"${filename}" 파일의 강제 재처리 요청에 실패했습니다.`),
+        variant: "destructive",
+      });
+
+      // 네트워크 오류가 아닌 경우에만 processing 제거
+      if (!isNetworkError) {
+        setProcessing((prev) => {
+          const newSet = new Set(Array.from(prev));
+          newSet.delete(fileId);
+          return newSet;
+        });
+      }
+    }
+  };
+
   const handleRevectorizeAll = () => {
-    const vectorizedFiles = files.filter((f) => f.vectorized);
+    const vectorizedFiles = files.filter((f) => f.vectorized || f.status === "completed");
 
     if (vectorizedFiles.length === 0) {
       toast({
@@ -489,7 +575,7 @@ export default function VectorizationPage() {
   };
 
   const executeRevectorizeAll = async () => {
-    const vectorizedFiles = files.filter((f) => f.vectorized);
+    const vectorizedFiles = files.filter((f) => f.vectorized || f.status === "completed");
 
     // 모달 닫기
     setConfirmRevectorize({
@@ -742,10 +828,11 @@ export default function VectorizationPage() {
       );
     }
 
-    // 서버에서도 진행중인 상태
+    // 서버에서도 진행중인 상태 (vectorizing 상태 추가)
     if (
       file.vectorization_status === "processing" ||
-      file.vectorization_status === "in_progress"
+      file.vectorization_status === "in_progress" ||
+      file.status === "vectorizing"
     ) {
       return (
         <Badge className="bg-blue-100 text-blue-800 border-blue-200">
@@ -865,13 +952,13 @@ export default function VectorizationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 전처리 방식 표시 */}
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* 전처리 방식, 임베딩 모델, 벡터 DB 정보 표시 */}
+          <div className="grid gap-4 md:grid-cols-4">
             <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-900/20">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                 <h3 className="font-medium text-blue-800 dark:text-blue-300">
-                  기본 전처리 방식
+                  전처리 방식
                 </h3>
               </div>
               <div className="text-sm text-blue-700 dark:text-blue-400">
@@ -906,6 +993,87 @@ export default function VectorizationPage() {
                 )}
               </div>
             </div>
+
+            <div className="p-4 border rounded-lg bg-purple-50 dark:bg-purple-900/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                <h3 className="font-medium text-purple-800 dark:text-purple-300">
+                  임베딩 모델
+                </h3>
+              </div>
+              <div className="text-sm text-purple-700 dark:text-purple-400 space-y-1">
+                {vectorizationSettings?.embedding_model ? (
+                  <div>
+                    <div className="font-medium truncate" title={vectorizationSettings.embedding_model.name}>
+                      {vectorizationSettings.embedding_model.name}
+                    </div>
+                    <div className="text-xs text-purple-600 dark:text-purple-500">
+                      {vectorizationSettings.embedding_model.type}
+                    </div>
+                    <div className="text-xs text-purple-600 dark:text-purple-500 mt-1">
+                      {vectorizationSettings.embedding_model.description}
+                    </div>
+                    <div className="text-xs font-mono bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-2 py-1 rounded mt-1 inline-block">
+                      📏 {vectorizationSettings.embedding_model.dimension || '1536'}차원
+                    </div>
+                    {vectorizationSettings.embedding_model.is_local && (
+                      <div className="text-xs bg-purple-200 dark:bg-purple-700 text-purple-800 dark:text-purple-200 px-2 py-1 rounded mt-1 inline-block">
+                        🏠 로컬 실행
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <span className="font-medium">설정 로드 중...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-900/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                <h3 className="font-medium text-orange-800 dark:text-orange-300">
+                  벡터 DB 정보
+                </h3>
+              </div>
+              <div className="text-sm text-orange-700 dark:text-orange-400 space-y-1">
+                {vectorDbInfo ? (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${vectorDbInfo.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className="font-medium">
+                        {vectorDbInfo.connected ? '연결됨' : '연결 안됨'}
+                      </span>
+                    </div>
+                    {vectorDbInfo.connected && (
+                      <>
+                        <div className="text-xs text-orange-600 dark:text-orange-500">
+                          컬렉션: {vectorDbInfo.collections?.join(', ') || 'N/A'}
+                        </div>
+                        <div className="text-xs text-orange-600 dark:text-orange-500">
+                          총 벡터: {vectorDbInfo.total_vectors?.toLocaleString() || 0}개
+                        </div>
+                        {vectorDbInfo.dimension && (
+                          <div className="text-xs font-mono bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-200 px-2 py-1 rounded mt-1 inline-block">
+                            📏 {vectorDbInfo.dimension}차원
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {vectorDbInfo.error && (
+                      <div className="text-xs text-red-600 dark:text-red-400">
+                        오류: {vectorDbInfo.error}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <span className="font-medium">상태 로드 중...</span>
+                  </div>
+                )}
+              </div>
+            </div>
             
             <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-900/20">
               <div className="flex items-center gap-2 mb-2">
@@ -927,6 +1095,33 @@ export default function VectorizationPage() {
               </div>
             </div>
           </div>
+
+          {/* 벡터화 성능 설정 */}
+          {vectorizationSettings?.performance_settings && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-3 text-purple-800 dark:text-purple-300">
+                벡터화 성능 설정
+              </h3>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">청크 크기</div>
+                  <div className="font-medium">{vectorizationSettings.chunk_settings?.chunk_size || 1000}자</div>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">청크 오버랩</div>
+                  <div className="font-medium">{vectorizationSettings.chunk_settings?.chunk_overlap || 200}자</div>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">병렬 처리</div>
+                  <div className="font-medium">{vectorizationSettings.performance_settings.enable_parallel ? '활성화' : '비활성화'}</div>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">배치 크기</div>
+                  <div className="font-medium">{vectorizationSettings.performance_settings?.batch_size || 10}</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Docling 세부 설정 */}
           {systemSettings?.preprocessing_method === "docling" && (
@@ -1129,9 +1324,10 @@ export default function VectorizationPage() {
                         </Button>
                       )}
 
-                    {/* 재시도 버튼 (실패한 경우) */}
+                    {/* 재시도 버튼 (실패한 경우 또는 vectorizing 상태에서 멈춘 경우) */}
                     {(file.error_message ||
-                      file.vectorization_status === "failed") &&
+                      file.vectorization_status === "failed" ||
+                      file.status === "vectorizing") &&
                       !processing.has(file.file_id) && (
                         <Button
                           size="sm"
@@ -1146,8 +1342,27 @@ export default function VectorizationPage() {
                         </Button>
                       )}
 
-                    {/* 재벡터화 버튼 (성공한 경우) */}
-                    {file.vectorized &&
+                    {/* 강제 재처리 버튼 (PREPROCESSING 또는 FAILED 상태인 경우) */}
+                    {(file.status === "preprocessing" || 
+                      file.status === "failed" ||
+                      file.vectorization_status === "preprocessing" ||
+                      (file.error_message && file.status !== "completed")) &&
+                      !processing.has(file.file_id) && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={processing.has(file.file_id)}
+                          onClick={() =>
+                            handleForceReprocess(file.file_id, file.filename)
+                          }
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          강제 재처리
+                        </Button>
+                      )}
+
+                    {/* 재벡터화 버튼 (성공한 경우 또는 실패한 경우) */}
+                    {(file.vectorized || file.status === "completed" || file.status === "failed") &&
                       !processing.has(file.file_id) &&
                       file.vectorization_status !== "processing" &&
                       file.vectorization_status !== "in_progress" && (

@@ -402,7 +402,7 @@ export default function LandingPage() {
           </div>
           
           <div className="border-t border-border pt-8 mt-8 text-center text-sm text-muted-foreground">
-            <p>&copy; 2024 ThinkFlow. All rights reserved.</p>
+            <p>&copy; 2024 Jisung Solution Works. All rights reserved.</p>
           </div>
         </div>
       </footer>

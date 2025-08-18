@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ExternalLink } from "lucide-react";
 import { getImageUrl } from "@/lib/config";
+import { ContentPreview } from "@/components/content-preview";
 
 interface MessageWithImagesProps {
   content: string;
@@ -42,12 +43,10 @@ export const MessageWithImages: React.FC<MessageWithImagesProps> = ({
 
   const imageReferences = extractImageReferences(content);
   
-  // 이미지 참조가 없으면 일반 텍스트 렌더링
+  // 이미지 참조가 없으면 ContentPreview를 사용하여 마크다운 렌더링
   if (imageReferences.length === 0) {
     return (
-      <div className={`whitespace-pre-wrap ${className}`}>
-        {content}
-      </div>
+      <ContentPreview content={content} className={className} />
     );
   }
 

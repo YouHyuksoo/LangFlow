@@ -4,6 +4,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { 
   Table, 
   TableBody, 
@@ -14,11 +22,12 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { CalendarIcon, SearchIcon, TrashIcon, UserIcon, ClockIcon, MessageSquareIcon } from "lucide-react"
+import { CalendarIcon, SearchIcon, TrashIcon, UserIcon, ClockIcon, MessageSquareIcon, Trash2Icon, AlertTriangleIcon } from "lucide-react"
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { chatAPI, categoryAPI } from '@/lib/api'
 import { convertCategoryIdsToNames, type Category } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
 
 interface ChatHistory {
   id: number
@@ -54,6 +63,7 @@ interface Pagination {
 }
 
 export default function ChatHistoryPage() {
+  const { toast } = useToast()
   const [history, setHistory] = useState<ChatHistory[]>([])
   const [stats, setStats] = useState<ChatStats | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
@@ -65,6 +75,8 @@ export default function ChatHistoryPage() {
   })
   const [loading, setLoading] = useState(true)
   const [selectedHistory, setSelectedHistory] = useState<ChatHistory | null>(null)
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
   
   // 필터 상태
   const [filters, setFilters] = useState({
@@ -98,6 +110,9 @@ export default function ChatHistoryPage() {
   const loadHistory = async (page: number = 1) => {
     setLoading(true)
     try {
+      console.log('채팅 기록 로드 시작 - 인증 정보:')
+      console.log('쿠키:', document.cookie)
+      console.log('토큰:', localStorage.getItem('token'))
       const params: any = {
         page,
         limit: pagination.limit
@@ -129,11 +144,113 @@ export default function ChatHistoryPage() {
       await chatAPI.deleteChatHistory(historyId)
       await loadHistory(pagination.page)
       await loadStats()
-      alert('채팅 기록이 삭제되었습니다.')
-    } catch (error) {
+      toast({
+        title: "삭제 완료",
+        description: "채팅 기록이 성공적으로 삭제되었습니다.",
+      })
+    } catch (error: any) {
       console.error('채팅 기록 삭제 오류:', error)
-      alert('채팅 기록 삭제 중 오류가 발생했습니다.')
+      
+      let errorMessage = "채팅 기록 삭제 중 오류가 발생했습니다."
+      
+      if (error?.response?.status === 401) {
+        errorMessage = "로그인이 필요합니다."
+      } else if (error?.response?.status === 403) {
+        errorMessage = "관리자 권한이 필요합니다."
+      } else if (error?.response?.data?.detail) {
+        const detail = error.response.data.detail
+        if (typeof detail === 'string') {
+          errorMessage = detail
+        }
+      }
+      
+      toast({
+        title: "삭제 실패",
+        description: errorMessage,
+        variant: "destructive",
+      })
     }
+  }
+
+  // 전체 채팅 기록 삭제 모달 열기
+  const openDeleteAllModal = () => {
+    setDeleteConfirmText('')
+    setIsDeleteAllModalOpen(true)
+  }
+
+  // 전체 채팅 기록 삭제 실행
+  const executeDeleteAll = async () => {
+    console.log('전체삭제 버튼 클릭됨')
+    console.log('입력된 텍스트:', `"${deleteConfirmText}"`)
+    console.log('비교 결과:', deleteConfirmText === '삭제')
+    
+    if (deleteConfirmText.trim() !== '삭제') {
+      console.log('비교 실패 - 리턴')
+      return
+    }
+    
+    console.log('삭제 실행 시작')
+
+    try {
+      console.log('전체 삭제 API 호출 시작')
+    console.log('현재 쿠키:', document.cookie)
+    console.log('로컬스토리지 토큰:', localStorage.getItem('token'))
+      const result = await chatAPI.deleteAllChatHistory()
+      console.log('전체 삭제 API 응답:', result)
+      
+      await loadHistory(1)
+      await loadStats()
+      setIsDeleteAllModalOpen(false)
+      setDeleteConfirmText('')
+      
+      toast({
+        title: "전체 삭제 완료",
+        description: `총 ${result.deleted_count || pagination.total}개의 채팅 기록이 삭제되었습니다.`,
+      })
+    } catch (error: any) {
+      console.error('전체 채팅 기록 삭제 오류 상세:', {
+        error,
+        message: error?.message,
+        response: error?.response,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        headers: error?.response?.headers,
+        config: {
+          url: error?.config?.url,
+          method: error?.config?.method,
+          headers: error?.config?.headers
+        }
+      })
+      
+      let errorMessage = "전체 채팅 기록 삭제 중 오류가 발생했습니다."
+      
+      if (error?.response?.status === 401) {
+        errorMessage = "로그인이 필요합니다. 다시 로그인해주세요."
+      } else if (error?.response?.status === 403) {
+        errorMessage = "관리자 권한이 필요합니다."
+      } else if (error?.response?.data?.detail) {
+        // detail이 객체인 경우 안전하게 문자열로 변환
+        const detail = error.response.data.detail
+        if (typeof detail === 'string') {
+          errorMessage = detail
+        } else if (typeof detail === 'object' && detail !== null) {
+          errorMessage = '서버 오류: ' + (detail.message || '상세 정보를 확인할 수 없습니다.')
+        }
+      }
+      
+      toast({
+        title: "전체 삭제 실패",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }
+
+  // 몢달 닫기
+  const closeDeleteAllModal = () => {
+    setIsDeleteAllModalOpen(false)
+    setDeleteConfirmText('')
   }
 
   // 검색 실행
@@ -296,7 +413,20 @@ export default function ChatHistoryPage() {
       {/* 채팅 기록 테이블 */}
       <Card>
         <CardHeader>
-          <CardTitle>채팅 기록 ({pagination.total}개)</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>채팅 기록 ({pagination.total}개)</CardTitle>
+            {pagination.total > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={openDeleteAllModal}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Trash2Icon className="h-4 w-4 mr-2" />
+                전체 삭제
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -496,6 +626,84 @@ export default function ChatHistoryPage() {
           </div>
         </div>
       )}
+
+      {/* 전체 삭제 확인 모달 */}
+      <Dialog open={isDeleteAllModalOpen} onOpenChange={setIsDeleteAllModalOpen}>
+        <DialogContent className="max-w-md bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-red-400 via-red-300 to-orange-300 bg-clip-text text-transparent flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-500/20">
+                <AlertTriangleIcon className="h-6 w-6 text-red-400" />
+              </div>
+              위험한 작업
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              전체 채팅 기록을 삭제하려고 합니다.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+              <div className="flex items-start gap-3">
+                <AlertTriangleIcon className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-red-300">
+                    경고: 이 작업은 되돌릴 수 없습니다!
+                  </p>
+                  <ul className="text-xs text-red-400 space-y-1">
+                    <li>• 모든 사용자의 채팅 기록이 삭제됩니다</li>
+                    <li>• 총 {pagination.total}개의 기록이 영구적으로 사라집니다</li>
+                    <li>• 데이터 복구가 불가능합니다</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white/90">
+                계속하려면 아래에 <span className="text-red-400 font-bold">"삭제"</span>를 입력하세요:
+              </label>
+              <Input
+                value={deleteConfirmText}
+                onChange={(e) => {
+                  const value = e.target.value
+                  console.log('입력 값 변경:', `"${value}"`)
+                  setDeleteConfirmText(value)
+                }}
+                placeholder="삭제"
+                className="bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-500 focus:border-red-500/50 focus:ring-red-500/20"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-slate-700/50 pt-4">
+            <Button
+              variant="outline"
+              onClick={closeDeleteAllModal}
+              className="bg-slate-700/50 border-slate-600/50 text-slate-300 hover:bg-slate-600/50 hover:text-white"
+            >
+              취소
+            </Button>
+            <Button
+              onClick={(e) => {
+                e.preventDefault()
+                console.log('버튼 클릭 이벤트 발생')
+                executeDeleteAll()
+              }}
+              disabled={deleteConfirmText.trim() !== '삭제'}
+              className={`transition-all duration-300 ${
+                deleteConfirmText.trim() === '삭제'
+                  ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg hover:shadow-xl'
+                  : 'bg-slate-600/50 text-slate-400 border-slate-600/50 cursor-not-allowed'
+              }`}
+            >
+              <Trash2Icon className="h-4 w-4 mr-2" />
+              전체 삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

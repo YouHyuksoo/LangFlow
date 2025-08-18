@@ -8,6 +8,7 @@ from .file_service import FileService
 from .langflow_service import LangflowService
 from .persona_service import PersonaService
 from .settings_service import settings_service
+from .model_profile_service import model_profile_service
 from ..utils.image_utils import extract_image_path_from_chunk, is_image_chunk, create_vision_image_content
 import openai
 from datetime import datetime
@@ -232,9 +233,10 @@ class ChatService:
             print(f"페르소나 ID: {request.persona_id}")
             print(f"시스템 메시지: {request.system_message}")
             print(f"첨부된 이미지 수: {len(request.images) if request.images else 0}")
+            print(f"🎯 요청된 출력 형식: {request.output_format}")
             
-            # 최종 시스템 메시지 구성 (페르소나 + 설정 조합)
-            final_system_message = await self._build_system_message(request.system_message, request.persona_id)
+            # 최종 시스템 메시지 구성 (페르소나 + 설정 + 출력 형식 조합)
+            final_system_message = await self._build_system_message(request.system_message, request.persona_id, request.output_format)
             print(f"최종 시스템 메시지: {final_system_message}")
             
             # 채팅 히스토리에 사용자 메시지 저장
@@ -285,7 +287,8 @@ class ChatService:
                                 "category_name": metadata.get("category_name", ""),
                                 "content": content,
                                 "score": result.get("score", 1.0),
-                                "distance": result.get("distance", 1.0)
+                                "distance": result.get("distance", 1.0),
+                                "metadata": metadata  # 전체 메타데이터 포함 (이미지 정보 포함)
                             }
                             
                             # 이미지 청크 감지 및 메타데이터 추가
@@ -325,18 +328,28 @@ class ChatService:
                                 search_flow_id
                             )
                         elif has_image_chunks:
-                            # 검색 결과에 이미지가 포함된 경우 Vision 모델 사용
-                            print(f"🖼️ 검색 결과에 이미지가 포함되어 Vision 모델로 처리합니다.")
-                            response_text = await self.generate_response_with_vision(
-                                request.message, 
-                                relevant_documents, 
-                                final_system_message
-                            )
-                        else:
-                            # 기존 텍스트 전용 처리
+                            # 검색 결과에 이미지가 포함된 경우 텍스트 기반 이미지 참조 처리
+                            print(f"🖼️ 검색 결과에 이미지가 포함되어 텍스트 기반으로 처리합니다.")
+                            enhanced_documents, related_image_paths = self._enhance_context_with_images(relevant_documents)
+                            
                             response_text = await self.generate_response_with_flow(
                                 request.message, 
-                                relevant_documents, 
+                                enhanced_documents, 
+                                final_system_message,
+                                search_flow_id
+                            )
+                        else:
+                            # 이미지 정보를 포함한 텍스트 처리 (Vision 모델 사용 안 함)
+                            enhanced_documents, related_image_paths = self._enhance_context_with_images(relevant_documents)
+                            
+                            if related_image_paths:
+                                print(f"📷 관련 이미지 {len(related_image_paths)}개 발견, 텍스트로 포함하여 처리")
+                                for img_path in related_image_paths:
+                                    print(f"  - {img_path}")
+                            
+                            response_text = await self.generate_response_with_flow(
+                                request.message, 
+                                enhanced_documents, 
                                 final_system_message,
                                 search_flow_id
                             )
@@ -401,6 +414,13 @@ class ChatService:
             
             print(f"계산된 신뢰도: {confidence:.3f} (원본 문서 {len(relevant_documents)}개, 유니크 소스 {len(sources_for_response)}개)")
             
+            # 응답에서 관련 이미지 경로 추출
+            related_images = self._extract_images_from_context(relevant_documents) if relevant_documents else []
+            if related_images:
+                print(f"📷 응답에 포함할 이미지 {len(related_images)}개:")
+                for img_path in related_images:
+                    print(f"  - {img_path}")
+            
             return ChatResponse(
                 response=response_text,
                 sources=sources_for_response,
@@ -408,7 +428,8 @@ class ChatService:
                 processing_time=processing_time,
                 categories=request.categories,
                 flow_id=search_flow_id,
-                user_id=request.user_id
+                user_id=request.user_id,
+                related_images=related_images
             )
             
         except Exception as e:
@@ -425,7 +446,8 @@ class ChatService:
                 processing_time=processing_time,
                 categories=request.categories or [],
                 flow_id=request.flow_id,
-                user_id=request.user_id
+                user_id=request.user_id,
+                related_images=[]
             )
     
     async def execute_langflow_flow(self, flow_id: str, message: str, context: List[Dict[str, Any]] = None) -> str:
@@ -627,10 +649,8 @@ class ChatService:
                 context_text = "\n".join(shortened_sections)
                 print(f"축소 후 길이: {len(context_text)}자")
 
-            # 간소화된 프롬프트 구성
-            prompt = f"""문서를 참고하여 질문에 답변하세요. 출처를 [1], [2] 형태로 표시하세요.
-
-참고 문서:
+            # 기본 프롬프트 구성 (시스템 메시지는 별도 처리)
+            prompt = f"""참고 문서:
 {sources_text}
 
 내용:
@@ -644,7 +664,33 @@ class ChatService:
             flow_id_to_use = flow_id or await self._get_default_search_flow()
             if flow_id_to_use:
                 print(f"LangFlow 실행: {flow_id_to_use}")
-                model_settings = settings_service.get_section_settings("models")
+                
+                # 모델 프로필에서 설정 가져오기 (새로운 방식)
+                model_settings = model_profile_service.get_active_profile_for_chat()
+                
+                # model_settings에서 model_config 생성 (LangFlow 구조에 맞춰)
+                provider = model_settings.get("llm_provider", "openai")
+                
+                # provider별 적절한 API 키 선택
+                api_key = None
+                if provider == "openai":
+                    api_key = model_settings.get("llm_api_key")
+                elif provider == "google":
+                    api_key = model_settings.get("google_api_key")
+                elif provider == "anthropic":
+                    api_key = model_settings.get("anthropic_api_key")
+                
+                model_config = {
+                    "llm": {
+                        "provider": provider,
+                        "model": model_settings.get("llm_model", "gpt-4o-mini"),
+                        "temperature": model_settings.get("llm_temperature", 0.7),
+                        "max_tokens": model_settings.get("llm_max_tokens", 2000),
+                        "top_p": model_settings.get("llm_top_p", 1.0),
+                        "api_key": api_key
+                    }
+                }
+                
                 langflow_result = await self.langflow_service.execute_flow_with_llm(
                     flow_id_to_use,
                     prompt,
@@ -675,6 +721,120 @@ class ChatService:
         """Fallback: 기존 OpenAI 직접 호출 방식"""
         print("=== Fallback: OpenAI 직접 호출 사용 ===")
         return await self.generate_response(query, context, system_message)
+
+    def _extract_images_from_context(self, context: List[Dict[str, Any]]) -> List[str]:
+        """컨텍스트에서 이미지 경로들을 추출합니다."""
+        image_paths = []
+        
+        for doc in context:
+            try:
+                # 메타데이터에서 이미지 정보 확인
+                metadata = doc.get("metadata", {})
+                
+                # ChromaDB에서 가져온 file_images_json 파싱
+                if metadata.get("has_images") and metadata.get("file_images_json"):
+                    import json
+                    try:
+                        file_images = json.loads(metadata["file_images_json"])
+                        for img in file_images:
+                            if isinstance(img, dict) and img.get("image_path"):
+                                image_paths.append(img["image_path"])
+                    except json.JSONDecodeError:
+                        continue
+                        
+            except Exception as e:
+                print(f"이미지 추출 중 오류: {e}")
+                continue
+        
+        # 중복 제거
+        return list(set(image_paths))
+    
+    def _enhance_context_with_images(self, context: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[str]]:
+        """컨텍스트에서 관련도가 높은 이미지만 선별하여 텍스트로 포함합니다."""
+        enhanced_context = []
+        selected_image_paths = []
+        
+        for i, doc in enumerate(context, 1):
+            enhanced_doc = doc.copy()
+            source_name = doc.get("filename", f"문서{i}")
+            content = doc.get("content", "")
+            metadata = doc.get("metadata", {})
+            
+            # 검색 점수가 높은 상위 문서에서만 이미지 선별 (상위 3개 문서)
+            if i <= 3 and metadata.get("has_images") and metadata.get("file_images_json"):
+                try:
+                    import json
+                    file_images = json.loads(metadata["file_images_json"])
+                    
+                    # 해당 청크와 관련된 이미지만 선별 (최대 2개)
+                    relevant_images = self._select_relevant_images(content, file_images, max_images=2)
+                    
+                    if relevant_images:
+                        # 문서 내용에 선별된 이미지 정보만 추가
+                        image_info_text = "\n\n=== 관련 이미지 ===\n"
+                        for img in relevant_images:
+                            img_path = img.get("image_path", "")
+                            img_desc = img.get("description", f"이미지 {img.get('id', '')}")
+                            img_page = img.get("page", "")
+                            
+                            if img_path:
+                                selected_image_paths.append(img_path)
+                                image_info_text += f"[이미지: {img_path}] {img_desc}"
+                                if img_page:
+                                    image_info_text += f" (페이지 {img_page})"
+                                image_info_text += "\n"
+                        
+                        enhanced_doc["content"] = content + image_info_text
+                        print(f"📷 문서 '{source_name}'에서 {len(relevant_images)}개 이미지 선별")
+                    
+                except json.JSONDecodeError:
+                    pass
+            
+            enhanced_context.append(enhanced_doc)
+        
+        return enhanced_context, list(set(selected_image_paths))
+    
+    def _select_relevant_images(self, chunk_content: str, file_images: List[Dict], max_images: int = 2) -> List[Dict]:
+        """청크 내용과 관련성이 높은 이미지들을 선별합니다."""
+        if not file_images:
+            return []
+        
+        relevant_images = []
+        
+        # 간단한 관련성 점수 계산
+        for img in file_images:
+            if not isinstance(img, dict):
+                continue
+                
+            img_desc = img.get("description", "").lower()
+            img_caption = img.get("caption", "").lower()
+            chunk_lower = chunk_content.lower()
+            
+            # 관련성 점수 계산 (단순한 키워드 매칭)
+            relevance_score = 0
+            
+            # 이미지 설명과 청크 내용의 공통 키워드 확인
+            img_words = set((img_desc + " " + img_caption).split())
+            chunk_words = set(chunk_lower.split())
+            common_words = img_words & chunk_words
+            
+            if common_words:
+                relevance_score += len(common_words) * 0.5
+            
+            # 특정 키워드가 포함된 경우 추가 점수
+            important_keywords = ["그림", "도표", "차트", "이미지", "사진", "그래프", "표"]
+            for keyword in important_keywords:
+                if keyword in chunk_lower:
+                    relevance_score += 1.0
+            
+            # 관련성이 있는 이미지만 선별 (임계값: 0.5)
+            if relevance_score > 0.5:
+                img["relevance_score"] = relevance_score
+                relevant_images.append(img)
+        
+        # 관련성 점수 순으로 정렬하고 최대 개수만큼 반환
+        relevant_images.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+        return relevant_images[:max_images]
 
     async def generate_response(self, query: str, context: List[Dict[str, Any]], system_message: str = None) -> str:
         """설정된 LLM을 사용하여 응답을 생성합니다."""
@@ -984,7 +1144,7 @@ class ChatService:
         except Exception as e:
             print(f"채팅 메시지 저장 중 오류: {str(e)}")
     
-    async def _build_system_message(self, custom_message: str = None, persona_id: str = None) -> str:
+    async def _build_system_message(self, custom_message: str = None, persona_id: str = None, output_format: str = None) -> str:
         """시스템 메시지를 구성합니다: 기본/사용자 지정 메시지 + (선택) 페르소나 메시지 + Chart.js 생성 지시사항 결합."""
         try:
             # 기본 시스템 메시지 (설정 or 사용자 지정)
@@ -992,11 +1152,14 @@ class ChatService:
                 print("사용자 지정 시스템 메시지 사용")
                 base_message = custom_message
             else:
-                base_message = await self.system_settings_service.get_default_system_message()
+                # settings_service를 사용하여 기본 시스템 메시지 가져오기
+                system_settings = settings_service.get_section_settings("system")
+                base_message = system_settings.get("default_system_message", "당신은 도움이 되는 AI 어시스턴트입니다. 정확하고 유용한 정보를 제공하며, 답변할 때 관련된 출처를 [1], [2] 형태로 인라인에 표시해주세요.")
                 print("기본 시스템 메시지 사용")
 
             # 사용할 페르소나 결정: 요청 > 시스템 기본
-            chosen_persona_id = persona_id or await self.system_settings_service.get_default_persona_id()
+            system_settings = settings_service.get_section_settings("system")
+            chosen_persona_id = persona_id or system_settings.get("default_persona_id")
 
             persona_text = None
             if chosen_persona_id:
@@ -1013,6 +1176,20 @@ class ChatService:
             
             if persona_text:
                 message_parts.append(persona_text)
+            
+            # 출력 형식 지시사항 추가 (사용자가 명시적으로 선택한 경우 최우선 적용)
+            if output_format:
+                format_instructions = {
+                    "text": "⚠️ 중요: 반드시 플레인 텍스트 형식으로만 응답하세요. 마크다운, HTML 태그, 특수 문자 사용 금지.",
+                    "markdown": "⚠️ 중요: 반드시 Markdown 형식으로 응답하세요. 제목은 #, ##, ### 사용, 목록은 -, * 사용, 코드는 ``` 사용.",
+                    "html": "⚠️ 중요: 반드시 HTML 형식으로만 응답하세요. 적절한 HTML 태그(<h1>, <p>, <ul>, <li>, <strong>, <em> 등)를 사용하여 구조화된 응답을 제공하세요.",
+                    "json": "⚠️ 중요: 반드시 유효한 JSON 형식으로만 응답하세요. 모든 문자열은 따옴표로 감싸고, 구조화된 데이터로 제공하세요.",
+                    "code": "⚠️ 중요: 반드시 코드 형식으로 응답하세요. 적절한 프로그래밍 언어 문법을 사용하여 주석과 함께 제공하세요."
+                }
+                
+                if output_format in format_instructions:
+                    message_parts.append(format_instructions[output_format])
+                    print(f"🎯 출력 형식 지시사항 추가됨: {output_format}")
             
             final_message = "\n\n".join(message_parts)
             print(f"시스템 메시지 구성 완료 (길이: {len(final_message)}자)")
@@ -1081,6 +1258,30 @@ class ChatService:
             if flow_id_to_use:
                 print(f"멀티모달 LangFlow 실행: {flow_id_to_use}")
                 model_settings = settings_service.get_section_settings("models")
+                
+                # model_settings에서 model_config 생성 (LangFlow 구조에 맞춰)
+                provider = model_settings.get("llm_provider", "openai")
+                
+                # provider별 적절한 API 키 선택
+                api_key = None
+                if provider == "openai":
+                    api_key = model_settings.get("llm_api_key")
+                elif provider == "google":
+                    api_key = model_settings.get("google_api_key")
+                elif provider == "anthropic":
+                    api_key = model_settings.get("anthropic_api_key")
+                
+                model_config = {
+                    "llm": {
+                        "provider": provider,
+                        "model": model_settings.get("llm_model", "gpt-4o-mini"),
+                        "temperature": model_settings.get("llm_temperature", 0.7),
+                        "max_tokens": model_settings.get("llm_max_tokens", 2000),
+                        "top_p": model_settings.get("llm_top_p", 1.0),
+                        "api_key": api_key
+                    }
+                }
+                
                 langflow_result = await self.langflow_service.execute_multimodal_flow_with_llm(
                     flow_id_to_use,
                     prompt,

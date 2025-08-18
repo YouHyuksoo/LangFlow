@@ -11,173 +11,278 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Save, Zap, Key, TestTube, ChevronDown } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Bot, Plus, Edit, Trash2, TestTube, Check, Star, Settings, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { modelSettingsAPI } from "@/lib/api";
+import { modelProfileAPI, modelSettingsAPI } from "@/lib/api";
 
-interface ModelSettings {
-  // LLM 모델 설정
-  llm_provider: string;
-  llm_model: string;
-  llm_api_key: string;
-  llm_temperature: number;
-  llm_max_tokens?: number;
-  llm_top_p?: number;
-
-  // 임베딩 모델 설정
-  embedding_provider: string;
-  embedding_model: string;
-  embedding_api_key: string;
-  embedding_dimension?: number;
-
-}
-
-// 제공업체별 모델 데이터 타입 정의
-interface ModelInfo {
+interface ModelProfile {
   id: string;
   name: string;
-  description?: string;
-  dimension?: number;
+  provider: string;
+  model: string;
+  api_key: string;
+  base_url?: string;
+  temperature: number;
+  max_tokens: number;
+  top_p: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-interface ProviderInfo {
-  id: string;
-  name: string;
-  models: ModelInfo[];
+interface ModelProfilesResponse {
+  profiles: ModelProfile[];
+  active_profile_id?: string;
 }
 
-interface ProvidersData {
-  llm_providers: ProviderInfo[];
-  embedding_providers: ProviderInfo[];
+// 제공업체별 사용 가능한 모델
+const LLM_PROVIDERS = {
+  openai: {
+    name: "OpenAI",
+    models: [
+      { id: "gpt-4o", name: "GPT-4o" },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini" },
+      { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
+      { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
+    ]
+  },
+  google: {
+    name: "Google",
+    models: [
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
+      { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash" },
+    ]
+  },
+  anthropic: {
+    name: "Anthropic",
+    models: [
+      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
+      { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku" },
+    ]
+  }
+};
+
+const EMBEDDING_PROVIDERS = {
+  openai: {
+    name: "OpenAI",
+    models: [
+      { id: "text-embedding-3-large", name: "Text Embedding 3 Large", dimension: 3072 },
+      { id: "text-embedding-3-small", name: "Text Embedding 3 Small", dimension: 1536 },
+      { id: "text-embedding-ada-002", name: "Text Embedding Ada 002", dimension: 1536 },
+    ]
+  },
+  huggingface: {
+    name: "HuggingFace",
+    models: [
+      { id: "sentence-transformers/all-MiniLM-L6-v2", name: "All MiniLM L6 v2", dimension: 384 },
+      { id: "sentence-transformers/all-mpnet-base-v2", name: "All MPNet Base v2", dimension: 768 },
+    ]
+  }
+};
+
+function ModelProfileCard({ 
+  profile, 
+  isActive, 
+  onEdit, 
+  onDelete, 
+  onActivate, 
+  onTest 
+}: {
+  profile: ModelProfile;
+  isActive: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onActivate: () => void;
+  onTest: () => void;
+}) {
+  const providerInfo = LLM_PROVIDERS[profile.provider as keyof typeof LLM_PROVIDERS];
+  const modelInfo = providerInfo?.models.find(m => m.id === profile.model);
+
+  return (
+    <Card className={`relative ${isActive ? 'ring-2 ring-blue-500 bg-blue-50/50' : ''}`}>
+      {isActive && (
+        <div className="absolute -top-2 -right-2 bg-blue-500 text-white p-1 rounded-full">
+          <Check className="h-4 w-4" />
+        </div>
+      )}
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Bot className="h-5 w-5" />
+            {profile.name}
+            {isActive && <Badge variant="default" className="text-xs">활성</Badge>}
+          </CardTitle>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" onClick={onEdit}>
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <CardDescription>
+          {providerInfo?.name} • {modelInfo?.name || profile.model}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <span className="text-muted-foreground">온도:</span>
+            <span className="ml-2 font-mono">{profile.temperature}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">토큰:</span>
+            <span className="ml-2 font-mono">{profile.max_tokens}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {!isActive && (
+            <Button size="sm" variant="outline" onClick={onActivate} className="flex-1">
+              <Star className="h-4 w-4 mr-1" />
+              활성화
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onTest} className="flex-1">
+            <TestTube className="h-4 w-4 mr-1" />
+            테스트
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
-export default function ModelsPage() {
+function ModelProfileForm({ 
+  profile, 
+  isOpen, 
+  onClose, 
+  onSuccess 
+}: {
+  profile?: ModelProfile;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { toast } = useToast();
-  const [settings, setSettings] = useState<ModelSettings>({
-    llm_provider: "openai",
-    llm_model: "gpt-4o-mini",
-    llm_api_key: "",
-    llm_temperature: 0.7,
-    llm_max_tokens: 4000,
-    llm_top_p: 1.0,
-    embedding_provider: "openai",
-    embedding_model: "text-embedding-3-small",
-    embedding_api_key: "",
-    embedding_dimension: 1536,
-  });
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testingLLM, setTestingLLM] = useState(false);
-  const [testingEmbedding, setTestingEmbedding] = useState(false);
-  const [providersData, setProvidersData] = useState<ProvidersData>({
-    llm_providers: [],
-    embedding_providers: []
+  const [formData, setFormData] = useState({
+    name: "",
+    provider: "openai",
+    model: "gpt-4o-mini",
+    api_key: "",
+    base_url: "",
+    temperature: 0.7,
+    max_tokens: 2000,
+    top_p: 1.0,
   });
-
-  // 제공업체별 사용 가능한 모델들
-  const getCurrentLLMProvider = () => providersData.llm_providers.find(p => p.id === settings.llm_provider);
-  const getCurrentEmbeddingProvider = () => providersData.embedding_providers.find(p => p.id === settings.embedding_provider);
-  
-  const availableLLMModels = getCurrentLLMProvider()?.models || [];
-  const availableEmbeddingModels = getCurrentEmbeddingProvider()?.models || [];
-
-  // LLM 제공업체 변경 핸들러
-  const handleLLMProviderChange = (provider: string) => {
-    const providerData = providersData.llm_providers.find(p => p.id === provider);
-    const firstModel = providerData?.models[0];
-    
-    setSettings({
-      ...settings,
-      llm_provider: provider,
-      llm_model: firstModel?.id || "",
-    });
-  };
-
-  // 임베딩 제공업체 변경 핸들러
-  const handleEmbeddingProviderChange = (provider: string) => {
-    const providerData = providersData.embedding_providers.find(p => p.id === provider);
-    const firstModel = providerData?.models[0];
-    
-    setSettings({
-      ...settings,
-      embedding_provider: provider,
-      embedding_model: firstModel?.id || "",
-      embedding_dimension: firstModel?.dimension || 1536,
-    });
-  };
-
-  // 임베딩 모델 변경 핸들러 (차원 자동 업데이트)
-  const handleEmbeddingModelChange = (modelId: string) => {
-    const selectedModel = availableEmbeddingModels.find(model => model.id === modelId);
-    
-    setSettings({
-      ...settings,
-      embedding_model: modelId,
-      embedding_dimension: selectedModel?.dimension || settings.embedding_dimension,
-    });
-  };
-
-  const fetchProviders = async () => {
-    try {
-      const data = await modelSettingsAPI.getAvailableProviders();
-      setProvidersData(data);
-    } catch (error) {
-      console.error("제공업체 정보 로드 오류:", error);
-      toast({
-        title: "오류",
-        description: "제공업체 정보를 불러오는 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const data = await modelSettingsAPI.getSettings();
-      setSettings({
-        llm_provider: data.llm_provider || "openai",
-        llm_model: data.llm_model || "gpt-4o-mini",
-        llm_api_key: data.llm_api_key || "",
-        llm_temperature: data.llm_temperature || 0.7,
-        llm_max_tokens: data.llm_max_tokens || 4000,
-        llm_top_p: data.llm_top_p || 1.0,
-        embedding_provider: data.embedding_provider || "openai",
-        embedding_model: data.embedding_model || "text-embedding-3-small",
-        embedding_api_key: data.embedding_api_key || "",
-        embedding_dimension: data.embedding_dimension || 1536,
-      });
-    } catch (error) {
-      console.error("모델 설정 로드 오류:", error);
-      toast({
-        title: "오류",
-        description: "모델 설정을 불러오는 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    }
-  };
 
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await Promise.all([fetchProviders(), fetchSettings()]);
-      setLoading(false);
-    };
-    loadData();
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await modelSettingsAPI.updateSettings(settings);
-      toast({
-        title: "성공",
-        description: "모델 설정이 저장되었습니다.",
+    if (profile) {
+      setFormData({
+        name: profile.name,
+        provider: profile.provider,
+        model: profile.model,
+        api_key: profile.api_key,
+        base_url: profile.base_url || "",
+        temperature: profile.temperature,
+        max_tokens: profile.max_tokens,
+        top_p: profile.top_p,
       });
+    } else {
+      setFormData({
+        name: "",
+        provider: "openai",
+        model: "gpt-4o-mini",
+        api_key: "",
+        base_url: "",
+        temperature: 0.7,
+        max_tokens: 2000,
+        top_p: 1.0,
+      });
+    }
+  }, [profile, isOpen]);
+
+  const handleProviderChange = (provider: string) => {
+    const providerInfo = LLM_PROVIDERS[provider as keyof typeof LLM_PROVIDERS];
+    const firstModel = providerInfo?.models[0];
+    
+    setFormData({
+      ...formData,
+      provider,
+      model: firstModel?.id || "",
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      // 1. 필수 필드 검증
+      if (!formData.name.trim()) {
+        toast({
+          title: "입력 오류",
+          description: "프로필 이름을 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (!formData.api_key.trim()) {
+        toast({
+          title: "입력 오류", 
+          description: "API 키를 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // 2. profile이 있으면 수정(update), 없으면 생성(create)
+      if (profile) {
+        // 수정 모드
+        await modelProfileAPI.updateProfile(profile.id, {
+          name: formData.name.trim(),
+          api_key: formData.api_key.trim(),
+          base_url: formData.base_url.trim() || undefined,
+          temperature: formData.temperature,
+          max_tokens: formData.max_tokens,
+          top_p: formData.top_p,
+        });
+        
+        toast({
+          title: "성공",
+          description: `"${formData.name}" 프로필이 수정되었습니다.`,
+        });
+      } else {
+        // 생성 모드
+        await modelProfileAPI.createProfile({
+          name: formData.name.trim(),
+          provider: formData.provider,
+          model: formData.model,
+          api_key: formData.api_key.trim(),
+          base_url: formData.base_url.trim() || undefined,
+          temperature: formData.temperature,
+          max_tokens: formData.max_tokens,
+          top_p: formData.top_p,
+        });
+        
+        toast({
+          title: "성공",
+          description: `"${formData.name}" 프로필이 등록되었습니다.`,
+        });
+      }
+      
+      // 3. 성공 시 onSuccess() 호출하여 목록 새로고침
+      onSuccess();
+      
     } catch (error) {
-      console.error("모델 설정 저장 오류:", error);
+      console.error("모델 프로필 저장 오류:", error);
       toast({
         title: "오류",
-        description: "모델 설정 저장 중 오류가 발생했습니다.",
+        description: "모델 프로필 저장 중 오류가 발생했습니다.",
         variant: "destructive",
       });
     } finally {
@@ -185,170 +290,85 @@ export default function ModelsPage() {
     }
   };
 
-  const testLLMConnection = async () => {
-    setTestingLLM(true);
-    try {
-      const result = await modelSettingsAPI.testLLMConnection({
-        provider: settings.llm_provider,
-        model: settings.llm_model,
-        api_key: settings.llm_api_key,
-      });
-      
-      if (result.status === "success") {
-        toast({
-          title: "성공",
-          description: result.message || "LLM 연결 테스트가 성공했습니다.",
-        });
-      } else {
-        toast({
-          title: "테스트 실패",
-          description: result.message || "LLM 연결 테스트에 실패했습니다.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("LLM 연결 테스트 오류:", error);
-      toast({
-        title: "오류",
-        description: "LLM 연결 테스트 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setTestingLLM(false);
-    }
-  };
-
-  const testEmbeddingConnection = async () => {
-    setTestingEmbedding(true);
-    try {
-      const result = await modelSettingsAPI.testEmbeddingConnection({
-        provider: settings.embedding_provider,
-        model: settings.embedding_model,
-        api_key: settings.embedding_api_key,
-      });
-      
-      if (result.status === "success") {
-        toast({
-          title: "성공",
-          description: result.message || "임베딩 연결 테스트가 성공했습니다.",
-        });
-      } else {
-        toast({
-          title: "테스트 실패",
-          description: result.message || "임베딩 연결 테스트에 실패했습니다.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("임베딩 연결 테스트 오류:", error);
-      toast({
-        title: "오류",
-        description: "임베딩 연결 테스트 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setTestingEmbedding(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">모델 설정을 불러오는 중...</div>
-        </div>
-      </div>
-    );
-  }
+  const currentProvider = LLM_PROVIDERS[formData.provider as keyof typeof LLM_PROVIDERS];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Bot className="h-8 w-8" />
-            모델 설정
-          </h1>
-          <p className="text-muted-foreground">
-            LLM 및 임베딩 모델을 설정하고 관리합니다.
-          </p>
-        </div>
-        <Button onClick={handleSave} disabled={saving}>
-          <Save className="h-4 w-4 mr-2" />
-          {saving ? "저장 중..." : "저장"}
-        </Button>
-      </div>
-
-      {/* LLM 모델 설정 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            LLM 모델 설정
-          </CardTitle>
-          <CardDescription>
-            대화형 AI 모델을 선택하고 설정합니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {profile ? "모델 프로필 수정" : "새 모델 프로필 등록"}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium">프로필 이름</label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="예: 개발용 GPT-4o"
+                className="mt-1"
+                required
+              />
+            </div>
             <div>
               <label className="text-sm font-medium">제공업체</label>
               <select
                 className="mt-1 w-full border rounded-md p-2 text-sm"
-                value={settings.llm_provider}
-                onChange={(e) => handleLLMProviderChange(e.target.value)}
+                value={formData.provider}
+                onChange={(e) => handleProviderChange(e.target.value)}
               >
-                {providersData.llm_providers.map((provider) => (
-                  <option key={provider.id} value={provider.id} disabled={provider.models.length === 0}>
+                {Object.entries(LLM_PROVIDERS).map(([key, provider]) => (
+                  <option key={key} value={key}>
                     {provider.name}
                   </option>
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">모델</label>
               <select
                 className="mt-1 w-full border rounded-md p-2 text-sm"
-                value={settings.llm_model}
-                onChange={(e) =>
-                  setSettings({ ...settings, llm_model: e.target.value })
-                }
-                disabled={availableLLMModels.length === 0}
+                value={formData.model}
+                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
               >
-                {availableLLMModels.length === 0 ? (
-                  <option value="">사용 가능한 모델이 없습니다</option>
-                ) : (
-                  availableLLMModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id} ({model.name})
-                    </option>
-                  ))
-                )}
+                {currentProvider?.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
               </select>
-              {availableLLMModels.find(m => m.id === settings.llm_model)?.description && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {availableLLMModels.find(m => m.id === settings.llm_model)?.description}
-                </p>
-              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium">API 키</label>
+              <Input
+                type="password"
+                value={formData.api_key}
+                onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                placeholder="API 키를 입력하세요"
+                className="mt-1"
+                required
+              />
             </div>
           </div>
-          <div>
-            <label className="text-sm font-medium flex items-center gap-1">
-              <Key className="h-4 w-4" />
-              API 키
-            </label>
-            <Input
-              type="password"
-              value={settings.llm_api_key}
-              onChange={(e) =>
-                setSettings({ ...settings, llm_api_key: e.target.value })
-              }
-              placeholder="API 키를 입력하세요"
-              className="mt-1"
-            />
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
+
+          {formData.provider === "openai" && (
+            <div>
+              <label className="text-sm font-medium">Base URL (선택사항)</label>
+              <Input
+                value={formData.base_url}
+                onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
+                placeholder="예: https://api.openai.com/v1"
+                className="mt-1"
+              />
+            </div>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="text-sm font-medium">온도 (Temperature)</label>
               <Input
@@ -356,31 +376,18 @@ export default function ModelsPage() {
                 min="0"
                 max="2"
                 step="0.1"
-                value={settings.llm_temperature}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    llm_temperature: parseFloat(e.target.value),
-                  })
-                }
+                value={formData.temperature}
+                onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
                 className="mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                0-2 사이 값 (낮을수록 일관적)
-              </p>
             </div>
             <div>
               <label className="text-sm font-medium">최대 토큰</label>
               <Input
                 type="number"
                 min="1"
-                value={settings.llm_max_tokens || 4000}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    llm_max_tokens: parseInt(e.target.value),
-                  })
-                }
+                value={formData.max_tokens}
+                onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
                 className="mt-1"
               />
             </div>
@@ -391,28 +398,269 @@ export default function ModelsPage() {
                 min="0"
                 max="1"
                 step="0.1"
-                value={settings.llm_top_p || 1.0}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    llm_top_p: parseFloat(e.target.value),
-                  })
-                }
+                value={formData.top_p}
+                onChange={(e) => setFormData({ ...formData, top_p: parseFloat(e.target.value) })}
                 className="mt-1"
               />
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={testLLMConnection}
-            disabled={testingLLM}
-            className="w-full"
-          >
-            <TestTube className="h-4 w-4 mr-2" />
-            {testingLLM ? "연결 테스트 중..." : "LLM 연결 테스트"}
-          </Button>
-        </CardContent>
-      </Card>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              취소
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "저장 중..." : profile ? "수정" : "등록"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// 임베딩 설정 인터페이스
+interface EmbeddingSettings {
+  provider: string;
+  model: string;
+  api_key: string;
+  dimension: number;
+}
+
+export default function ModelsPage() {
+  const { toast } = useToast();
+  const [profiles, setProfiles] = useState<ModelProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | undefined>();
+  const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings>({
+    provider: "openai",
+    model: "text-embedding-3-small", 
+    api_key: "",
+    dimension: 1536
+  });
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<ModelProfile | undefined>();
+  const [savingEmbedding, setSavingEmbedding] = useState(false);
+
+  const loadProfiles = async () => {
+    try {
+      const data: ModelProfilesResponse = await modelProfileAPI.getProfiles();
+      setProfiles(data.profiles);
+      setActiveProfileId(data.active_profile_id);
+    } catch (error) {
+      console.error("모델 프로필 로드 오류:", error);
+      toast({
+        title: "오류",
+        description: "모델 프로필을 불러오는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadEmbeddingSettings = async () => {
+    try {
+      const data = await modelSettingsAPI.getSettings();
+      setEmbeddingSettings({
+        provider: data.embedding_provider || "openai",
+        model: data.embedding_model || "text-embedding-3-small",
+        api_key: data.embedding_api_key || "",
+        dimension: data.embedding_dimension || 1536
+      });
+    } catch (error) {
+      console.error("임베딩 설정 로드 오류:", error);
+    }
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([loadProfiles(), loadEmbeddingSettings()]);
+      setLoading(false);
+    };
+    loadData();
+  }, []);
+
+  const handleEdit = (profile: ModelProfile) => {
+    setEditingProfile(profile);
+    setFormOpen(true);
+  };
+
+  const handleDelete = async (profile: ModelProfile) => {
+    if (!confirm(`"${profile.name}" 프로필을 삭제하시겠습니까?`)) return;
+    
+    try {
+      await modelProfileAPI.deleteProfile(profile.id);
+      toast({
+        title: "성공",
+        description: "모델 프로필이 삭제되었습니다.",
+      });
+      await loadProfiles();
+    } catch (error) {
+      console.error("모델 프로필 삭제 오류:", error);
+      toast({
+        title: "오류",
+        description: "모델 프로필 삭제 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleActivate = async (profile: ModelProfile) => {
+    try {
+      await modelProfileAPI.activateProfile(profile.id);
+      toast({
+        title: "성공",
+        description: `"${profile.name}" 프로필이 활성화되었습니다.`,
+      });
+      await loadProfiles();
+    } catch (error) {
+      console.error("모델 프로필 활성화 오류:", error);
+      toast({
+        title: "오류",
+        description: "모델 프로필 활성화 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTest = async (profile: ModelProfile) => {
+    try {
+      const result = await modelProfileAPI.testProfile(profile.id);
+      toast({
+        title: "테스트 성공",
+        description: result.message || `"${profile.name}" 연결 테스트가 성공했습니다.`,
+      });
+    } catch (error) {
+      console.error("모델 프로필 테스트 오류:", error);
+      toast({
+        title: "테스트 실패",
+        description: "모델 연결 테스트에 실패했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFormSuccess = async () => {
+    setFormOpen(false);
+    setEditingProfile(undefined);
+    await loadProfiles();
+  };
+
+  const handleEmbeddingProviderChange = (provider: string) => {
+    const providerInfo = EMBEDDING_PROVIDERS[provider as keyof typeof EMBEDDING_PROVIDERS];
+    const firstModel = providerInfo?.models[0];
+    
+    setEmbeddingSettings({
+      ...embeddingSettings,
+      provider,
+      model: firstModel?.id || "",
+      dimension: firstModel?.dimension || 1536,
+    });
+  };
+
+  const handleEmbeddingModelChange = (modelId: string) => {
+    const currentProvider = EMBEDDING_PROVIDERS[embeddingSettings.provider as keyof typeof EMBEDDING_PROVIDERS];
+    const selectedModel = currentProvider?.models.find(model => model.id === modelId);
+    
+    setEmbeddingSettings({
+      ...embeddingSettings,
+      model: modelId,
+      dimension: selectedModel?.dimension || embeddingSettings.dimension,
+    });
+  };
+
+  const saveEmbeddingSettings = async () => {
+    setSavingEmbedding(true);
+    try {
+      console.log("임베딩 설정 저장 시도:", embeddingSettings);
+      
+      const result = await modelSettingsAPI.updateModelSettings({
+        embedding_provider: embeddingSettings.provider,
+        embedding_model: embeddingSettings.model,
+        embedding_api_key: embeddingSettings.api_key,
+        embedding_dimension: embeddingSettings.dimension,
+      });
+      
+      console.log("임베딩 설정 저장 결과:", result);
+      
+      toast({
+        title: "성공",
+        description: "임베딩 모델 설정이 저장되었습니다.",
+      });
+    } catch (error: any) {
+      console.error("임베딩 설정 저장 오류:", error);
+      console.error("오류 상세:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+      
+      toast({
+        title: "오류",
+        description: `임베딩 설정 저장 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingEmbedding(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg">모델 프로필을 불러오는 중...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Settings className="h-8 w-8" />
+            모델 프로필 관리
+          </h1>
+          <p className="text-muted-foreground">
+            여러 모델을 등록하고 필요에 따라 활성 모델을 전환하세요.
+          </p>
+        </div>
+        <Button onClick={() => setFormOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          새 프로필 등록
+        </Button>
+      </div>
+
+      {profiles.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Bot className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium mb-2">등록된 모델 프로필이 없습니다</p>
+            <p className="text-muted-foreground mb-4">첫 번째 모델 프로필을 등록해보세요.</p>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              첫 프로필 등록
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {profiles.map((profile) => (
+            <ModelProfileCard
+              key={profile.id}
+              profile={profile}
+              isActive={profile.id === activeProfileId}
+              onEdit={() => handleEdit(profile)}
+              onDelete={() => handleDelete(profile)}
+              onActivate={() => handleActivate(profile)}
+              onTest={() => handleTest(profile)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* 임베딩 모델 설정 */}
       <Card>
@@ -422,20 +670,20 @@ export default function ModelsPage() {
             임베딩 모델 설정
           </CardTitle>
           <CardDescription>
-            문서 벡터화 모델을 선택하고 설정합니다.
+            문서 벡터화에 사용할 임베딩 모델을 설정합니다. (LLM 프로필과 별도 관리)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">제공업체</label>
               <select
                 className="mt-1 w-full border rounded-md p-2 text-sm"
-                value={settings.embedding_provider}
+                value={embeddingSettings.provider}
                 onChange={(e) => handleEmbeddingProviderChange(e.target.value)}
               >
-                {providersData.embedding_providers.map((provider) => (
-                  <option key={provider.id} value={provider.id} disabled={provider.models.length === 0}>
+                {Object.entries(EMBEDDING_PROVIDERS).map(([key, provider]) => (
+                  <option key={key} value={key}>
                     {provider.name}
                   </option>
                 ))}
@@ -445,85 +693,61 @@ export default function ModelsPage() {
               <label className="text-sm font-medium">모델</label>
               <select
                 className="mt-1 w-full border rounded-md p-2 text-sm"
-                value={settings.embedding_model}
+                value={embeddingSettings.model}
                 onChange={(e) => handleEmbeddingModelChange(e.target.value)}
-                disabled={availableEmbeddingModels.length === 0}
               >
-                {availableEmbeddingModels.length === 0 ? (
-                  <option value="">사용 가능한 모델이 없습니다</option>
-                ) : (
-                  availableEmbeddingModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id} ({model.name})
-                    </option>
-                  ))
-                )}
+                {EMBEDDING_PROVIDERS[embeddingSettings.provider as keyof typeof EMBEDDING_PROVIDERS]?.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.dimension}차원)
+                  </option>
+                ))}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium flex items-center gap-1">
-              <Key className="h-4 w-4" />
-              API 키
-            </label>
+            <label className="text-sm font-medium">API 키</label>
             <Input
               type="password"
-              value={settings.embedding_api_key}
-              onChange={(e) =>
-                setSettings({ ...settings, embedding_api_key: e.target.value })
-              }
-              placeholder="API 키를 입력하세요"
+              value={embeddingSettings.api_key}
+              onChange={(e) => setEmbeddingSettings({ ...embeddingSettings, api_key: e.target.value })}
+              placeholder="임베딩 모델 API 키"
               className="mt-1"
             />
           </div>
           <div>
             <label className="text-sm font-medium flex items-center gap-2">
               임베딩 차원
-              {availableEmbeddingModels.find(m => m.id === settings.embedding_model) && (
-                <Badge variant="secondary" className="text-xs">
-                  자동: {availableEmbeddingModels.find(m => m.id === settings.embedding_model)?.dimension}차원
-                </Badge>
-              )}
+              <Badge variant="secondary" className="text-xs">
+                현재: {embeddingSettings.dimension}차원
+              </Badge>
             </label>
             <Input
               type="number"
-              value={settings.embedding_dimension || 1536}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  embedding_dimension: parseInt(e.target.value),
-                })
-              }
+              value={embeddingSettings.dimension}
+              onChange={(e) => setEmbeddingSettings({ ...embeddingSettings, dimension: parseInt(e.target.value) })}
               className="mt-1"
               placeholder="1536"
             />
-            <div className="text-xs text-muted-foreground mt-1 space-y-1">
-              <p>선택한 모델에 따라 자동으로 설정됩니다.</p>
-              {availableEmbeddingModels.length > 0 && (
-                <div className="grid gap-1">
-                  <span className="font-medium">사용 가능한 차원:</span>
-                  {availableEmbeddingModels.map((model) => (
-                    <div key={model.id} className="flex justify-between text-xs">
-                      <span>{model.name}:</span>
-                      <span className="font-mono">{model.dimension}차원</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
           <Button
-            variant="outline"
-            onClick={testEmbeddingConnection}
-            disabled={testingEmbedding}
+            onClick={saveEmbeddingSettings}
+            disabled={savingEmbedding}
             className="w-full"
           >
-            <TestTube className="h-4 w-4 mr-2" />
-            {testingEmbedding ? "연결 테스트 중..." : "임베딩 연결 테스트"}
+            {savingEmbedding ? "저장 중..." : "임베딩 설정 저장"}
           </Button>
         </CardContent>
       </Card>
 
+      <ModelProfileForm
+        profile={editingProfile}
+        isOpen={formOpen}
+        onClose={() => {
+          setFormOpen(false);
+          setEditingProfile(undefined);
+        }}
+        onSuccess={handleFormSuccess}
+      />
     </div>
   );
 }

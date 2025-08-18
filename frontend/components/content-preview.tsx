@@ -8,20 +8,33 @@ import { detectContentType, ContentDetectionResult } from "@/utils/contentDetect
 
 interface ContentPreviewProps {
   content: string;
+  outputFormat?: string; // 사용자가 명시적으로 선택한 출력 형식
 }
 
-const ContentPreview: React.FC<ContentPreviewProps> = ({ content }) => {
+const ContentPreview: React.FC<ContentPreviewProps> = ({ content, outputFormat }) => {
   const [detectionResult, setDetectionResult] =
     useState<ContentDetectionResult | null>(null);
 
   useEffect(() => {
     if (content) {
-      const result = detectContentType(content);
-      setDetectionResult(result);
+      // 사용자가 명시적으로 출력 형식을 선택한 경우 해당 형식을 강제 적용
+      if (outputFormat && outputFormat !== "auto") {
+        setDetectionResult({
+          contentType: outputFormat as any,
+          confidence: 1.0,
+          subType: "user-forced",
+          sanitizedContent: content,
+          textContent: content,
+        });
+      } else {
+        // 자동 감지 모드
+        const result = detectContentType(content);
+        setDetectionResult(result);
+      }
     } else {
       setDetectionResult(null);
     }
-  }, [content]);
+  }, [content, outputFormat]);
 
   if (!detectionResult) {
     // 렌더링 전이나 content가 없을 때 간단한 표시
@@ -32,10 +45,9 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({ content }) => {
     detectionResult;
 
   // 신뢰도가 너무 낮으면 일반 텍스트로 처리 (text 타입 제외)
-  if (confidence < 0.6 && contentType !== "text") {
-    console.log(
-      `콘텐츠 타입 '${contentType}' 신뢰도(${confidence})가 낮아 텍스트로 표시합니다.`
-    );
+  // 마크다운의 경우 기준을 낮춰서 더 자주 렌더링되도록 함
+  const confidenceThreshold = contentType === "markdown" ? 0.5 : 0.6;
+  if (confidence < confidenceThreshold && contentType !== "text") {
     return (
       <div className="whitespace-pre-wrap p-2">{textContent || content}</div>
     );

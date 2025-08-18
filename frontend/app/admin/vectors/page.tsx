@@ -41,6 +41,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+// import {
+//   Tooltip,
+//   TooltipContent,
+//   TooltipProvider,
+//   TooltipTrigger,
+// } from "@/components/ui/tooltip";
 import {
   Database,
   Search,
@@ -62,7 +68,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { vectorAPI } from "@/lib/api";
+import { vectorAPI, fileAPI } from "@/lib/api";
 
 interface VectorMetadata {
   id: number;
@@ -99,6 +105,31 @@ interface SearchResult {
   metadata: any;
   distance?: number;
   similarity?: number;
+  has_images?: boolean;
+  related_images?: any[];
+  image_count?: number;
+}
+
+interface FileMetadata {
+  file_id: string;
+  filename: string;
+  saved_filename: string;
+  status: string;
+  file_size: number;
+  file_path?: string;
+  file_hash?: string;
+  category_id?: string;
+  category_name?: string;
+  upload_time: string;
+  preprocessing_started_at?: string;
+  preprocessing_completed_at?: string;
+  vectorization_started_at?: string;
+  vectorization_completed_at?: string;
+  error_message?: string;
+  chunk_count?: number;
+  preprocessing_method?: string;
+  vectorized: boolean;
+  processing_options?: any;
 }
 
 export default function VectorAnalysisPage() {
@@ -127,35 +158,32 @@ export default function VectorAnalysisPage() {
   const [collectionTotal, setCollectionTotal] = useState(0);
   const [collectionSearch, setCollectionSearch] = useState("");
   
+  // ChromaDB 필터 states
+  const [collectionCategoryFilter, setCollectionCategoryFilter] = useState("all");
+  const [collectionFilenameFilter, setCollectionFilenameFilter] = useState("");
+  const [collectionImageFilter, setCollectionImageFilter] = useState("all");
+  
   // Search states
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchCollection, setSearchCollection] = useState<string>("all");
+  // searchCollection 제거 - VectorService 통합 검색 사용
   const [topK, setTopK] = useState(10);
 
-  // Sync states
-  const [syncStatus, setSyncStatus] = useState<any>({});
-  const [syncResults, setSyncResults] = useState<any>(null);
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  // File metadata states
+  const [fileMetadata, setFileMetadata] = useState<FileMetadata[]>([]);
+  const [fileMetadataTotal, setFileMetadataTotal] = useState(0);
+  const [fileMetadataPage, setFileMetadataPage] = useState(1);
+  const [fileMetadataLimit] = useState(20);
+  const [fileMetadataSearch, setFileMetadataSearch] = useState("");
+  const [fileCategoryFilter, setFileCategoryFilter] = useState("all");
+  const [fileStatusFilter, setFileStatusFilter] = useState("all");
+
   const [showDeleteModal, setShowDeleteModal] = useState<{show: boolean, fileId: string, filename: string}>({
     show: false,
     fileId: '',
     filename: ''
   });
-
-  // Cleanup states
-  const [orphanedData, setOrphanedData] = useState<any>({});
-  const [showCleanupModal, setShowCleanupModal] = useState(false);
-  const [cleanupLoading, setCleanupLoading] = useState(false);
-  const [orphanedLoading, setOrphanedLoading] = useState(false);
-
-  // Flow ID update states
-  const [showFlowIdUpdateModal, setShowFlowIdUpdateModal] = useState(false);
-  const [flowIdUpdateLoading, setFlowIdUpdateLoading] = useState(false);
-  const [debugLoading, setDebugLoading] = useState(false);
-  const [debugResult, setDebugResult] = useState<any>(null);
 
   // Load initial data
   useEffect(() => {
@@ -174,7 +202,14 @@ export default function VectorAnalysisPage() {
     if (selectedCollection) {
       loadCollectionData();
     }
-  }, [selectedCollection, collectionPage, collectionSearch]);
+  }, [selectedCollection, collectionPage, collectionSearch, collectionCategoryFilter, collectionFilenameFilter, collectionImageFilter]);
+
+  // Load file metadata when filters change
+  useEffect(() => {
+    if (!loading) {
+      loadFileMetadata();
+    }
+  }, [fileMetadataPage, fileMetadataSearch, fileCategoryFilter, fileStatusFilter]);
 
   const loadInitialData = async () => {
     try {
@@ -183,8 +218,7 @@ export default function VectorAnalysisPage() {
         loadMetadataStats(),
         loadMetadata(),
         loadCollections(),
-        loadSyncStatus(),
-        loadOrphanedData()
+        loadFileMetadata()
       ]);
     } catch (error) {
       console.error("초기 데이터 로드 오류:", error);
@@ -247,6 +281,43 @@ export default function VectorAnalysisPage() {
     }
   };
 
+
+  const loadFileMetadata = async () => {
+    try {
+      const categoryId = fileCategoryFilter === "all" ? undefined : fileCategoryFilter;
+      const files = await fileAPI.getFiles(categoryId);
+      
+      // 검색 필터 적용
+      let filteredFiles = files;
+      if (fileMetadataSearch) {
+        filteredFiles = files.filter((file: FileMetadata) => 
+          file.filename.toLowerCase().includes(fileMetadataSearch.toLowerCase()) ||
+          file.file_id.toLowerCase().includes(fileMetadataSearch.toLowerCase())
+        );
+      }
+      
+      // 상태 필터 적용
+      if (fileStatusFilter !== "all") {
+        filteredFiles = filteredFiles.filter((file: FileMetadata) => file.status === fileStatusFilter);
+      }
+      
+      // 페이지네이션 적용
+      const startIndex = (fileMetadataPage - 1) * fileMetadataLimit;
+      const endIndex = startIndex + fileMetadataLimit;
+      const paginatedFiles = filteredFiles.slice(startIndex, endIndex);
+      
+      setFileMetadata(paginatedFiles);
+      setFileMetadataTotal(filteredFiles.length);
+    } catch (error) {
+      console.error("파일 메타데이터 로드 오류:", error);
+      toast({
+        title: "파일 메타데이터 로드 실패",
+        description: "파일 메타데이터를 불러오는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const loadCollectionData = async () => {
     if (!selectedCollection) return;
     
@@ -255,6 +326,9 @@ export default function VectorAnalysisPage() {
         page: collectionPage,
         limit: collectionLimit,
         search: collectionSearch || undefined,
+        category_name: collectionCategoryFilter === "all" ? undefined : collectionCategoryFilter,
+        filename: collectionFilenameFilter || undefined,
+        has_images: collectionImageFilter === "all" ? undefined : collectionImageFilter === "true",
       };
       
       const response = await vectorAPI.getCollectionData(selectedCollection, params);
@@ -284,7 +358,6 @@ export default function VectorAnalysisPage() {
       setSearchLoading(true);
       const params = {
         query: searchQuery,
-        collection_name: searchCollection === "all" ? undefined : searchCollection,
         top_k: topK,
       };
       
@@ -307,46 +380,6 @@ export default function VectorAnalysisPage() {
     }
   };
 
-  const loadSyncStatus = async () => {
-    try {
-      const status = await vectorAPI.getSyncStatus();
-      setSyncStatus(status);
-    } catch (error) {
-      console.error("동기화 상태 로드 오류:", error);
-    }
-  };
-
-  const handleSync = async () => {
-    try {
-      setSyncLoading(true);
-      const results = await vectorAPI.syncMetadata();
-      setSyncResults(results);
-      
-      toast({
-        title: "동기화 완료",
-        description: `${results.summary.updated_files_count}개 파일이 업데이트되었습니다.`,
-      });
-
-      // 데이터 새로고침
-      await Promise.all([
-        loadMetadataStats(),
-        loadMetadata(),
-        loadSyncStatus()
-      ]);
-
-      setShowSyncModal(false);
-    } catch (error: any) {
-      console.error("동기화 오류:", error);
-      toast({
-        title: "동기화 실패",
-        description: error.response?.data?.detail || "동기화 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setSyncLoading(false);
-    }
-  };
-
   const handleDeleteMetadata = async () => {
     try {
       await vectorAPI.deleteMetadata(showDeleteModal.fileId);
@@ -364,102 +397,6 @@ export default function VectorAnalysisPage() {
         description: "메타데이터 삭제 중 오류가 발생했습니다.",
         variant: "destructive",
       });
-    }
-  };
-
-  const loadOrphanedData = async () => {
-    try {
-      setOrphanedLoading(true);
-      const data = await vectorAPI.getOrphanedMetadata();
-      setOrphanedData(data);
-    } catch (error) {
-      console.error("고아 메타데이터 로드 오류:", error);
-    } finally {
-      setOrphanedLoading(false);
-    }
-  };
-
-  const handleCleanupOrphaned = async () => {
-    try {
-      setCleanupLoading(true);
-      const result = await vectorAPI.cleanupOrphanedMetadata();
-      
-      toast({
-        title: "정리 완료",
-        description: `${result.deleted_count}개의 고아 메타데이터가 삭제되었습니다.`,
-      });
-
-      // 데이터 새로고침
-      await Promise.all([
-        loadMetadataStats(),
-        loadMetadata(),
-        loadOrphanedData(),
-        loadSyncStatus()
-      ]);
-
-      setShowCleanupModal(false);
-    } catch (error: any) {
-      console.error("고아 메타데이터 정리 오류:", error);
-      toast({
-        title: "정리 실패",
-        description: error.response?.data?.detail || "고아 메타데이터 정리 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setCleanupLoading(false);
-    }
-  };
-
-  const handleUpdateFlowIds = async () => {
-    try {
-      setFlowIdUpdateLoading(true);
-      const result = await vectorAPI.updateMissingFlowIds();
-      
-      toast({
-        title: "Flow ID 업데이트 완료",
-        description: `${result.updated_count}개 레코드의 flow_id가 업데이트되었습니다.`,
-      });
-
-      // 데이터 새로고침
-      await Promise.all([
-        loadMetadataStats(),
-        loadMetadata(),
-        loadSyncStatus()
-      ]);
-
-      setShowFlowIdUpdateModal(false);
-    } catch (error: any) {
-      console.error("Flow ID 업데이트 오류:", error);
-      toast({
-        title: "업데이트 실패",
-        description: error.response?.data?.detail || "Flow ID 업데이트 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setFlowIdUpdateLoading(false);
-    }
-  };
-
-  const handleDebugFlowDetection = async () => {
-    try {
-      setDebugLoading(true);
-      const result = await vectorAPI.debugFlowDetection();
-      setDebugResult(result);
-      
-      toast({
-        title: "Flow 결정 테스트 완료",
-        description: result.success ? `Flow ID: ${result.detected_flow_id}` : "Flow를 찾을 수 없습니다",
-        variant: result.success ? "default" : "destructive",
-      });
-    } catch (error: any) {
-      console.error("Flow 디버깅 오류:", error);
-      toast({
-        title: "디버깅 실패", 
-        description: error.response?.data?.detail || "Flow 디버깅 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setDebugLoading(false);
     }
   };
 
@@ -505,57 +442,20 @@ export default function VectorAnalysisPage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             새로고침
           </Button>
-          {syncStatus.sync_needed && (
-            <Button 
-              onClick={() => setActiveTab("sync")} 
-              variant="default"
-              className="animate-pulse"
-            >
-              <AlertCircle className="h-4 w-4 mr-2" />
-              동기화 필요
-            </Button>
-          )}
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">개요</TabsTrigger>
-          <TabsTrigger value="metadata">메타데이터</TabsTrigger>
+          <TabsTrigger value="metadata">벡터 메타데이터</TabsTrigger>
+          <TabsTrigger value="filedata">파일 메타데이터</TabsTrigger>
           <TabsTrigger value="chromadb">ChromaDB</TabsTrigger>
           <TabsTrigger value="search">벡터 검색</TabsTrigger>
-          <TabsTrigger value="sync">동기화</TabsTrigger>
         </TabsList>
 
         {/* 개요 탭 */}
         <TabsContent value="overview" className="space-y-6">
-          {/* 동기화 상태 알림 */}
-          {syncStatus.sync_needed && (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-orange-600" />
-                    동기화 필요
-                  </CardTitle>
-                  <Button onClick={() => setActiveTab("sync")} size="sm">
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    동기화 탭으로 이동
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-orange-800">
-                  {syncStatus.message || "메타데이터 DB와 ChromaDB 간에 데이터 차이가 발견되었습니다."}
-                  {syncStatus.difference && (
-                    <span className="block mt-1">
-                      차이: {Math.abs(syncStatus.difference)}개 ({syncStatus.difference > 0 ? "메타데이터가 많음" : "ChromaDB가 많음"})
-                    </span>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
-          )}
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -946,6 +846,84 @@ export default function VectorAnalysisPage() {
             </Card>
           </div>
 
+          {/* 고급 필터 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                고급 필터
+              </CardTitle>
+              <CardDescription>
+                메타데이터 기반으로 문서를 필터링합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">카테고리</label>
+                  <Select value={collectionCategoryFilter} onValueChange={setCollectionCategoryFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="카테고리 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">모든 카테고리</SelectItem>
+                      {Object.keys(metadataStats.categories || {}).map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">파일명</label>
+                  <Input
+                    placeholder="파일명 검색..."
+                    value={collectionFilenameFilter}
+                    onChange={(e) => setCollectionFilenameFilter(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && loadCollectionData()}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">이미지 포함</label>
+                  <Select value={collectionImageFilter} onValueChange={setCollectionImageFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="이미지 필터" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="true">이미지 포함</SelectItem>
+                      <SelectItem value="false">이미지 없음</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button onClick={loadCollectionData} className="w-full">
+                    <Search className="h-4 w-4 mr-2" />
+                    필터 적용
+                  </Button>
+                </div>
+              </div>
+              
+              {/* 필터 초기화 버튼 */}
+              <div className="mt-4 flex justify-end">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setCollectionCategoryFilter("all");
+                    setCollectionFilenameFilter("");
+                    setCollectionImageFilter("all");
+                    setCollectionSearch("");
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  필터 초기화
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* 컬렉션 데이터 */}
           {selectedCollection && (
             <Card>
@@ -953,7 +931,35 @@ export default function VectorAnalysisPage() {
                 <CardTitle>{selectedCollection} 컬렉션 데이터</CardTitle>
                 <CardDescription>
                   총 {collectionTotal}개 문서 • {Math.ceil(collectionTotal / collectionLimit)}페이지 중 {collectionPage}페이지
+                  {(collectionCategoryFilter !== "all" || collectionFilenameFilter || collectionImageFilter !== "all" || collectionSearch) && (
+                    <span className="text-blue-600"> (필터 적용됨)</span>
+                  )}
                 </CardDescription>
+                {/* 적용된 필터 표시 */}
+                {(collectionCategoryFilter !== "all" || collectionFilenameFilter || collectionImageFilter !== "all" || collectionSearch) && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {collectionSearch && (
+                      <Badge variant="secondary" className="text-xs">
+                        검색: {collectionSearch}
+                      </Badge>
+                    )}
+                    {collectionCategoryFilter !== "all" && (
+                      <Badge variant="secondary" className="text-xs">
+                        카테고리: {collectionCategoryFilter}
+                      </Badge>
+                    )}
+                    {collectionFilenameFilter && (
+                      <Badge variant="secondary" className="text-xs">
+                        파일명: {collectionFilenameFilter}
+                      </Badge>
+                    )}
+                    {collectionImageFilter !== "all" && (
+                      <Badge variant="secondary" className="text-xs">
+                        이미지: {collectionImageFilter === "true" ? "포함" : "없음"}
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -1005,11 +1011,47 @@ export default function VectorAnalysisPage() {
                             {Object.entries(doc.metadata)
                               .filter(([key]) => !['filename', 'category_name', 'file_id', 'category_id'].includes(key))
                               .slice(0, 5)
-                              .map(([key, value]) => (
-                                <Badge key={key} variant="outline" className="text-xs">
-                                  {key}: {String(value).substring(0, 20)}
-                                </Badge>
-                              ))}
+                              .map(([key, value]) => {
+                                const valueStr = String(value);
+                                const isLongContent = valueStr.length > 20;
+                                const displayValue = isLongContent ? valueStr.substring(0, 20) + "..." : valueStr;
+                                
+                                if (key === 'file_images_json' || isLongContent) {
+                                  const tooltipContent = key === 'file_images_json' ? 
+                                    (() => {
+                                      try {
+                                        return JSON.stringify(JSON.parse(valueStr), null, 2);
+                                      } catch (e) {
+                                        return valueStr;
+                                      }
+                                    })() : valueStr;
+                                  
+                                  return (
+                                    <div key={key} className="relative group">
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-xs cursor-help hover:bg-muted"
+                                      >
+                                        {key}: {displayValue}
+                                      </Badge>
+                                      <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-96 max-w-lg">
+                                        <div className="bg-black text-white text-xs rounded p-3 shadow-lg border">
+                                          <pre className="whitespace-pre-wrap break-words max-h-60 overflow-auto">
+                                            {tooltipContent}
+                                          </pre>
+                                        </div>
+                                        <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black"></div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <Badge key={key} variant="outline" className="text-xs">
+                                    {key}: {displayValue}
+                                  </Badge>
+                                );
+                              })}
                           </div>
                         </div>
                       )}
@@ -1048,6 +1090,219 @@ export default function VectorAnalysisPage() {
           )}
         </TabsContent>
 
+        {/* 파일 메타데이터 탭 */}
+        <TabsContent value="filedata" className="space-y-6">
+          {/* 필터 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                파일 필터 및 검색
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <Input
+                    placeholder="파일명 또는 ID 검색..."
+                    value={fileMetadataSearch}
+                    onChange={(e) => setFileMetadataSearch(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && loadFileMetadata()}
+                  />
+                </div>
+                <div>
+                  <Select value={fileCategoryFilter} onValueChange={setFileCategoryFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="카테고리 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">모든 카테고리</SelectItem>
+                      {Object.keys(metadataStats.categories || {}).map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Select value={fileStatusFilter} onValueChange={setFileStatusFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="상태 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">모든 상태</SelectItem>
+                      <SelectItem value="uploaded">업로드됨</SelectItem>
+                      <SelectItem value="preprocessing">전처리 중</SelectItem>
+                      <SelectItem value="preprocessed">전처리 완료</SelectItem>
+                      <SelectItem value="vectorizing">벡터화 중</SelectItem>
+                      <SelectItem value="completed">완료</SelectItem>
+                      <SelectItem value="failed">실패</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={loadFileMetadata}>
+                  <Search className="h-4 w-4 mr-2" />
+                  검색
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 파일 메타데이터 테이블 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>파일 메타데이터</CardTitle>
+              <CardDescription>
+                총 {fileMetadataTotal}개 파일 • {Math.ceil(fileMetadataTotal / fileMetadataLimit)}페이지 중 {fileMetadataPage}페이지
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>파일명</TableHead>
+                    <TableHead>카테고리</TableHead>
+                    <TableHead>상태</TableHead>
+                    <TableHead>벡터화</TableHead>
+                    <TableHead>청크수</TableHead>
+                    <TableHead>용량</TableHead>
+                    <TableHead>업로드일</TableHead>
+                    <TableHead>작업</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fileMetadata.map((file) => (
+                    <TableRow key={file.file_id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{file.filename}</p>
+                          <p className="text-xs text-muted-foreground">{file.file_id}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {file.category_name ? (
+                          <Badge variant="outline">{file.category_name}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          file.status === "completed" ? "default" :
+                          file.status === "failed" ? "destructive" :
+                          file.status === "preprocessing" || file.status === "vectorizing" ? "secondary" :
+                          "outline"
+                        }>
+                          {file.status === "uploaded" ? "업로드됨" :
+                           file.status === "preprocessing" ? "전처리 중" :
+                           file.status === "preprocessed" ? "전처리 완료" :
+                           file.status === "vectorizing" ? "벡터화 중" :
+                           file.status === "completed" ? "완료" :
+                           file.status === "failed" ? "실패" : file.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={file.vectorized ? "default" : "outline"}>
+                          {file.vectorized ? "완료" : "미완료"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {file.chunk_count ? file.chunk_count.toLocaleString() : "-"}
+                      </TableCell>
+                      <TableCell>{formatBytes(file.file_size)}</TableCell>
+                      <TableCell>
+                        {new Date(file.upload_time).toLocaleDateString('ko-KR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>{file.filename}</DialogTitle>
+                                <DialogDescription>파일 메타데이터 상세 정보</DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div className="grid gap-2">
+                                  <p><strong>파일 ID:</strong> {file.file_id}</p>
+                                  <p><strong>저장 파일명:</strong> {file.saved_filename}</p>
+                                  <p><strong>파일 경로:</strong> {file.file_path || "N/A"}</p>
+                                  <p><strong>파일 해시:</strong> {file.file_hash || "N/A"}</p>
+                                  <p><strong>파일 크기:</strong> {formatBytes(file.file_size)}</p>
+                                  <p><strong>상태:</strong> {file.status}</p>
+                                  <p><strong>벡터화:</strong> {file.vectorized ? "완료" : "미완료"}</p>
+                                  {file.chunk_count && <p><strong>청크 수:</strong> {file.chunk_count}</p>}
+                                  {file.preprocessing_method && <p><strong>전처리 방법:</strong> {file.preprocessing_method}</p>}
+                                  <p><strong>업로드 시간:</strong> {new Date(file.upload_time).toLocaleString('ko-KR')}</p>
+                                  {file.preprocessing_started_at && (
+                                    <p><strong>전처리 시작:</strong> {new Date(file.preprocessing_started_at).toLocaleString('ko-KR')}</p>
+                                  )}
+                                  {file.preprocessing_completed_at && (
+                                    <p><strong>전처리 완료:</strong> {new Date(file.preprocessing_completed_at).toLocaleString('ko-KR')}</p>
+                                  )}
+                                  {file.vectorization_started_at && (
+                                    <p><strong>벡터화 시작:</strong> {new Date(file.vectorization_started_at).toLocaleString('ko-KR')}</p>
+                                  )}
+                                  {file.vectorization_completed_at && (
+                                    <p><strong>벡터화 완료:</strong> {new Date(file.vectorization_completed_at).toLocaleString('ko-KR')}</p>
+                                  )}
+                                  {file.error_message && (
+                                    <p className="text-red-600"><strong>오류 메시지:</strong> {file.error_message}</p>
+                                  )}
+                                </div>
+                                {file.processing_options && (
+                                  <div>
+                                    <strong>처리 옵션:</strong>
+                                    <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                                      {JSON.stringify(file.processing_options, null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* 페이지네이션 */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-muted-foreground">
+                  {fileMetadataTotal > 0 && (
+                    `${(fileMetadataPage - 1) * fileMetadataLimit + 1}-${Math.min(fileMetadataPage * fileMetadataLimit, fileMetadataTotal)} / ${fileMetadataTotal}개`
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFileMetadataPage(Math.max(1, fileMetadataPage - 1))}
+                    disabled={fileMetadataPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFileMetadataPage(fileMetadataPage + 1)}
+                    disabled={fileMetadataPage * fileMetadataLimit >= fileMetadataTotal}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* 벡터 검색 탭 */}
         <TabsContent value="search" className="space-y-6">
           <Card>
@@ -1072,19 +1327,7 @@ export default function VectorAnalysisPage() {
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Select value={searchCollection} onValueChange={setSearchCollection}>
-                      <SelectTrigger className="w-32">
-                        <SelectValue placeholder="전체" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">전체 컬렉션</SelectItem>
-                        {collections.map((collection) => (
-                          <SelectItem key={collection.name} value={collection.name}>
-                            {collection.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {/* VectorService 통합 검색 사용 - 컬렉션 선택 불필요 */}
                   </div>
                 </div>
 
@@ -1160,6 +1403,13 @@ export default function VectorAnalysisPage() {
                               유사도: {(result.similarity * 100).toFixed(1)}%
                             </Badge>
                           )}
+                          
+                          {/* 이미지 정보 표시 */}
+                          {result.has_images && result.image_count && result.image_count > 0 && (
+                            <Badge variant="destructive" className="text-xs">
+                              🖼️ 이미지 {result.image_count}개
+                            </Badge>
+                          )}
                         </div>
                         {result.distance && (
                           <span className="text-xs text-muted-foreground">
@@ -1170,6 +1420,35 @@ export default function VectorAnalysisPage() {
                       
                       <p className="text-sm mb-3">{result.document}</p>
                       
+                      {/* 관련 이미지 표시 */}
+                      {result.related_images && result.related_images.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-xs font-medium mb-2">관련 이미지:</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {result.related_images.slice(0, 3).map((image, imgIndex) => (
+                              <div key={imgIndex} className="border rounded p-2 bg-gray-50 text-xs">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    📄 페이지 {image.page}
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {image.relationship_type === 'adjacent' ? '인접' : '페이지 맥락'}
+                                  </Badge>
+                                  <Badge variant="default" className="text-xs">
+                                    신뢰도: {(image.confidence * 100).toFixed(0)}%
+                                  </Badge>
+                                </div>
+                                {image.image_path && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    경로: {image.image_path}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
                       {result.metadata && Object.keys(result.metadata).length > 0 && (
                         <div>
                           <p className="text-xs font-medium mb-1">기타 메타데이터:</p>
@@ -1177,11 +1456,47 @@ export default function VectorAnalysisPage() {
                             {Object.entries(result.metadata)
                               .filter(([key]) => !['filename', 'category_name', 'file_id', 'category_id'].includes(key))
                               .slice(0, 5)
-                              .map(([key, value]) => (
-                                <Badge key={key} variant="outline" className="text-xs">
-                                  {key}: {String(value).substring(0, 20)}
-                                </Badge>
-                              ))}
+                              .map(([key, value]) => {
+                                const valueStr = String(value);
+                                const isLongContent = valueStr.length > 20;
+                                const displayValue = isLongContent ? valueStr.substring(0, 20) + "..." : valueStr;
+                                
+                                if (key === 'file_images_json' || isLongContent) {
+                                  const tooltipContent = key === 'file_images_json' ? 
+                                    (() => {
+                                      try {
+                                        return JSON.stringify(JSON.parse(valueStr), null, 2);
+                                      } catch (e) {
+                                        return valueStr;
+                                      }
+                                    })() : valueStr;
+                                  
+                                  return (
+                                    <div key={key} className="relative group">
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-xs cursor-help hover:bg-muted"
+                                      >
+                                        {key}: {displayValue}
+                                      </Badge>
+                                      <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-96 max-w-lg">
+                                        <div className="bg-black text-white text-xs rounded p-3 shadow-lg border">
+                                          <pre className="whitespace-pre-wrap break-words max-h-60 overflow-auto">
+                                            {tooltipContent}
+                                          </pre>
+                                        </div>
+                                        <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black"></div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <Badge key={key} variant="outline" className="text-xs">
+                                    {key}: {displayValue}
+                                  </Badge>
+                                );
+                              })}
                           </div>
                         </div>
                       )}
@@ -1193,374 +1508,7 @@ export default function VectorAnalysisPage() {
           )}
         </TabsContent>
 
-        {/* 동기화 탭 */}
-        <TabsContent value="sync" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-3">
-            {/* 동기화 상태 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Info className="h-5 w-5" />
-                  동기화 상태
-                </CardTitle>
-                <CardDescription>
-                  메타데이터 DB와 ChromaDB의 동기화 상태를 확인합니다
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">메타데이터 DB</p>
-                      <p className="text-sm text-muted-foreground">
-                        {syncStatus.metadata_files || 0}개 파일, {syncStatus.metadata_chunks || 0}개 청크
-                      </p>
-                    </div>
-                    <div className={`w-3 h-3 rounded-full ${syncStatus.metadata_db_available ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">ChromaDB</p>
-                      <p className="text-sm text-muted-foreground">
-                        {syncStatus.chromadb_vectors || 0}개 벡터
-                      </p>
-                    </div>
-                    <div className={`w-3 h-3 rounded-full ${syncStatus.chromadb_available ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">동기화 상태</p>
-                      <p className="text-sm text-muted-foreground">
-                        {syncStatus.sync_needed ? "동기화 필요" : "동기화됨"}
-                        {syncStatus.difference && ` (차이: ${syncStatus.difference}개)`}
-                      </p>
-                    </div>
-                    <div className={`w-3 h-3 rounded-full ${syncStatus.sync_needed ? 'bg-orange-500' : 'bg-green-500'}`}></div>
-                  </div>
-                </div>
-
-                <Button 
-                  onClick={() => setShowSyncModal(true)} 
-                  disabled={syncLoading}
-                  className="w-full mt-4"
-                  variant={syncStatus.sync_needed ? "default" : "outline"}
-                >
-                  {syncLoading ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      동기화 진행 중...
-                    </>
-                  ) : (
-                    <>
-                      <Database className="h-4 w-4 mr-2" />
-                      데이터베이스 동기화
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* 고아 데이터 정리 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-600" />
-                  고아 데이터 정리
-                </CardTitle>
-                <CardDescription>
-                  청크가 0개인 고아 메타데이터를 정리합니다
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">고아 메타데이터</p>
-                      <p className="text-sm text-muted-foreground">
-                        {orphanedLoading ? "로딩 중..." : `${orphanedData.total_count || 0}개 파일`}
-                      </p>
-                    </div>
-                    <div className={`w-3 h-3 rounded-full ${
-                      orphanedLoading ? 'bg-gray-400' : 
-                      (orphanedData.total_count > 0 ? 'bg-orange-500' : 'bg-green-500')
-                    }`}></div>
-                  </div>
-
-                  {orphanedData.total_count > 0 && (
-                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                      <div className="text-sm text-orange-800">
-                        <p className="font-medium mb-2">정리 대상 파일 ({orphanedData.total_count}개)</p>
-                        <div className="max-h-32 overflow-y-auto space-y-1">
-                          {orphanedData.orphaned_files?.slice(0, 5).map((file: any, index: number) => (
-                            <div key={index} className="text-xs p-2 bg-white rounded border">
-                              <p className="font-medium">{file.filename}</p>
-                              <p className="text-muted-foreground">
-                                카테고리: {file.category_name || '없음'}
-                              </p>
-                            </div>
-                          ))}
-                          {orphanedData.total_count > 5 && (
-                            <div className="text-xs text-center text-muted-foreground">
-                              외 {orphanedData.total_count - 5}개 파일...
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={loadOrphanedData}
-                      variant="outline"
-                      size="sm"
-                      disabled={orphanedLoading}
-                    >
-                      {orphanedLoading ? (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Search className="h-4 w-4 mr-2" />
-                      )}
-                      다시 확인
-                    </Button>
-                    
-                    {orphanedData.total_count > 0 && (
-                      <Button 
-                        onClick={() => setShowCleanupModal(true)}
-                        variant="destructive"
-                        size="sm"
-                        disabled={cleanupLoading}
-                      >
-                        {cleanupLoading ? (
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 mr-2" />
-                        )}
-                        정리하기
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Flow ID 업데이트 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-blue-600" />
-                  Flow ID 업데이트
-                </CardTitle>
-                <CardDescription>
-                  누락된 flow_id를 현재 기본 Flow로 업데이트합니다
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium mb-2">Flow ID 누락 문제</p>
-                      <ul className="list-disc list-inside space-y-1">
-                        <li>기존 벡터화된 파일에 flow_id가 없음</li>
-                        <li>현재 활성 Flow로 일괄 업데이트 가능</li>
-                        <li>벡터화 이력 추적 개선</li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* 디버깅 결과 표시 */}
-                  {debugResult && (
-                    <div className={`p-3 border rounded-lg ${debugResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className={`text-sm ${debugResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                        <p className="font-medium mb-1">
-                          {debugResult.success ? '✅ Flow 결정 성공' : '❌ Flow 결정 실패'}
-                        </p>
-                        <p>{debugResult.message}</p>
-                        {debugResult.error && (
-                          <p className="text-xs mt-1 opacity-75">오류: {debugResult.error}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={handleDebugFlowDetection}
-                      variant="outline"
-                      size="sm"
-                      disabled={debugLoading}
-                      className="flex-1"
-                    >
-                      {debugLoading ? (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Search className="h-4 w-4 mr-2" />
-                      )}
-                      Flow 테스트
-                    </Button>
-
-                    <Button 
-                      onClick={() => setShowFlowIdUpdateModal(true)}
-                      variant="default"
-                      size="sm"
-                      disabled={flowIdUpdateLoading || (debugResult && !debugResult.success)}
-                      className="flex-1"
-                    >
-                      {flowIdUpdateLoading ? (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Zap className="h-4 w-4 mr-2" />
-                      )}
-                      업데이트
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 동기화 결과 */}
-            {syncResults && (
-              <Card className="md:col-span-3">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    동기화 결과
-                  </CardTitle>
-                  <CardDescription>
-                    최근 동기화 작업의 결과입니다
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="font-medium">업데이트된 파일</p>
-                        <p className="text-muted-foreground">{syncResults.summary?.updated_files_count || 0}개</p>
-                      </div>
-                      <div>
-                        <p className="font-medium">고아 메타데이터</p>
-                        <p className="text-muted-foreground">{syncResults.summary?.orphaned_metadata_count || 0}개</p>
-                      </div>
-                      <div>
-                        <p className="font-medium">고아 벡터</p>
-                        <p className="text-muted-foreground">{syncResults.summary?.orphaned_vectors_count || 0}개</p>
-                      </div>
-                      <div>
-                        <p className="font-medium">오류</p>
-                        <p className="text-muted-foreground">{syncResults.summary?.errors_count || 0}개</p>
-                      </div>
-                    </div>
-
-                    {syncResults.updated_files && syncResults.updated_files.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="font-medium mb-2">업데이트된 파일</h4>
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {syncResults.updated_files.map((file: any, index: number) => (
-                            <div key={index} className="text-xs p-2 bg-gray-50 rounded">
-                              <p className="font-medium">{file.filename}</p>
-                              <p className="text-muted-foreground">
-                                {file.recorded_chunks} → {file.actual_chunks} 
-                                ({file.difference > 0 ? '+' : ''}{file.difference})
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {syncResults.errors && syncResults.errors.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="font-medium mb-2 text-red-600">오류</h4>
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {syncResults.errors.map((error: string, index: number) => (
-                            <div key={index} className="text-xs p-2 bg-red-50 rounded text-red-800">
-                              {error}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <p className="text-xs text-muted-foreground mt-4">
-                      동기화 시간: {syncResults.summary?.sync_timestamp ? 
-                        new Date(syncResults.summary.sync_timestamp).toLocaleString('ko-KR') : 
-                        '알 수 없음'
-                      }
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
       </Tabs>
-
-      {/* 동기화 확인 모달 */}
-      <Dialog open={showSyncModal} onOpenChange={setShowSyncModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-blue-600" />
-              데이터베이스 동기화
-            </DialogTitle>
-            <DialogDescription>
-              메타데이터 DB와 ChromaDB를 동기화하시겠습니까?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-2">동기화 과정</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>ChromaDB에서 실제 벡터 수를 조회합니다</li>
-                    <li>메타데이터 DB의 청크 수를 실제 값으로 업데이트합니다</li>
-                    <li>고아 데이터(연결되지 않은 데이터)를 찾습니다</li>
-                    <li>동기화 결과를 상세히 보고합니다</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            {syncStatus.difference && (
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>현재 차이:</strong> {Math.abs(syncStatus.difference)}개
-                  {syncStatus.difference > 0 ? " (메타데이터가 많음)" : " (ChromaDB가 많음)"}
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowSyncModal(false)}
-              disabled={syncLoading}
-            >
-              취소
-            </Button>
-            <Button
-              onClick={handleSync}
-              disabled={syncLoading}
-            >
-              {syncLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  동기화 중...
-                </>
-              ) : (
-                <>
-                  <Database className="h-4 w-4 mr-2" />
-                  동기화 시작
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* 메타데이터 삭제 확인 모달 */}
       <Dialog open={showDeleteModal.show} onOpenChange={(open) => setShowDeleteModal({show: open, fileId: '', filename: ''})}>
@@ -1604,150 +1552,6 @@ export default function VectorAnalysisPage() {
             >
               <Trash2 className="h-4 w-4 mr-2" />
               삭제 확인
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 고아 데이터 정리 확인 모달 */}
-      <Dialog open={showCleanupModal} onOpenChange={setShowCleanupModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-red-600" />
-              고아 데이터 정리 확인
-            </DialogTitle>
-            <DialogDescription>
-              청크가 0개인 고아 메타데이터를 삭제하시겠습니까?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div className="text-sm text-red-800">
-                  <p className="font-medium mb-2">정리 대상</p>
-                  <p className="mb-3">{orphanedData.total_count || 0}개의 고아 메타데이터</p>
-                  <p className="font-medium mb-1">주의사항</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>청크가 0개인 메타데이터만 삭제됩니다</li>
-                    <li>실제 파일이나 ChromaDB 벡터는 영향을 받지 않습니다</li>
-                    <li>삭제된 메타데이터는 복구할 수 없습니다</li>
-                    <li>처리가 실패한 파일의 기록이 제거됩니다</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            {orphanedData.orphaned_files && orphanedData.orphaned_files.length > 0 && (
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm font-medium text-yellow-800 mb-2">삭제될 파일 목록 (상위 5개)</p>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {orphanedData.orphaned_files.slice(0, 5).map((file: any, index: number) => (
-                    <div key={index} className="text-xs p-2 bg-white rounded border">
-                      <p className="font-medium">{file.filename}</p>
-                      <p className="text-muted-foreground">
-                        파일 ID: {file.file_id} | 카테고리: {file.category_name || '없음'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                {orphanedData.total_count > 5 && (
-                  <p className="text-xs text-center text-yellow-700 mt-2">
-                    외 {orphanedData.total_count - 5}개 파일이 더 있습니다.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCleanupModal(false)}
-              disabled={cleanupLoading}
-            >
-              취소
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleCleanupOrphaned}
-              disabled={cleanupLoading}
-            >
-              {cleanupLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  정리 중...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  {orphanedData.total_count || 0}개 파일 정리
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Flow ID 업데이트 확인 모달 */}
-      <Dialog open={showFlowIdUpdateModal} onOpenChange={setShowFlowIdUpdateModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-blue-600" />
-              Flow ID 업데이트 확인
-            </DialogTitle>
-            <DialogDescription>
-              누락된 flow_id를 현재 기본 Flow로 업데이트하시겠습니까?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-2">업데이트 내용</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>flow_id가 NULL이거나 빈 값인 모든 메타데이터 레코드</li>
-                    <li>현재 시스템에서 사용 중인 기본 벡터화 Flow ID로 설정</li>
-                    <li>벡터화 이력 추적 및 관리 개선</li>
-                    <li>기존 벡터 데이터는 변경되지 않음</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
-                <strong>참고:</strong> 이 작업은 메타데이터에만 영향을 미치며, 
-                실제 ChromaDB의 벡터 데이터는 변경되지 않습니다.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowFlowIdUpdateModal(false)}
-              disabled={flowIdUpdateLoading}
-            >
-              취소
-            </Button>
-            <Button
-              variant="default"
-              onClick={handleUpdateFlowIds}
-              disabled={flowIdUpdateLoading}
-            >
-              {flowIdUpdateLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  업데이트 중...
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4 mr-2" />
-                  Flow ID 업데이트
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>

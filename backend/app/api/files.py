@@ -2,9 +2,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Bod
 from typing import List, Optional
 from ..core.config import settings
 from ..core.logger import get_user_logger, get_console_logger
-from ..models.schemas import FileUploadResponse, FileInfo, DoclingOptions, FileProcessingOptions
+from ..models.schemas import FileUploadResponse, FileInfo, DoclingOptions
 from ..services import get_file_service
-from ..services.docling_service import DoclingService
 from ..services.settings_service import settings_service
 import os
 import json
@@ -17,25 +16,17 @@ def get_file_service_instance():
     """FileService 인스턴스를 지연 로딩으로 가져옵니다."""
     return get_file_service()
 
-def get_docling_service_instance():
-    """DoclingService 인스턴스를 지연 로딩으로 가져옵니다."""
-    return DoclingService()
 
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
     category_id: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
-    force_replace: bool = Form(False),
-    use_docling: Optional[bool] = Form(None),  # None으로 변경하여 설정값 우선
-    docling_extract_tables: Optional[bool] = Form(None),  # 설정값 우선
-    docling_extract_images: Optional[bool] = Form(None),  # 설정값 우선
-    docling_ocr_enabled: Optional[bool] = Form(None),  # 설정값 우선
-    docling_output_format: Optional[str] = Form(None)  # 설정값 우선
+    force_replace: bool = Form(False)
 ):
-    """파일 업로드 및 자동 벡터화 (Docling 전처리 지원)"""
+    """파일 업로드"""
     try:
-        _clog.info(f"파일 업로드 요청 수신: filename={file.filename}, category_id={category_id}, category={category}, force_replace={force_replace}, use_docling={use_docling}")
+        _clog.info(f"파일 업로드 요청 수신: filename={file.filename}, category_id={category_id}, category={category}, force_replace={force_replace}")
         
         # 카테고리 검증
         if not category_id and not category:
@@ -64,65 +55,13 @@ async def upload_file(
         # 파일 크기 로깅 (검증은 FileService에서 처리)
         _clog.info(f"파일 크기: {file.size} bytes")
         
-        # Docling 사용 여부 및 옵션 구성: 통합 설정 서비스의 Docling 설정을 사용
-        svc_docling_settings = settings_service.get_section_settings("docling")
-
-        # 기본 사용 여부는 서비스 설정을 따르고, Form 파라미터가 있으면 오버라이드
-        docling_enabled = svc_docling_settings.get("enabled", False)
-        if use_docling is not None:
-            docling_enabled = use_docling
-
-        _clog.info(
-            f"Docling 사용 결정: 서비스설정={svc_docling_settings.enabled}, 최종 결정={docling_enabled}"
-        )
-
-        # Docling 전처리 옵션 구성 (서비스 설정 우선, Form 파라미터로 오버라이드 가능)
-        docling_options = None
-        if docling_enabled:
-            # OCR 기본값 설정: PDF인 경우 True, 그 외에는 서비스 설정값 따름
-            is_pdf = file.filename.lower().endswith('.pdf')
-            default_ocr_enabled = svc_docling_settings.default_ocr_enabled
-            if is_pdf:
-                # PDF의 경우, 사용자가 명시적으로 False로 설정하지 않는 한 OCR을 기본으로 활성화
-                final_ocr_enabled = docling_ocr_enabled if docling_ocr_enabled is not None else True
-            else:
-                final_ocr_enabled = docling_ocr_enabled if docling_ocr_enabled is not None else default_ocr_enabled
-
-            docling_options = DoclingOptions(
-                enabled=True,
-                extract_tables=(
-                    docling_extract_tables
-                    if docling_extract_tables is not None
-                    else svc_docling_settings.default_extract_tables
-                ),
-                extract_images=(
-                    docling_extract_images
-                    if docling_extract_images is not None
-                    else svc_docling_settings.default_extract_images
-                ),
-                ocr_enabled=final_ocr_enabled,
-                output_format=(
-                    docling_output_format
-                    if docling_output_format is not None
-                    else svc_docling_settings.default_output_format
-                ),
-            )
-            _clog.info(f"Docling 전처리 활성화: {docling_options} (모델 설정 기반)")
         
-        # 파일 처리 옵션 구성
-        processing_options = FileProcessingOptions(
-            use_docling=docling_enabled,  # 설정값 기반 결정 사용
-            docling_options=docling_options,
-            traditional_processing=True  # 항상 기존 방식도 함께 실행
-        )
-        
-        # FileService 업로드 시도 (처리 옵션 포함)
+        # FileService 업로드 시도 (자동 전처리 없이 업로드만)
         _clog.info("FileService.upload_file 호출 시작")
         response = await get_file_service_instance().upload_file(
             file, 
             category_id or category, 
-            force_replace=force_replace,
-            processing_options=processing_options
+            force_replace=force_replace
         )
         _clog.info("FileService.upload_file 호출 완료")
         
@@ -187,55 +126,87 @@ async def delete_file(file_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/generate-hashes")
-async def generate_missing_hashes():
-    """기존 파일들의 누락된 해시를 생성합니다."""
-    try:
-        result = await get_file_service_instance().generate_missing_hashes()
-        _ulog.info("파일 해시 생성", extra={"event": "file_hash_generated", "count": result.get("updated", 0) if isinstance(result, dict) else None})
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{file_id}/vectorize")
-async def vectorize_file(file_id: str):
-    """파일 벡터화 (백그라운드 처리)"""
+@router.post("/{file_id}/preprocess")
+async def preprocess_file(file_id: str, method: str = "basic"):
+    """파일 전처리 (백그라운드 처리)"""
     try:
         # 파일 존재 여부 확인
         file_info = await get_file_service_instance().get_file_info(file_id)
         if not file_info:
             raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
         
-        # 백그라운드에서 벡터화 시작 (즉시 응답 반환)
+        # 백그라운드에서 전처리 시작 (즉시 응답 반환)
         import asyncio
-        asyncio.create_task(get_file_service_instance()._start_vectorization(file_id))
+        asyncio.create_task(get_file_service_instance().start_preprocessing(file_id, method))
         
-        _ulog.info("파일 벡터화 시작", extra={"event": "file_vectorization_started", "file_id": file_id})
-        return {"message": f"'{file_info.filename}' 파일의 벡터화가 시작되었습니다. 완료까지 시간이 소요될 수 있습니다."}
+        _ulog.info("파일 전처리 시작", extra={"event": "file_preprocessing_started", "file_id": file_id, "method": method})
+        return {"message": f"'{file_info.filename}' 파일의 전처리가 시작되었습니다. (방법: {method})"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{file_id}/revectorize")
-async def revectorize_file(file_id: str):
-    """파일 재벡터화 (기존 벡터 데이터 삭제 후 재생성)"""
+# 이 API는 vectorize-with-docling으로 대체되었습니다.
+
+@router.post("/{file_id}/process-complete")
+async def process_complete_pipeline(file_id: str, method: str = "basic"):
+    """전처리부터 벡터화까지 전체 파이프라인 실행 (백그라운드 처리)"""
     try:
         # 파일 존재 여부 확인
         file_info = await get_file_service_instance().get_file_info(file_id)
         if not file_info:
             raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
         
-        # 기존 벡터 데이터 삭제
+        # 백그라운드에서 전체 파이프라인 시작 (즉시 응답 반환)
+        import asyncio
+        asyncio.create_task(get_file_service_instance().start_vectorization(file_id))
+        
+        _ulog.info("파일 전체 처리 시작", extra={"event": "file_complete_processing_started", "file_id": file_id})
+        return {"message": f"'{file_info.filename}' 파일의 전체 처리가 시작되었습니다. (전처리 방법: {method})"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 이 API도 vectorize-with-docling으로 대체되었습니다.
+
+@router.post("/{file_id}/force-reprocess")
+async def force_reprocess_file(file_id: str):
+    """PREPROCESSING나 FAILED 상태의 파일을 강제로 재처리합니다."""
+    try:
+        _clog.info(f"파일 강제 재처리 요청: file_id={file_id}")
+        
+        # 파일 정보 확인
+        file_info = await get_file_service_instance().get_file_info(file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        _clog.info(f"현재 파일 상태: {file_info.status}")
+        
+        # 강제 재처리 가능한 상태인지 확인
+        from ..models.schemas import FileStatus
+        if file_info.status not in [FileStatus.PREPROCESSING, FileStatus.FAILED, FileStatus.UPLOADED]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"현재 상태({file_info.status})에서는 강제 재처리를 할 수 없습니다. PREPROCESSING, FAILED, UPLOADED 상태에서만 가능합니다."
+            )
+        
         file_service = get_file_service_instance()
+        
+        # 기존 벡터 데이터가 있다면 삭제
         if file_service.vector_service:
             try:
                 await file_service.vector_service.delete_document_vectors(file_id)
-                print(f"기존 벡터 데이터 삭제 완료: {file_id}")
+                _clog.info(f"기존 벡터 데이터 삭제 완료: {file_id}")
             except Exception as e:
-                print(f"기존 벡터 데이터 삭제 중 오류 (계속 진행): {str(e)}")
+                _clog.warning(f"기존 벡터 데이터 삭제 중 오류 (계속 진행): {str(e)}")
         
-        # 파일 상태를 재벡터화 준비 상태로 변경
+        # 파일 상태를 UPLOADED로 재설정
+        await file_service._update_file_status(file_id, FileStatus.UPLOADED)
+        _clog.info(f"파일 상태를 UPLOADED로 재설정: {file_id}")
+        
+        # 오류 메시지 초기화
         await file_service.update_file_vectorization_status(
             file_id=file_id,
             vectorized=False,
@@ -243,19 +214,25 @@ async def revectorize_file(file_id: str):
             chunk_count=None
         )
         
-        # 백그라운드에서 재벡터화 시작 (즉시 응답 반환)
+        # 백그라운드에서 벡터화 시작
         import asyncio
-        asyncio.create_task(file_service._start_vectorization(file_id))
+        asyncio.create_task(file_service.start_vectorization(file_id))
         
-        _ulog.info("파일 재벡터화 시작", extra={"event": "file_revectorization_started", "file_id": file_id})
-        return {"message": f"'{file_info.filename}' 파일의 재벡터화가 시작되었습니다. 기존 벡터 데이터가 삭제되고 새로 생성됩니다."}
+        _ulog.info("파일 강제 재처리 시작", extra={"event": "file_force_reprocess_started", "file_id": file_id})
+        return {
+            "message": f"'{file_info.filename}' 파일의 강제 재처리가 시작되었습니다. 기존 데이터가 삭제되고 처음부터 다시 처리됩니다.",
+            "previous_status": str(file_info.status),
+            "new_status": "UPLOADED"
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _clog.error(f"파일 강제 재처리 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"강제 재처리 중 오류가 발생했습니다: {str(e)}")
 
-@router.post("/{file_id}/vectorize-with-docling")
-async def vectorize_with_docling(
+@router.post("/{file_id}/vectorize")
+async def vectorize_file(
     file_id: str,
     enable_docling: bool = Body(True),
     extract_tables: bool = Body(True),
@@ -263,7 +240,7 @@ async def vectorize_with_docling(
     ocr_enabled: bool = Body(False),
     output_format: str = Body("markdown")
 ):
-    """Docling 통합 벡터화 파이프라인으로 파일 벡터화"""
+    """파일 벡터화 (이미지 메타데이터 포함)"""
     try:
         _clog.info(f"Docling 통합 벡터화 요청: file_id={file_id}, enable_docling={enable_docling}")
         
@@ -279,8 +256,25 @@ async def vectorize_with_docling(
         
         # 기존 벡터 데이터 삭제 (있는 경우)
         try:
-            await file_service.vector_service.delete_document_vectors(file_id)
-            _clog.info(f"기존 벡터 데이터 삭제 완료: {file_id}")
+            # delete_document_vectors 메서드 존재 여부 확인
+            if hasattr(file_service.vector_service, 'delete_document_vectors'):
+                await file_service.vector_service.delete_document_vectors(file_id)
+                _clog.info(f"기존 벡터 데이터 삭제 완료: {file_id}")
+            else:
+                # 메서드가 없는 경우 대체 방법 사용
+                _clog.warning(f"delete_document_vectors 메서드가 없음. 대체 방법 사용")
+                # ChromaDB에 직접 접근하여 삭제 시도
+                if hasattr(file_service.vector_service, '_collection') and file_service.vector_service._collection:
+                    try:
+                        existing_data = file_service.vector_service._collection.get(
+                            where={"file_id": file_id},
+                            include=["metadatas"]
+                        )
+                        if existing_data and existing_data['ids']:
+                            file_service.vector_service._collection.delete(ids=existing_data['ids'])
+                            _clog.info(f"대체 방법으로 벡터 데이터 삭제 완료: {file_id}")
+                    except Exception as inner_e:
+                        _clog.warning(f"대체 방법으로도 삭제 실패: {str(inner_e)}")
         except Exception as e:
             _clog.warning(f"기존 벡터 데이터 삭제 중 오류 (계속 진행): {str(e)}")
         
@@ -366,6 +360,116 @@ async def vectorize_with_docling(
         _clog.exception(f"Docling 통합 벡터화 중 예기치 못한 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=f"벡터화 중 오류가 발생했습니다: {str(e)}")
 
+@router.post("/{file_id}/revectorize")
+async def revectorize_file(
+    file_id: str,
+    enable_docling: bool = Body(True),
+    extract_tables: bool = Body(True),
+    extract_images: bool = Body(True),
+    ocr_enabled: bool = Body(False),
+    output_format: str = Body("markdown")
+):
+    """파일 재벡터화 (기존 벡터 데이터 삭제 후 새로 벡터화)"""
+    try:
+        _clog.info(f"파일 재벡터화 요청: file_id={file_id}")
+        
+        # 파일 정보 확인
+        file_info = await get_file_service_instance().get_file_info(file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        
+        # VectorService 인스턴스 가져오기
+        file_service = get_file_service_instance()
+        if not file_service.vector_service:
+            raise HTTPException(status_code=500, detail="VectorService를 사용할 수 없습니다.")
+        
+        # 기존 벡터 데이터 삭제
+        try:
+            await file_service.vector_service.delete_document_vectors(file_id)
+            _clog.info(f"기존 벡터 데이터 삭제 완료: {file_id}")
+        except Exception as e:
+            _clog.warning(f"기존 벡터 데이터 삭제 중 오류 (계속 진행): {str(e)}")
+        
+        # Docling 옵션 설정
+        docling_options = None
+        if enable_docling:
+            docling_options = DoclingOptions(
+                output_format=output_format,
+                extract_tables=extract_tables,
+                extract_images=extract_images,
+                ocr_enabled=ocr_enabled
+            )
+        
+        # 벡터화 메타데이터 준비
+        vector_metadata = {
+            "filename": file_info.filename,
+            "category_id": file_info.category_id,
+            "category_name": file_info.category_name,
+            "upload_time": file_info.upload_time.isoformat() if file_info.upload_time else None,
+            "file_size": file_info.file_size
+        }
+        
+        # 통합 벡터화 파이프라인 실행
+        result = await file_service.vector_service.vectorize_with_docling_pipeline(
+            file_path=file_info.file_path,
+            file_id=file_id,
+            metadata=vector_metadata,
+            enable_docling=enable_docling,
+            docling_options=docling_options
+        )
+        
+        if result["success"]:
+            # 파일 상태 업데이트
+            await file_service.update_file_vectorization_status(
+                file_id=file_id,
+                vectorized=True,
+                error_message=None,
+                chunk_count=result["chunks_count"]
+            )
+            
+            _ulog.info(
+                "파일 재벡터화 완료",
+                extra={
+                    "event": "file_revectorization_completed",
+                    "file_id": file_id,
+                    "chunks_count": result["chunks_count"],
+                    "processing_method": result.get("processing_method"),
+                    "processing_time": result.get("processing_time")
+                }
+            )
+            
+            return {
+                "success": True,
+                "message": f"'{file_info.filename}' 파일이 성공적으로 재벡터화되었습니다.",
+                "chunks_count": result["chunks_count"],
+                "processing_method": result.get("processing_method", "unknown"),
+                "processing_time": result.get("processing_time", 0),
+                "docling_used": enable_docling
+            }
+        else:
+            # 벡터화 실패 상태 업데이트
+            await file_service.update_file_vectorization_status(
+                file_id=file_id,
+                vectorized=False,
+                error_message=result.get("error", "재벡터화 실패"),
+                chunk_count=0
+            )
+            
+            _clog.error(f"파일 재벡터화 실패: {result.get('error')}")
+            
+            return {
+                "success": False,
+                "message": f"'{file_info.filename}' 파일 재벡터화에 실패했습니다.",
+                "error": result.get("error", "알 수 없는 오류"),
+                "docling_used": enable_docling
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.exception(f"파일 재벡터화 중 예기치 못한 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"재벡터화 중 오류가 발생했습니다: {str(e)}")
+
 @router.get("/{file_id}/download")
 async def download_file(file_id: str):
     """파일 다운로드"""
@@ -399,9 +503,9 @@ async def view_file(file_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{file_id}/vectorization-status")
-async def get_vectorization_status(file_id: str):
-    """파일의 벡터화 상태 조회"""
+@router.get("/{file_id}/processing-status")
+async def get_processing_status(file_id: str):
+    """파일의 처리 상태 조회 (전처리 + 벡터화)"""
     try:
         file_info = await get_file_service_instance().get_file_info(file_id)
         if not file_info:
@@ -411,9 +515,15 @@ async def get_vectorization_status(file_id: str):
             "file_id": file_id,
             "filename": file_info.filename,
             "status": file_info.status,
-            "vectorized": file_info.vectorized,
-            "vectorized_at": file_info.vectorized_at if hasattr(file_info, 'vectorized_at') else None,
-            "error": getattr(file_info, 'error', None)
+            "upload_time": file_info.upload_time,
+            "preprocessing_started_at": file_info.preprocessing_started_at,
+            "preprocessing_completed_at": file_info.preprocessing_completed_at,
+            "vectorization_started_at": file_info.vectorization_started_at,
+            "vectorization_completed_at": file_info.vectorization_completed_at,
+            "preprocessing_method": file_info.preprocessing_method,
+            "chunk_count": file_info.chunk_count,
+            "error_message": file_info.error_message,
+            "vectorized": file_info.vectorized  # 하위 호환성
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -455,9 +565,9 @@ async def search_documents(query: str, top_k: int = 5, category_ids: str = None)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/vectorization/status/")
-async def get_vectorization_status():
-    """전체 벡터화 상태 조회 (대시보드용 - 메타데이터 기반, ChromaDB 초기화 없이)"""
+@router.get("/processing/status/")
+async def get_processing_overview():
+    """전체 파일 처리 상태 조회 (대시보드용)"""
     try:
         all_files = await get_file_service_instance().list_files()
         
@@ -465,17 +575,18 @@ async def get_vectorization_status():
         status_stats = {
             "total_files": len(all_files),
             "uploaded": 0,
-            "pending_vectorization": 0,
+            "preprocessing": 0,
+            "preprocessed": 0,
             "vectorizing": 0,
-            "vectorized": 0,
-            "vectorization_failed": 0
+            "completed": 0,
+            "failed": 0
         }
         
         # 메타데이터 기반으로 상태 집계
         files_summary = []
         
         for file_info in all_files:
-            status = file_info.status
+            status = file_info.status.value if hasattr(file_info.status, 'value') else str(file_info.status)
             if status in status_stats:
                 status_stats[status] += 1
             
@@ -483,11 +594,14 @@ async def get_vectorization_status():
             files_summary.append({
                 "file_id": file_info.file_id,
                 "filename": file_info.filename,
-                "status": file_info.status,
+                "status": status,
                 "vectorized": file_info.vectorized,
                 "category_name": file_info.category_name,
                 "upload_time": file_info.upload_time,
-                "file_size": file_info.file_size
+                "file_size": file_info.file_size,
+                "preprocessing_method": file_info.preprocessing_method,
+                "chunk_count": file_info.chunk_count,
+                "error_message": file_info.error_message
             })
         
         # ChromaDB 상태는 현재 초기화된 상태만 확인 (초기화 시도 없이)
@@ -513,12 +627,12 @@ async def get_vectorization_status():
             "files": files_summary,
             "chromadb_status": chromadb_status,
             "chromadb_message": chromadb_message,
-            "total_vectorized_files": status_stats["vectorized"],
-            "message": f"총 {len(all_files)}개 파일 중 {status_stats['vectorized']}개가 벡터화되었습니다."
+            "total_completed_files": status_stats["completed"],
+            "message": f"총 {len(all_files)}개 파일 중 {status_stats['completed']}개가 완전히 처리되었습니다."
         }
         
     except Exception as e:
-        print(f"벡터화 상태 조회 중 오류: {str(e)}")
+        print(f"파일 처리 상태 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/vectorization/execute")
@@ -574,7 +688,7 @@ async def execute_vectorization(
         # 백그라운드에서 벡터화 실행
         import asyncio
         for file_info in target_files:
-            asyncio.create_task(get_file_service_instance()._start_vectorization(file_info.file_id))
+            asyncio.create_task(get_file_service_instance().start_vectorization(file_info.file_id))
         _ulog.info(
             "벡터화 배치 시작",
             extra={"event": "vectorization_batch_started", "count": len(target_files)},
@@ -588,19 +702,6 @@ async def execute_vectorization(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/metadata/files/reset")
-async def reset_files_metadata():
-    """파일 메타데이터(JSON) 완전 초기화"""
-    try:
-        result = get_file_service_instance().reset_files_metadata()
-        if result.get("status") == "success":
-            return {"message": "파일 메타데이터가 초기화되었습니다.", **result}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "초기화 실패"))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/chromadb/status/")
 async def get_chromadb_status():

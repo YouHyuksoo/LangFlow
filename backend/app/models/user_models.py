@@ -29,7 +29,7 @@ class User(BaseModel):
 class UserDatabase:
     def __init__(self, db_path: str = None):
         if db_path is None:
-            db_path = os.path.join(settings.DATA_DIR, "users.db")
+            db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
         self.db_path = db_path
         # Ensure the directory exists
         data_dir = os.path.dirname(self.db_path)

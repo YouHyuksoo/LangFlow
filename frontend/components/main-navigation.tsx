@@ -76,19 +76,19 @@ export function MainNavigation() {
   };
 
   return (
-    <nav className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm sticky top-0 z-50">
+    <nav className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-b border-slate-700/50 shadow-2xl backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
             {/* Logo/Brand */}
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">
                 ThinkFlow
               </Link>
             </div>
 
             {/* Desktop Navigation Links */}
-            <div className="hidden lg:ml-6 lg:flex lg:space-x-1">
+            <div className="hidden lg:ml-8 lg:flex lg:space-x-2">
               {navItems.map((item) => {
                 if (item.isAdmin && !isAdminUser) {
                   return null;
@@ -104,17 +104,34 @@ export function MainNavigation() {
                     key={item.name}
                     href={item.href}
                     className={cn(
-                      "inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium transition-colors rounded-t-md",
+                      "inline-flex items-center px-4 py-2 text-sm font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
                       isActive
                         ? item.isAdmin
-                          ? "border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400"
-                          : "border-indigo-500 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-400"
-                        : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-400 dark:hover:border-gray-700 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+                          ? "text-white bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 shadow-lg shadow-orange-500/20"
+                          : "text-white bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/20"
+                        : "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 hover:shadow-lg"
                     )}
                     title={item.description}
                   >
-                    <Icon className="h-4 w-4 mr-2" />
+                    <div className={`p-1.5 rounded-lg mr-2 ${
+                      isActive 
+                        ? item.isAdmin 
+                          ? 'bg-orange-500/20' 
+                          : 'bg-purple-500/20'
+                        : 'bg-white/10 group-hover:bg-white/20'
+                    }`}>
+                      <Icon className={`h-4 w-4 ${
+                        isActive 
+                          ? item.isAdmin 
+                            ? 'text-orange-400' 
+                            : 'text-purple-400'
+                          : 'text-slate-400 group-hover:text-white'
+                      }`} />
+                    </div>
                     {item.name}
+                    {isActive && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
+                    )}
                   </Link>
                 );
               })}
@@ -133,26 +150,26 @@ export function MainNavigation() {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="relative h-auto px-3 py-2 rounded-full"
+                        className="relative h-auto px-3 py-2 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 hover:from-slate-700/50 hover:to-slate-600/50 hover:border-slate-500/50 transition-all duration-300 hover:shadow-lg backdrop-blur-sm"
                       >
-                        <div className="flex items-center space-x-2">
-                          <Avatar className="h-8 w-8">
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="h-8 w-8 ring-2 ring-purple-500/20">
                             {user.avatar_url && (
                               <AvatarImage 
                                 src={getAvatarUrl(user.avatar_url)} 
                                 alt={user.full_name || user.username}
                               />
                             )}
-                            <AvatarFallback className="text-sm">
+                            <AvatarFallback className="text-sm bg-gradient-to-br from-purple-500 to-cyan-500 text-white font-semibold">
                               {getUserInitials()}
                             </AvatarFallback>
                           </Avatar>
                           <div className="hidden sm:flex flex-col text-left">
-                            <span className="text-sm font-medium max-w-[120px] truncate">
+                            <span className="text-sm font-medium max-w-[120px] truncate text-white">
                               {getUserDisplayName()}
                             </span>
                             {isAdminUser && (
-                              <span className="text-xs text-orange-600 dark:text-orange-400 flex items-center">
+                              <span className="text-xs text-orange-400 flex items-center">
                                 <Shield className="h-3 w-3 mr-1" />
                                 관리자
                               </span>
@@ -162,18 +179,18 @@ export function MainNavigation() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                      className="w-56"
+                      className="w-56 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl"
                       align="end"
                       forceMount
                     >
-                      <div className="flex items-center justify-start gap-2 p-2">
+                      <div className="flex items-center justify-start gap-2 p-3 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-lg m-2">
                         <div className="flex flex-col space-y-1 leading-none">
-                          <p className="font-medium">{getUserDisplayName()}</p>
-                          <p className="w-[200px] truncate text-sm text-muted-foreground">
+                          <p className="font-medium text-white">{getUserDisplayName()}</p>
+                          <p className="w-[200px] truncate text-sm text-slate-400">
                             {user.email}
                           </p>
                           {isAdminUser && (
-                            <div className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400">
+                            <div className="flex items-center gap-1 text-xs text-orange-400">
                               <Shield className="h-3 w-3" />
                               관리자
                             </div>
@@ -207,10 +224,10 @@ export function MainNavigation() {
                   </DropdownMenu>
                 ) : (
                   <div className="flex items-center space-x-2">
-                    <Button variant="ghost" asChild>
+                    <Button variant="ghost" className="text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 rounded-xl" asChild>
                       <Link href="/login">로그인</Link>
                     </Button>
-                    <Button asChild>
+                    <Button className="bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl" asChild>
                       <Link href="/register">회원가입</Link>
                     </Button>
                   </div>
@@ -226,7 +243,7 @@ export function MainNavigation() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="inline-flex items-center justify-center p-2 rounded-xl text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30"
               >
                 {isMobileMenuOpen ? (
                   <X className="h-6 w-6" />
@@ -241,8 +258,8 @@ export function MainNavigation() {
 
       {/* Mobile menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-          <div className="pt-2 pb-3 space-y-1 max-h-96 overflow-y-auto">
+        <div className="lg:hidden border-t border-slate-700/50 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 backdrop-blur-sm">
+          <div className="pt-4 pb-3 space-y-2 max-h-96 overflow-y-auto px-4">
             {navItems.map((item) => {
               if (item.isAdmin && !isAdminUser) {
                 return null;
@@ -258,22 +275,39 @@ export function MainNavigation() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center px-4 py-3 text-base font-medium transition-colors",
+                    "flex items-center px-4 py-4 text-base font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
                     isActive
                       ? item.isAdmin
-                        ? "text-orange-700 bg-orange-50 border-r-4 border-orange-500 dark:bg-orange-900/20 dark:text-orange-400"
-                        : "text-indigo-700 bg-indigo-50 border-r-4 border-indigo-500 dark:bg-indigo-900/20 dark:text-indigo-400"
-                      : "text-gray-600 hover:text-gray-800 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800"
+                        ? "text-white bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 shadow-lg shadow-orange-500/20"
+                        : "text-white bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/20"
+                      : "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 border border-transparent hover:border-slate-600/30 hover:shadow-lg"
                   )}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  <Icon className="h-5 w-5 mr-3" />
-                  <div>
-                    <div>{item.name}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className={`p-2 rounded-lg mr-3 ${
+                    isActive 
+                      ? item.isAdmin 
+                        ? 'bg-orange-500/20' 
+                        : 'bg-purple-500/20'
+                      : 'bg-white/10 group-hover:bg-white/20'
+                  }`}>
+                    <Icon className={`h-5 w-5 ${
+                      isActive 
+                        ? item.isAdmin 
+                          ? 'text-orange-400' 
+                          : 'text-purple-400'
+                        : 'text-slate-400 group-hover:text-white'
+                    }`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-white font-medium">{item.name}</div>
+                    <div className="text-sm text-slate-400 group-hover:text-slate-300">
                       {item.description}
                     </div>
                   </div>
+                  {isActive && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
+                  )}
                 </Link>
               );
             })}

@@ -42,6 +42,77 @@ async def update_settings(new_settings: Dict[str, Any]):
         _clog.error(f"설정 업데이트 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail="설정 업데이트 중 오류가 발생했습니다.")
 
+@router.get("/vectorization")
+async def get_vectorization_settings():
+    """벡터화 관련 설정 조회 (임베딩 모델, 성능 설정 등)"""
+    try:
+        # 여러 섹션의 설정을 한 번에 가져오기
+        system_settings = settings_service.get_section_settings("system")
+        model_settings = settings_service.get_section_settings("models") 
+        performance_settings = settings_service.get_section_settings("performance")
+        
+        # 임베딩 모델 정보 추출
+        embedding_model = model_settings.get("embedding_model", "text-embedding-ada-002")
+        
+        # 모델 타입 및 차원 감지
+        if embedding_model.startswith("text-embedding-") or "openai" in embedding_model.lower():
+            model_type = "OpenAI API"
+            model_description = "클라우드 기반 임베딩"
+            # OpenAI 모델 차원 설정
+            if "text-embedding-3-small" in embedding_model:
+                model_dimension = 1536
+            elif "text-embedding-3-large" in embedding_model:
+                model_dimension = 3072
+            elif "text-embedding-ada-002" in embedding_model:
+                model_dimension = 1536
+            else:
+                model_dimension = 1536  # 기본값
+        elif "/" in embedding_model:
+            model_type = "HuggingFace 로컬"
+            model_description = "로컬 실행 임베딩"
+            # HuggingFace 모델 차원 설정
+            if "bge" in embedding_model.lower():
+                model_dimension = 768
+            elif "all-MiniLM-L6-v2" in embedding_model:
+                model_dimension = 384
+            elif "all-mpnet-base-v2" in embedding_model:
+                model_dimension = 768
+            else:
+                model_dimension = 768  # 기본값
+        else:
+            model_type = "OpenAI API"
+            model_description = "클라우드 기반 임베딩"
+            model_dimension = 1536
+        
+        # 벡터화 관련 설정 통합
+        vectorization_info = {
+            "embedding_model": {
+                "name": embedding_model,
+                "type": model_type,
+                "description": model_description,
+                "dimension": model_dimension,
+                "is_local": "/" in embedding_model
+            },
+            "chunk_settings": {
+                "chunk_size": system_settings.get("chunkSize", 1000),
+                "chunk_overlap": system_settings.get("chunkOverlap", 200)
+            },
+            "performance_settings": {
+                "enable_parallel": performance_settings.get("enableParallelProcessing", True),
+                "max_concurrent_embeddings": performance_settings.get("maxConcurrentEmbeddings", 5),
+                "max_concurrent_chunks": performance_settings.get("maxConcurrentChunks", 20),
+                "batch_size": performance_settings.get("batchSize", 10)
+            },
+            "preprocessing_method": system_settings.get("preprocessing_method", "basic")
+        }
+        
+        _clog.info(f"벡터화 설정 조회 완료 - 임베딩 모델: {embedding_model}")
+        return vectorization_info
+        
+    except Exception as e:
+        _clog.error(f"벡터화 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="벡터화 설정 조회 중 오류가 발생했습니다.")
+
 @router.post("/reset")
 async def reset_settings():
     """설정을 기본값으로 초기화"""

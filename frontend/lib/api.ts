@@ -117,7 +117,6 @@ export const settingsAPI = {
         vectorDimension: 1536,
         chunkSize: 1000,
         chunkOverlap: 200,
-        enableAutoVectorization: true,
         enableNotifications: true,
         debugMode: false,
       };
@@ -132,6 +131,36 @@ export const settingsAPI = {
   resetSettings: async () => {
     const response = await api.post("/api/v1/settings/reset");
     return response.data;
+  },
+
+  // 벡터화 설정 조회 (임베딩 모델, 성능 설정 등)
+  getVectorizationSettings: async () => {
+    try {
+      const response = await api.get("/api/v1/settings/vectorization");
+      return response.data;
+    } catch (error) {
+      console.error("벡터화 설정 로드 실패, 기본값 사용:", error);
+      // 에러 시 기본값 반환
+      return {
+        embedding_model: {
+          name: "text-embedding-ada-002",
+          type: "OpenAI API",
+          description: "클라우드 기반 임베딩",
+          is_local: false
+        },
+        chunk_settings: {
+          chunk_size: 1000,
+          chunk_overlap: 200
+        },
+        performance_settings: {
+          enable_parallel: true,
+          max_concurrent_embeddings: 5,
+          max_concurrent_chunks: 20,
+          batch_size: 10
+        },
+        preprocessing_method: "basic"
+      };
+    }
   },
 
   // 성능 설정 관련 API
@@ -259,7 +288,7 @@ export const fileAPI = {
     const formData = new FormData();
     formData.append("file", file);
     if (category) {
-      formData.append("category", category);
+      formData.append("category_id", category);
     }
     if (forceReplace) {
       formData.append("force_replace", "true");
@@ -364,6 +393,12 @@ export const fileAPI = {
   // 파일 재벡터화
   revectorizeFile: async (fileId: string) => {
     const response = await api.post(`/api/v1/files/${fileId}/revectorize`);
+    return response.data;
+  },
+
+  // 파일 강제 재처리 (PREPROCESSING, FAILED 상태 파일용)
+  forceReprocessFile: async (fileId: string) => {
+    const response = await api.post(`/api/v1/files/${fileId}/force-reprocess`);
     return response.data;
   },
 
@@ -500,7 +535,7 @@ export const statsAPI = {
 
   // 카테고리별 통계
   getCategoryStats: async () => {
-    const response = await api.get("/stats/categories");
+    const response = await api.get("/api/v1/categories/stats/");
     return response.data;
   },
 
@@ -776,6 +811,12 @@ export const categoryAPI = {
     return response.data;
   },
 
+  // 카테고리 통계 (CategorySelector에서 사용)
+  getCategoryStats: async () => {
+    const response = await api.get("/api/v1/categories/stats/");
+    return response.data;
+  },
+
   // 새 카테고리 생성
   createCategory: async (categoryData: {
     name: string;
@@ -869,7 +910,8 @@ export const chatAPI = {
     topK: number = 10,
     systemMessage?: string,
     personaId?: string,
-    images?: string[] // Base64 인코딩된 이미지 데이터 배열 추가
+    images?: string[], // Base64 인코딩된 이미지 데이터 배열 추가
+    outputFormat?: string // 출력 형식 지정 파라미터 추가
   ) => {
     const payload: any = {
       message,
@@ -880,6 +922,7 @@ export const chatAPI = {
       top_k: topK,
       system_message: systemMessage || null,
       persona_id: personaId || null,
+      output_format: outputFormat || null, // 출력 형식 추가
     };
 
     // 이미지가 있는 경우에만 추가
@@ -1003,7 +1046,9 @@ export const chatAPI = {
 
   // 관리자용 채팅 기록 전체 삭제
   deleteAllChatHistory: async () => {
-    const response = await api.delete("/api/v1/chat/admin/history/all");
+    console.log('전체 삭제 API 호출 - 새 경로: POST /api/v1/chat/admin/history/delete-all')
+    const response = await api.post("/api/v1/chat/admin/history/delete-all");
+    console.log('전체 삭제 API 응답:', response.data)
     return response.data;
   },
 };
@@ -1051,12 +1096,21 @@ export const vectorAPI = {
       page?: number;
       limit?: number;
       search?: string;
+      category_name?: string;
+      filename?: string;
+      has_images?: boolean;
     }
   ) => {
     const response = await api.get(
       `/api/v1/admin/vectors/chromadb/collection/${collectionName}`,
       { params }
     );
+    return response.data;
+  },
+
+  // ChromaDB 실제 카테고리 목록 조회
+  getChromadbCategories: async () => {
+    const response = await api.get("/api/v1/admin/vectors/chromadb/categories");
     return response.data;
   },
 
@@ -1102,17 +1156,17 @@ export const vectorAPI = {
     return response.data;
   },
 
-  // flow_id 누락 레코드 업데이트
-  updateMissingFlowIds: async () => {
-    const response = await api.post("/api/v1/admin/vectors/update-flow-ids");
+  // ChromaDB 모든 컬렉션 삭제
+  deleteAllCollections: async () => {
+    const response = await api.delete("/api/v1/admin/vectors/collections/all");
     return response.data;
   },
 
-  // Flow 결정 로직 디버깅 (테스트용)
-  debugFlowDetection: async () => {
-    const response = await api.get(
-      "/api/v1/admin/vectors/debug/flow-detection"
-    );
+  // ChromaDB 선택된 컬렉션들 삭제
+  deleteSelectedCollections: async (collectionNames: string[]) => {
+    const response = await api.delete("/api/v1/admin/vectors/collections/selected", {
+      data: { collection_names: collectionNames }
+    });
     return response.data;
   },
 
@@ -1157,6 +1211,36 @@ export const vectorAPI = {
     const response = await api.delete("/api/v1/admin/vectors/database/all-vectors");
     return response.data;
   },
+
+  // 문서 관리 API 
+  getDocuments: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category_id?: string;
+    vectorized?: boolean;
+    status?: string;
+  }) => {
+    const response = await api.get("/api/v1/admin/vectors/documents", {
+      params,
+    });
+    return response.data;
+  },
+
+  // 개별 문서 삭제
+  deleteDocument: async (fileId: string) => {
+    const response = await api.delete(`/api/v1/admin/vectors/documents/${fileId}`);
+    return response.data;
+  },
+
+  // 선택된 문서들 일괄 삭제
+  deleteSelectedDocuments: async (fileIds: string[]) => {
+    const response = await api.delete("/api/v1/admin/vectors/documents/selected", {
+      data: { file_ids: fileIds }
+    });
+    return response.data;
+  },
+
 };
 
 // 데이터베이스 관리 API (새로운 통합 관리)
@@ -1215,6 +1299,18 @@ export const databaseAPI = {
     return response.data;
   },
 
+  // File Metadata DB 백업
+  backupFileMetadataDB: async () => {
+    const response = await api.post("/api/v1/admin/database/file_metadata/backup");
+    return response.data;
+  },
+
+  // File Metadata DB 초기화
+  resetFileMetadataDB: async () => {
+    const response = await api.post("/api/v1/admin/database/file_metadata/reset");
+    return response.data;
+  },
+
   // 전체 백업
   backupAllDatabases: async () => {
     const response = await api.post("/api/v1/admin/database/backup-all");
@@ -1251,6 +1347,73 @@ export const unstructuredAPI = {
   // Unstructured 프로세서 테스트
   testUnstructuredProcessor: async () => {
     const response = await api.post("/api/v1/settings/unstructured/test");
+    return response.data;
+  },
+};
+
+// 모델 프로필 관리 API
+export const modelProfileAPI = {
+  // 모든 모델 프로필 조회
+  getProfiles: async () => {
+    const response = await api.get("/api/v1/model-profiles/");
+    return response.data;
+  },
+
+  // 특정 모델 프로필 조회
+  getProfile: async (profileId: string) => {
+    const response = await api.get(`/api/v1/model-profiles/${profileId}`);
+    return response.data;
+  },
+
+  // 활성 모델 프로필 조회
+  getActiveProfile: async () => {
+    const response = await api.get("/api/v1/model-profiles/active/current");
+    return response.data;
+  },
+
+  // 새 모델 프로필 생성
+  createProfile: async (profileData: {
+    name: string;
+    provider: string;
+    model: string;
+    api_key: string;
+    base_url?: string;
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+  }) => {
+    const response = await api.post("/api/v1/model-profiles/", profileData);
+    return response.data;
+  },
+
+  // 모델 프로필 수정
+  updateProfile: async (profileId: string, profileData: {
+    name?: string;
+    api_key?: string;
+    base_url?: string;
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+  }) => {
+    const response = await api.put(`/api/v1/model-profiles/${profileId}`, profileData);
+    return response.data;
+  },
+
+  // 모델 프로필 삭제
+  deleteProfile: async (profileId: string) => {
+    const response = await api.delete(`/api/v1/model-profiles/${profileId}`);
+    return response.data;
+  },
+
+  // 모델 프로필 활성화
+  activateProfile: async (profileId: string) => {
+    const response = await api.post(`/api/v1/model-profiles/${profileId}/activate`);
+    return response.data;
+  },
+
+  // 모델 프로필 연결 테스트
+  testProfile: async (profileId: string) => {
+    const response = await api.post(`/api/v1/model-profiles/${profileId}/test`);
     return response.data;
   },
 };

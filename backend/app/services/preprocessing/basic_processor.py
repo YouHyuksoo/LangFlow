@@ -103,6 +103,24 @@ async def _extract_office_text(file_path: str, file_extension: str) -> str:
                         text += shape.text + "\n"
         except Exception as e:
             return f"⚠️ PowerPoint 파일 처리 실패: {e}"
+    elif file_extension in ['.xls', '.xlsx']:
+        try:
+            import pandas as pd
+            # Excel 파일의 모든 시트를 읽어서 텍스트로 변환
+            excel_file = pd.ExcelFile(file_path)
+            for sheet_name in excel_file.sheet_names:
+                try:
+                    df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    # 시트 이름 추가
+                    text += f"\n[시트: {sheet_name}]\n"
+                    # 데이터프레임을 텍스트로 변환 (NaN 값 제거)
+                    df_text = df.fillna('').to_string(index=False)
+                    text += df_text + "\n\n"
+                except Exception as sheet_error:
+                    logger.warning(f"시트 '{sheet_name}' 처리 실패: {sheet_error}")
+                    text += f"\n[시트: {sheet_name}] - 처리 실패: {sheet_error}\n"
+        except Exception as e:
+            return f"⚠️ Excel 파일 처리 실패: {e}"
     # ... (다른 office 형식 추가) ...
     return text.strip()
 
@@ -123,9 +141,8 @@ async def _extract_text_from_text_file(file_path: str) -> str:
 
 async def process(file_path: str, file_extension: str) -> str:
     """파일 확장자에 따라 적절한 기본 텍스트 추출기를 호출합니다."""
-    logger.info(f"⚙️ Basic Processor 실행: {ext_lower}")
-    
     ext_lower = file_extension.lower()
+    logger.info(f"⚙️ Basic Processor 실행: {ext_lower}")
     
     if ext_lower == '.pdf':
         return await _extract_pdf_fallback(file_path)

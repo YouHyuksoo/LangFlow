@@ -28,12 +28,7 @@ import {
 import { FileUpload } from "@/components/file-upload";
 import { DuplicateFileModal } from "@/components/duplicate-file-modal";
 import { DeleteFileModal } from "@/components/delete-file-modal";
-import {
-  DoclingStatusBadge,
-  DoclingDetailCard,
-} from "@/components/docling-status-badge";
-import { DoclingSettingsInfo } from "@/components/docling-settings-info";
-import { fileAPI, doclingAPI } from "@/lib/api";
+import { fileAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { emitFileUploaded, emitFileDeleted } from "@/lib/file-events";
 
@@ -41,7 +36,7 @@ interface UploadedFile {
   name: string;
   size: number;
   progress: number;
-  status: "uploading" | "processing" | "success" | "error" | "pending";
+  status: "uploading" | "preprocessing" | "preprocessed" | "vectorizing" | "completed" | "failed" | "pending";
   category: string;
   uploadTime: Date;
   fileId?: string;
@@ -83,8 +78,6 @@ export default function UploadPage() {
   const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // Docling 설정 상태
-  const [currentSettings, setCurrentSettings] = useState<any>(null);
 
   // 중복 파일 모달 상태
   const [duplicateModal, setDuplicateModal] = useState({
@@ -132,7 +125,7 @@ export default function UploadPage() {
         0
       );
       const vectorizedCount = remainingFiles.filter(
-        (file) => file.status === "success"
+        (file) => file.status === "completed"
       ).length;
       const recentCount = remainingFiles.filter((file) => {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -197,28 +190,42 @@ export default function UploadPage() {
 
         // API 응답을 UploadedFile 형태로 변환
         const serverFiles: UploadedFile[] = response.map((file: any) => {
-          // 파일 상태 결정
+          // 새로운 파일 상태 시스템에 맞춰 상태 결정
           let status:
-            | "success"
-            | "error"
-            | "processing"
             | "uploading"
+            | "preprocessing" 
+            | "preprocessed"
+            | "vectorizing"
+            | "completed"
+            | "failed"
             | "pending" = "pending";
 
-          if (file.vectorized === true) {
-            status = "success";
-          } else if (
-            file.status === "processing" ||
-            file.status === "vectorizing"
-          ) {
-            status = "processing";
-          } else if (file.status === "error" || file.status === "failed") {
-            status = "error";
+          // 새로운 상태 시스템
+          if (file.status === "uploaded") {
+            status = "pending"; // 업로드됨 - 전처리 대기
+          } else if (file.status === "preprocessing") {
+            status = "preprocessing"; // 전처리 중
+          } else if (file.status === "preprocessed") {
+            status = "preprocessed"; // 전처리 완료 - 벡터화 대기
+          } else if (file.status === "vectorizing") {
+            status = "vectorizing"; // 벡터화 중
+          } else if (file.status === "completed") {
+            status = "completed"; // 모든 처리 완료
+          } else if (file.status === "failed") {
+            status = "failed"; // 처리 실패
           } else if (file.status === "uploading") {
-            status = "uploading";
+            status = "uploading"; // 업로드 중
           } else {
-            // 업로드된 상태이지만 벡터화되지 않은 파일은 대기 상태로 표시
-            status = "pending";
+            // 하위 호환성: 기존 시스템 상태 처리
+            if (file.vectorized === true) {
+              status = "completed";
+            } else if (file.status === "processing") {
+              status = "preprocessing";
+            } else if (file.status === "error") {
+              status = "failed";
+            } else {
+              status = "pending";
+            }
           }
 
           return {
@@ -240,7 +247,7 @@ export default function UploadPage() {
         // 통계 계산
         const totalSize = serverFiles.reduce((sum, file) => sum + file.size, 0);
         const vectorizedCount = serverFiles.filter(
-          (file) => file.status === "success"
+          (file) => file.status === "completed"
         ).length;
         const recentCount = serverFiles.filter((file) => {
           const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -288,20 +295,6 @@ export default function UploadPage() {
     loadUploadedFiles();
   }, []); // 빈 의존성 배열 - 컴포넌트 마운트 시 한 번만 실행
 
-  // 설정 로드 (Docling 설정 포함)
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        // Docling 전용 설정 로드 (단일 소스)
-        const settings = await doclingAPI.getDoclingSettings();
-        console.log("로드된 Docling 설정:", settings);
-        setCurrentSettings(settings);
-      } catch (error) {
-        console.error("Docling 설정 로드 실패:", error);
-      }
-    };
-    loadSettings();
-  }, []);
 
   const handleFileUpload = async (
     file: File,
@@ -417,12 +410,16 @@ export default function UploadPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "success":
+      case "completed":
         return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "error":
+      case "failed":
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case "processing":
-        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case "preprocessing":
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+      case "preprocessed":
+        return <Clock className="h-4 w-4 text-blue-500" />;
+      case "vectorizing":
+        return <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />;
       case "uploading":
         return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
       case "pending":
@@ -434,30 +431,42 @@ export default function UploadPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "success":
+      case "completed":
         return (
           <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
-            완료
+            처리 완료
           </Badge>
         );
-      case "error":
-        return <Badge variant="destructive">오류</Badge>;
-      case "processing":
+      case "failed":
+        return <Badge variant="destructive">처리 실패</Badge>;
+      case "preprocessing":
         return (
           <Badge className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
-            처리중
+            전처리 중
+          </Badge>
+        );
+      case "preprocessed":
+        return (
+          <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+            벡터화 대기
+          </Badge>
+        );
+      case "vectorizing":
+        return (
+          <Badge className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
+            벡터화 중
           </Badge>
         );
       case "uploading":
         return (
           <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-            업로드중
+            업로드 중
           </Badge>
         );
       case "pending":
         return (
           <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200">
-            벡터화 대기
+            전처리 대기
           </Badge>
         );
       default:
@@ -507,7 +516,7 @@ export default function UploadPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">벡터화 완료</CardTitle>
+            <CardTitle className="text-sm font-medium">처리 완료</CardTitle>
             <Database className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
@@ -542,7 +551,7 @@ export default function UploadPage() {
             <div className="text-2xl font-bold">
               {stats.totalFiles - stats.vectorizedFiles}
             </div>
-            <p className="text-xs text-muted-foreground">벡터화 대기 중</p>
+            <p className="text-xs text-muted-foreground">처리 대기 중</p>
           </CardContent>
         </Card>
       </div>
@@ -552,12 +561,8 @@ export default function UploadPage() {
         <CardHeader>
           <CardTitle>새 파일 업로드</CardTitle>
           <CardDescription>
-            PDF 파일을 업로드하여 벡터화할 자료를 준비합니다.
+            PDF 파일을 업로드합니다. 전처리와 벡터화는 별도로 진행됩니다.
           </CardDescription>
-          {/* 현재 Docling 설정 상태 표시 🆕 */}
-          <div className="pt-2">
-            <DoclingSettingsInfo settings={currentSettings} />
-          </div>
         </CardHeader>
         <CardContent>
           <FileUpload
@@ -582,7 +587,7 @@ export default function UploadPage() {
         <CardHeader>
           <CardTitle>업로드된 문서 관리</CardTitle>
           <CardDescription>
-            업로드된 문서의 벡터화 상태를 확인하고 관리할 수 있습니다.
+            업로드된 문서의 처리 상태를 확인하고 관리할 수 있습니다.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -597,17 +602,17 @@ export default function UploadPage() {
           ) : (
             <div className="space-y-4">
               {uploadedFiles.map((file, index) => {
-                const isVectorized = file.status === "success";
-                const isProcessing = ["processing", "uploading"].includes(
+                const isCompleted = file.status === "completed";
+                const isProcessing = ["preprocessing", "vectorizing", "uploading"].includes(
                   file.status
                 );
-                const hasError = file.status === "error";
+                const hasError = file.status === "failed";
 
                 return (
                   <div
                     key={`${file.fileId || index}-${file.name}`}
                     className={`relative p-4 border rounded-lg transition-all ${
-                      isVectorized
+                      isCompleted
                         ? "border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-950/30 hover:bg-green-50/50 dark:hover:bg-green-950/50"
                         : hasError
                         ? "border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/30 hover:bg-red-50/50 dark:hover:bg-red-950/50"
@@ -622,17 +627,11 @@ export default function UploadPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-medium truncate">{file.name}</p>
-                            {isVectorized && (
+                            {isCompleted && (
                               <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs">
-                                벡터화 완료
+                                처리 완료
                               </Badge>
                             )}
-                            {/* Docling 상태 배지 추가 🆕 */}
-                            <DoclingStatusBadge
-                              docling_processed={file.docling_processed}
-                              docling_success={file.docling_success}
-                              docling_result={file.docling_result}
-                            />
                           </div>
 
                           <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
@@ -644,28 +643,44 @@ export default function UploadPage() {
                             <span>{file.uploadTime.toLocaleString()}</span>
                           </div>
 
-                          {/* 벡터화 상태별 안내 메시지 */}
-                          {isVectorized && (
+                          {/* 파일 처리 상태별 안내 메시지 */}
+                          {isCompleted && (
                             <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-md mb-2">
                               <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                               <div className="text-sm text-green-700 dark:text-green-300">
                                 <span className="font-medium">
-                                  벡터화 완료!
+                                  모든 처리 완료!
                                 </span>
                                 <span className="ml-2">
-                                  원본 파일은 이제 안전하게 삭제할 수 있습니다.
-                                  검색/채팅 기능에 영향이 없습니다.
+                                  전처리와 벡터화가 완료되었습니다. 원본 파일은 이제 안전하게 삭제할 수 있습니다.
                                 </span>
                               </div>
                             </div>
                           )}
 
-                          {isProcessing && (
+                          {file.status === "preprocessing" && (
+                            <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-950/50 border border-yellow-200 dark:border-yellow-800 rounded-md mb-2">
+                              <Loader2 className="h-4 w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 animate-spin" />
+                              <span className="text-sm text-yellow-700 dark:text-yellow-300">
+                                파일 전처리 중... 텍스트 추출 및 분석을 진행하고 있습니다.
+                              </span>
+                            </div>
+                          )}
+
+                          {file.status === "preprocessed" && (
                             <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-md mb-2">
-                              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 animate-pulse" />
+                              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                               <span className="text-sm text-blue-700 dark:text-blue-300">
-                                벡터화 진행 중... 완료될 때까지 파일을 삭제하지
-                                마세요.
+                                전처리 완료! 벡터화 대기 중입니다.
+                              </span>
+                            </div>
+                          )}
+
+                          {file.status === "vectorizing" && (
+                            <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 rounded-md mb-2">
+                              <Loader2 className="h-4 w-4 text-purple-600 dark:text-purple-400 flex-shrink-0 animate-spin" />
+                              <span className="text-sm text-purple-700 dark:text-purple-300">
+                                벡터화 진행 중... 검색 가능한 데이터로 변환하고 있습니다.
                               </span>
                             </div>
                           )}
@@ -674,8 +689,7 @@ export default function UploadPage() {
                             <div className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/50 border border-orange-200 dark:border-orange-800 rounded-md mb-2">
                               <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                               <span className="text-sm text-orange-700 dark:text-orange-300">
-                                벡터화 대기 중입니다. 벡터화 관리 페이지에서
-                                벡터화를 시작해주세요.
+                                전처리 대기 중입니다. 처리 관리 페이지에서 전처리를 시작해주세요.
                               </span>
                             </div>
                           )}
@@ -689,10 +703,6 @@ export default function UploadPage() {
                             </div>
                           )}
 
-                          {/* Docling 상세 정보 카드 추가 🆕 */}
-                          <DoclingDetailCard
-                            docling_result={file.docling_result}
-                          />
 
                           {/* 진행률 표시 */}
                           {file.status === "uploading" && (
@@ -769,19 +779,19 @@ export default function UploadPage() {
                         </Button>
 
                         <Button
-                          variant={isVectorized ? "default" : "outline"}
+                          variant={isCompleted ? "default" : "outline"}
                           size="sm"
                           onClick={() => handleDeleteClick(file)}
                           disabled={!file.fileId}
-                          title={isVectorized ? "안전하게 삭제" : "파일 삭제"}
+                          title={isCompleted ? "안전하게 삭제" : "파일 삭제"}
                           className={
-                            isVectorized
+                            isCompleted
                               ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white"
                               : ""
                           }
                         >
                           <Trash2 className="h-4 w-4" />
-                          {isVectorized ? "안전 삭제" : "삭제"}
+                          {isCompleted ? "안전 삭제" : "삭제"}
                         </Button>
                       </div>
                     </div>
@@ -817,8 +827,7 @@ export default function UploadPage() {
         onConfirm={handleDeleteConfirm}
         fileName={deleteModal.file?.name || ""}
         isVectorized={
-          deleteModal.file?.status === "success" &&
-          deleteModal.file?.vectorized === true
+          deleteModal.file?.status === "completed"
         }
         isLoading={deleteModal.isDeleting}
       />

@@ -2,7 +2,6 @@
 import os
 import uuid
 import aiofiles
-import json
 import time
 import logging
 import asyncio
@@ -11,10 +10,21 @@ from fastapi import UploadFile, HTTPException
 from datetime import datetime
 
 from ..models.schemas import FileUploadResponse, FileInfo, FileProcessingOptions
+from ..models.vector_models import FileMetadata, FileMetadataService
+from ..models.schemas import FileStatus
 from ..core.config import settings
 from .category_service import CategoryService
 from .preprocessing_service import PreprocessingService
 from .vector_service import VectorService
+from .settings_service import settings_service
+
+# SSE 이벤트 전송용
+try:
+    from ..api.sse import get_sse_manager
+    SSE_AVAILABLE = True
+except ImportError:
+    SSE_AVAILABLE = False
+    print("SSE 모듈을 찾을 수 없습니다.")
 
 class FileService:
     """파일 관리 및 벡터화 파이프라인 오케스트레이션을 담당합니다."""
@@ -28,71 +38,353 @@ class FileService:
         self.preprocessing_service = PreprocessingService()
         self.vector_service = VectorService()
 
-        self.files_metadata_file = os.path.join(settings.DATA_DIR, "files_metadata.json")
+        # SQLite 기반 파일 메타데이터 서비스
+        self.file_metadata_service = FileMetadataService()
         self._ensure_data_dir()
-        self._load_files_metadata()
 
-    # --- Vectorization Pipeline (Orchestrator) ---
-    async def start_vectorization_pipeline(self, file_id: str):
-        """전체 벡터화 파이프라인을 시작하고 관리합니다."""
-        vectorization_start_time = time.time()
-        self.logger.info(f"🚀 === 벡터화 파이프라인 시작: {file_id} ===")
+    # --- 분리된 전처리 및 벡터화 파이프라인 ---
+    async def start_preprocessing(self, file_id: str, method: str = None):
+        """파일 전처리를 시작합니다."""
+        preprocessing_start_time = time.time()
+        self.logger.info(f"🔄 === 전처리 시작: {file_id} ===")
 
         try:
+            # method가 지정되지 않았으면 설정에서 가져오기
+            if method is None:
+                from .settings_service import settings_service
+                system_settings = settings_service.get_section_settings("system")
+                method = system_settings.get("preprocessing_method", "basic")
+                self.logger.info(f"설정에서 가져온 전처리 방식: {method}")
+            
             file_info = await self.get_file_info(file_id)
             if not file_info or not file_info.file_path or not os.path.exists(file_info.file_path):
                 self.logger.error(f"파일 정보를 찾을 수 없거나 파일이 존재하지 않습니다: {file_id}")
-                await self._update_vectorization_status(file_id, "failed", error="File not found or path is invalid.")
-                return
+                await self._update_file_status(file_id, FileStatus.FAILED, error="File not found or path is invalid.")
+                return {"success": False, "error": "File not found"}
 
-            await self._update_vectorization_status(file_id, "processing")
+            if file_info.status != FileStatus.UPLOADED:
+                self.logger.warning(f"파일이 전처리 가능한 상태가 아닙니다: {file_id}, 현재 상태: {file_info.status}")
+                return {"success": False, "error": "File is not in uploadable state"}
 
-            # 1. 전처리 단계
-            self.logger.info(f"[1/2] 텍스트 추출 및 전처리 시작...")
-            # 통합 설정에서 우선 전처리 방식 결정
-            try:
-                system_settings = settings_service.get_section_settings("system")
-                preferred_method = system_settings.get("preprocessing_method", "basic")
-                self.logger.info(f"기본 설정에서 전처리 방식 로드: {preferred_method}")
-            except Exception as e:
-                self.logger.warning(f"전처리 방식 설정 로드 실패, 기본값 사용: {e}")
-                preferred_method = "basic"
+            await self._update_file_status(file_id, FileStatus.PREPROCESSING)
+
+            # 전처리 실행
+            self.logger.info(f"텍스트 추출 및 전처리 시작 (방법: {method})...")
+            text_content = await self.preprocessing_service.process_file(file_info.file_path, method)
             
-            text_content = await self.preprocessing_service.process_file(file_info.file_path, preferred_method)
-            self.logger.info(f"✅ 전처리 완료. 추출된 텍스트 길이: {len(text_content)}")
+            # 전처리 결과 저장
+            await self._save_preprocessed_content(file_id, text_content, method)
+            
+            await self._update_file_status(file_id, FileStatus.PREPROCESSED)
+            
+            elapsed = time.time() - preprocessing_start_time
+            self.logger.info(f"✅ 전처리 완료. 추출된 텍스트 길이: {len(text_content)} (소요 시간: {elapsed:.2f}초)")
+            
+            return {
+                "success": True,
+                "text_length": len(text_content),
+                "processing_time": elapsed,
+                "method": method
+            }
 
-            # 2. 청킹 및 임베딩 단계
-            self.logger.info(f"[2/2] 청킹 및 임베딩 시작...")
-            vector_metadata = { "filename": file_info.filename, "category_id": file_info.category_id }
+        except Exception as e:
+            self.logger.error(f"💥 전처리 오류: {e}", exc_info=True)
+            await self._update_file_status(file_id, FileStatus.FAILED, error=str(e))
+            return {"success": False, "error": str(e)}
+
+    async def start_vectorization(self, file_id: str):
+        """전처리된 파일의 벡터화를 시작합니다."""
+        vectorization_start_time = time.time()
+        self.logger.info(f"🚀 === 벡터화 시작: {file_id} ===")
+
+        try:
+            file_info = await self.get_file_info(file_id)
+            if not file_info:
+                self.logger.error(f"파일 정보를 찾을 수 없습니다: {file_id}")
+                return {"success": False, "error": "File not found"}
+
+            # PREPROCESSING 상태나 FAILED 상태의 파일도 재처리 가능하도록 허용
+            if file_info.status not in [FileStatus.UPLOADED, FileStatus.PREPROCESSED, FileStatus.VECTORIZING, FileStatus.PREPROCESSING, FileStatus.FAILED]:
+                self.logger.warning(f"파일이 벡터화 가능한 상태가 아닙니다: {file_id}, 현재 상태: {file_info.status}")
+                return {"success": False, "error": "File is not ready for vectorization"}
+            
+            # PREPROCESSING 또는 FAILED 상태인 경우 강제 재처리 시작
+            if file_info.status in [FileStatus.PREPROCESSING, FileStatus.FAILED]:
+                self.logger.info(f"🔄 상태가 {file_info.status}인 파일을 강제 재처리합니다: {file_id}")
+                # 상태를 UPLOADED로 재설정하여 처음부터 다시 시작
+                await self._update_file_status(file_id, FileStatus.UPLOADED)
+
+            # UPLOADED 상태라면 전처리부터 시작
+            if file_info.status == FileStatus.UPLOADED:
+                self.logger.info(f"UPLOADED 상태 파일 전처리 시작: {file_id}")
+                # 기본 설정에서 전처리 방법 가져오기 (설정에 따라 basic, docling, unstructured 중 선택)
+                from .settings_service import settings_service
+                system_settings = settings_service.get_section_settings("system")
+                preprocessing_method = system_settings.get("preprocessing_method", "basic")
+                self.logger.info(f"설정된 전처리 방식: {preprocessing_method}")
+                preprocess_result = await self.start_preprocessing(file_id, preprocessing_method)
+                if not preprocess_result.get("success"):
+                    self.logger.error(f"전처리 실패: {file_id}")
+                    return {"success": False, "error": "Preprocessing failed"}
+                
+                # 전처리 완료 후 파일 정보 다시 로드
+                file_info = await self.get_file_info(file_id)
+
+            await self._update_file_status(file_id, FileStatus.VECTORIZING)
+
+            # SSE 이벤트 전송 (벡터화 시작)
+            if SSE_AVAILABLE:
+                try:
+                    sse_manager = get_sse_manager()
+                    await sse_manager.broadcast("vectorization_update", {
+                        "file_id": file_id,
+                        "filename": file_info.filename,
+                        "status": "started",
+                        "vectorized": False
+                    })
+                    self.logger.info(f"📡 SSE 벡터화 시작 이벤트 전송: {file_id}")
+                except Exception as sse_error:
+                    self.logger.warning(f"SSE 시작 이벤트 전송 실패: {sse_error}")
+
+            # 전처리된 텍스트 로드
+            text_content = await self._load_preprocessed_content(file_id)
+            if not text_content:
+                self.logger.error(f"전처리된 텍스트를 찾을 수 없습니다: {file_id}")
+                await self._update_file_status(file_id, FileStatus.FAILED, error="Preprocessed content not found")
+                return {"success": False, "error": "Preprocessed content not found"}
+
+            # 벡터화 실행
+            self.logger.info(f"청킹 및 임베딩 시작...")
+            vector_metadata = { 
+                "filename": file_info.filename, 
+                "category_id": file_info.category_id,
+                "category_name": file_info.category_name,
+                "preprocessing_method": file_info.preprocessing_method
+            }
             result = await self.vector_service.chunk_and_embed_text(file_id, text_content, vector_metadata)
 
             if result.get("success"):
-                self.logger.info(f"✅ 벡터화 성공. 청크 수: {result.get('chunks_count', 0)}")
-                await self._update_vectorization_status(file_id, "completed", chunks_count=result.get('chunks_count'))
+                self.logger.info(f"🔄 메타데이터 업데이트 시작 - 파일 상태를 COMPLETED로 변경")
+                await self._update_file_status(file_id, FileStatus.COMPLETED, chunks_count=result.get('chunks_count'))
+                
+                # vectorized 필드도 별도로 업데이트
+                self.logger.info(f"🔄 vectorized 상태 업데이트 시작")
+                await self.update_file_vectorization_status(
+                    file_id=file_id,
+                    vectorized=True,
+                    error_message=None,
+                    chunk_count=result.get('chunks_count', 0)
+                )
+                
+                elapsed = time.time() - vectorization_start_time
+                self.logger.info(f"📋 메타데이터 업데이트 완료 - 청크 수: {result.get('chunks_count', 0)}")
+                self.logger.info(f"✅ 벡터화 성공. 청크 수: {result.get('chunks_count', 0)} (소요 시간: {elapsed:.2f}초)")
+                
+                # SSE 이벤트 전송 (벡터화 완료)
+                if SSE_AVAILABLE:
+                    try:
+                        sse_manager = get_sse_manager()
+                        await sse_manager.broadcast("vectorization_update", {
+                            "file_id": file_id,
+                            "filename": file_info.filename,
+                            "status": "completed",
+                            "vectorized": True,
+                            "chunks_count": result.get('chunks_count', 0),
+                            "processing_time": elapsed
+                        })
+                        self.logger.info(f"📡 SSE 벡터화 완료 이벤트 전송: {file_id}")
+                    except Exception as sse_error:
+                        self.logger.warning(f"SSE 이벤트 전송 실패: {sse_error}")
+                
+                return {
+                    "success": True,
+                    "chunks_count": result.get('chunks_count', 0),
+                    "processing_time": elapsed
+                }
             else:
                 self.logger.error(f"❌ 벡터화 실패: {result.get('error')}")
-                await self._update_vectorization_status(file_id, "failed", error=result.get('error'))
+                await self._update_file_status(file_id, FileStatus.FAILED, error=result.get('error'))
+                
+                # SSE 이벤트 전송 (벡터화 실패)
+                if SSE_AVAILABLE:
+                    try:
+                        sse_manager = get_sse_manager()
+                        await sse_manager.broadcast("vectorization_update", {
+                            "file_id": file_id,
+                            "filename": file_info.filename,
+                            "status": "failed",
+                            "vectorized": False,
+                            "error_message": result.get('error')
+                        })
+                        self.logger.info(f"📡 SSE 벡터화 실패 이벤트 전송: {file_id}")
+                    except Exception as sse_error:
+                        self.logger.warning(f"SSE 실패 이벤트 전송 실패: {sse_error}")
+                
+                return {"success": False, "error": result.get('error')}
 
         except Exception as e:
-            self.logger.error(f"💥 벡터화 파이프라인 전체 오류: {e}", exc_info=True)
-            await self._update_vectorization_status(file_id, "failed", error=str(e))
-        finally:
-            elapsed = time.time() - vectorization_start_time
-            self.logger.info(f"🏁 === 벡터화 파이프라인 종료: {file_id} (소요 시간: {elapsed:.2f}초) ===")
+            self.logger.error(f"💥 벡터화 오류: {e}", exc_info=True)
+            await self._update_file_status(file_id, FileStatus.FAILED, error=str(e))
+            
+            # SSE 이벤트 전송 (벡터화 예외 오류)
+            if SSE_AVAILABLE:
+                try:
+                    file_info = await self.get_file_info(file_id)
+                    sse_manager = get_sse_manager()
+                    await sse_manager.broadcast("vectorization_update", {
+                        "file_id": file_id,
+                        "filename": file_info.filename if file_info else "Unknown",
+                        "status": "failed",
+                        "vectorized": False,
+                        "error_message": str(e)
+                    })
+                    self.logger.info(f"📡 SSE 벡터화 예외 오류 이벤트 전송: {file_id}")
+                except Exception as sse_error:
+                    self.logger.warning(f"SSE 예외 오류 이벤트 전송 실패: {sse_error}")
+            
+            return {"success": False, "error": str(e)}
 
+    # 하위 호환성을 위한 기존 메서드 (deprecated)
+    async def start_vectorization_pipeline(self, file_id: str):
+        """전체 벡터화 파이프라인을 시작합니다. (deprecated - 전처리와 벡터화가 분리됨)"""
+        self.logger.warning(f"start_vectorization_pipeline은 deprecated 됩니다. start_preprocessing과 start_vectorization을 순차적으로 사용하세요.")
+        
+        # 자동으로 전처리 먼저 실행
+        preprocess_result = await self.start_preprocessing(file_id)
+        if not preprocess_result.get("success"):
+            return preprocess_result
+            
+        # 전처리 성공 시 벡터화 실행
+        return await self.start_vectorization(file_id)
+
+    # 하위 호환성을 위한 preprocess_file 메서드
+    async def preprocess_file(self, file_id: str, method: str = "basic"):
+        """파일 전처리 - start_preprocessing의 별칭 (하위 호환성)"""
+        return await self.start_preprocessing(file_id, method)
+
+    async def _update_file_status(self, file_id: str, status: FileStatus, error: str = None, chunks_count: int = None):
+        """파일 상태를 업데이트합니다."""
+        # 기존 파일 정보 조회
+        file_metadata = self.file_metadata_service.get_file(file_id)
+        if not file_metadata:
+            self.logger.error(f"파일 메타데이터를 찾을 수 없습니다: {file_id}")
+            return
+        
+        old_status = file_metadata.status
+        self.logger.info(f"📝 파일 상태 변경: {old_status} → {status}")
+        
+        # 업데이트할 필드들
+        update_fields = {}
+        
+        if chunks_count is not None:
+            old_chunk_count = file_metadata.chunk_count
+            update_fields['chunk_count'] = chunks_count
+            self.logger.info(f"📊 청크 수 업데이트: {old_chunk_count} → {chunks_count}개")
+        
+        if error:
+            update_fields['error_message'] = error
+            self.logger.error(f"❌ 실패 상태로 변경, 에러 메시지: {error}")
+        elif status == FileStatus.COMPLETED:
+            update_fields['error_message'] = None
+            self.logger.info(f"🔄 에러 메시지 초기화 완료")
+        
+        # SQLite 상태 업데이트
+        success = self.file_metadata_service.update_status(
+            file_id=file_id,
+            status=status,
+            **update_fields
+        )
+        
+        if success:
+            self.logger.info(f"✅ SQLite 메타데이터 업데이트 완료")
+            
+            # 업데이트 후 확인
+            updated_file = self.file_metadata_service.get_file(file_id)
+            if updated_file and status == FileStatus.COMPLETED:
+                self.logger.info(f"🔍 업데이트 후 vectorized 값: {updated_file.vectorized}")
+        else:
+            self.logger.error(f"❌ SQLite 메타데이터 업데이트 실패: {file_id}")
+
+    async def _save_preprocessed_content(self, file_id: str, text_content: str, method: str):
+        """전처리된 텍스트 내용을 파일로 저장합니다."""
+        preprocessed_dir = os.path.join(settings.DATA_DIR, "preprocessed")
+        os.makedirs(preprocessed_dir, exist_ok=True)
+        
+        preprocessed_file = os.path.join(preprocessed_dir, f"{file_id}.txt")
+        async with aiofiles.open(preprocessed_file, 'w', encoding='utf-8') as f:
+            await f.write(text_content)
+            
+        # SQLite에 전처리 방법 저장
+        self.file_metadata_service.update_file(
+            file_id=file_id,
+            preprocessing_method=method
+        )
+
+    async def _load_preprocessed_content(self, file_id: str) -> str:
+        """전처리된 텍스트 내용을 로드합니다."""
+        preprocessed_file = os.path.join(settings.DATA_DIR, "preprocessed", f"{file_id}.txt")
+        if os.path.exists(preprocessed_file):
+            async with aiofiles.open(preprocessed_file, 'r', encoding='utf-8') as f:
+                return await f.read()
+        return ""
+
+    # 하위 호환성을 위한 deprecated 메서드
     async def _update_vectorization_status(self, file_id: str, status: str, error: str = None, chunks_count: int = None):
-        if file_id in self.files_metadata:
-            self.files_metadata[file_id]["status"] = status
-            if status == "completed":
-                self.files_metadata[file_id]["vectorized"] = True
-                self.files_metadata[file_id]["vectorized_at"] = datetime.now().isoformat()
-                self.files_metadata[file_id]["error"] = None
-                if chunks_count is not None:
-                    self.files_metadata[file_id]["chunk_count"] = chunks_count
-            elif status == "failed":
-                self.files_metadata[file_id]["vectorized"] = False
-                self.files_metadata[file_id]["error"] = error
-            self._save_files_metadata()
+        """하위 호환성을 위한 deprecated 메서드"""
+        self.logger.warning("_update_vectorization_status는 deprecated되었습니다. _update_file_status를 사용하세요.")
+        
+        # 기존 상태를 새로운 FileStatus로 매핑
+        status_mapping = {
+            "processing": FileStatus.PREPROCESSING,
+            "completed": FileStatus.COMPLETED,
+            "failed": FileStatus.FAILED
+        }
+        new_status = status_mapping.get(status, FileStatus.FAILED)
+        await self._update_file_status(file_id, new_status, error, chunks_count)
+
+    async def update_file_vectorization_status(self, file_id: str, vectorized: bool, error_message: str = None, chunk_count: int = None):
+        """파일의 벡터화 상태를 업데이트합니다 (API에서 호출용)"""
+        try:
+            # 업데이트할 필드들
+            update_fields = {
+                'vectorized': vectorized
+            }
+            
+            if vectorized:
+                update_fields['error_message'] = None
+                if chunk_count is not None:
+                    update_fields['chunk_count'] = chunk_count
+                
+                # 상태를 COMPLETED로 업데이트
+                success = self.file_metadata_service.update_status(
+                    file_id=file_id,
+                    status=FileStatus.COMPLETED,
+                    **update_fields
+                )
+                
+                if success:
+                    self.logger.info(f"파일 {file_id} 벡터화 상태를 성공으로 업데이트 (청크: {chunk_count}개)")
+                    return True
+            else:
+                update_fields['error_message'] = error_message
+                status = FileStatus.UPLOADED if not error_message else FileStatus.FAILED
+                
+                success = self.file_metadata_service.update_status(
+                    file_id=file_id,
+                    status=status,
+                    **update_fields
+                )
+                
+                if success:
+                    self.logger.info(f"파일 {file_id} 벡터화 상태를 재설정으로 업데이트")
+                    return True
+            
+            self.logger.error(f"파일 메타데이터 업데이트 실패: {file_id}")
+            return False
+                
+        except Exception as e:
+            self.logger.error(f"벡터화 상태 업데이트 실패: {file_id}, 오류: {str(e)}")
+            return False
 
     # --- File Management Methods (Preserved) ---
     def _load_allowed_extensions(self):
@@ -104,29 +396,35 @@ class FileService:
         except Exception as e:
             self.logger.warning(f"설정 로드 실패, 기본 확장자 사용: {str(e)}")
             self.allowed_extensions = {".pdf", ".docx", ".pptx", ".xlsx", ".txt"}
+    
+    # FileInfo 속성 하위 호환성 (schema에서 vectorized 속성 요구)
+    def _convert_to_file_info(self, file_metadata: FileMetadata) -> FileInfo:
+        """FileMetadata를 FileInfo로 변환하는 헬퍼 메서드"""
+        return FileInfo(
+            file_id=file_metadata.file_id,
+            filename=file_metadata.filename,
+            saved_filename=file_metadata.saved_filename,
+            file_path=file_metadata.file_path,
+            file_size=file_metadata.file_size,
+            file_hash=file_metadata.file_hash,
+            category_id=file_metadata.category_id,
+            category_name=file_metadata.category_name,
+            status=file_metadata.status,
+            upload_time=file_metadata.upload_time,
+            preprocessing_started_at=file_metadata.preprocessing_started_at,
+            preprocessing_completed_at=file_metadata.preprocessing_completed_at,
+            vectorization_started_at=file_metadata.vectorization_started_at,
+            vectorization_completed_at=file_metadata.vectorization_completed_at,
+            error_message=file_metadata.error_message,
+            chunk_count=file_metadata.chunk_count,
+            preprocessing_method=file_metadata.preprocessing_method,
+            vectorized=file_metadata.vectorized  # 추가된 필드
+        )
 
     def _ensure_data_dir(self):
         os.makedirs(settings.DATA_DIR, exist_ok=True)
 
-    def _load_files_metadata(self):
-        if os.path.exists(self.files_metadata_file):
-            try:
-                with open(self.files_metadata_file, 'r', encoding='utf-8') as f:
-                    self.files_metadata = json.load(f)
-            except Exception as e:
-                self.logger.error(f"파일 메타데이터 로드 실패: {e}")
-                self.files_metadata = {}
-        else:
-            self.files_metadata = {}
-
-    def _save_files_metadata(self):
-        try:
-            with open(self.files_metadata_file, 'w', encoding='utf-8') as f:
-                json.dump(self.files_metadata, f, ensure_ascii=False, indent=2, default=str)
-        except Exception as e:
-            self.logger.error(f"파일 메타데이터 저장 실패: {e}")
-
-    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False, processing_options: Optional[FileProcessingOptions] = None) -> FileUploadResponse:
+    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False) -> FileUploadResponse:
         try:
             file_extension = os.path.splitext(file.filename)[1].lower()
             if file_extension not in self.allowed_extensions:
@@ -146,20 +444,16 @@ class FileService:
             import hashlib
             file_hash = hashlib.md5(content).hexdigest()
             
-            for existing_file_id, existing_file_data in self.files_metadata.items():
-                if existing_file_data.get("status") == "deleted":
-                    continue
-                
-                if (existing_file_data.get("file_hash") == file_hash and 
-                    (allow_global_duplicates or existing_file_data.get("category_id") == category_id)):
-                    if force_replace:
-                        await self.delete_file(existing_file_id)
-                        continue
-                    else:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={"error": "duplicate_file", "message": "동일한 파일이 이미 존재합니다."}
-                        )
+            # SQLite에서 중복 파일 검사
+            existing_file = self.file_metadata_service.get_file_by_hash(file_hash)
+            if existing_file and (allow_global_duplicates or existing_file.category_id == category_id):
+                if force_replace:
+                    await self.delete_file(existing_file.file_id)
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"error": "duplicate_file", "message": "동일한 파일이 이미 존재합니다."}
+                    )
             
             file_id = str(uuid.uuid4())
             saved_filename = f"{file_id}{file_extension}"
@@ -175,31 +469,40 @@ class FileService:
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
-            file_info = {
-                "file_id": file_id,
-                "filename": file.filename,
-                "saved_filename": saved_filename,
-                "file_path": file_path,
-                "file_size": file_size,
-                "file_hash": file_hash,
-                "category_id": category_id,
-                "category_name": category_name,
-                "status": "uploaded",
-                "upload_time": datetime.now(),
-                "vectorized": False
-            }
+            # 기본 전처리 방법을 설정에서 가져오기
+            system_settings = settings_service.get_section_settings("system")
+            default_preprocessing_method = system_settings.get("preprocessing_method", "basic")
             
-            self.files_metadata[file_id] = file_info
-            self._save_files_metadata()
+            # SQLite에 파일 메타데이터 저장
+            file_metadata = FileMetadata(
+                file_id=file_id,
+                filename=file.filename,
+                saved_filename=saved_filename,
+                file_path=file_path,
+                file_size=file_size,
+                file_hash=file_hash,
+                category_id=category_id,
+                category_name=category_name,
+                status=FileStatus.UPLOADED,
+                upload_time=datetime.now(),
+                preprocessing_method=default_preprocessing_method  # 설정에서 가져온 기본값
+            )
+            
+            success = self.file_metadata_service.create_file(file_metadata)
+            if not success:
+                # 파일 삭제 후 오류 발생
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                raise HTTPException(status_code=500, detail="파일 메타데이터 저장에 실패했습니다.")
             
             return FileUploadResponse(
                 file_id=file_id,
                 filename=file.filename,
-                status="uploaded",
+                status=FileStatus.UPLOADED,
                 file_size=file_size,
                 category_id=category_id,
                 category_name=category_name,
-                message="파일이 성공적으로 업로드되었습니다. 벡터화는 별도로 시작해야 합니다."
+                message="파일이 성공적으로 업로드되었습니다. 전처리는 별도로 시작해야 합니다."
             )
             
         except HTTPException:
@@ -209,34 +512,143 @@ class FileService:
             raise HTTPException(status_code=500, detail=f"파일 업로드 중 오류가 발생했습니다: {str(e)}")
 
     async def list_files(self, category_id: Optional[str] = None) -> List[FileInfo]:
+        file_metadatas = self.file_metadata_service.list_files(
+            category_id=category_id,
+            include_deleted=False
+        )
+        
         files = []
-        for file_id, file_data in self.files_metadata.items():
-            if file_data.get("status") == "deleted":
-                continue
-            if category_id is not None and file_data.get("category_id") != category_id:
-                continue
-            if os.path.exists(file_data.get("file_path", "")):
-                files.append(FileInfo(**file_data))
-        files.sort(key=lambda x: x.upload_time, reverse=True)
+        for file_metadata in file_metadatas:
+            # 파일 존재 여부 확인
+            if os.path.exists(file_metadata.file_path):
+                files.append(self._convert_to_file_info(file_metadata))
+        
         return files
 
     async def get_file_info(self, file_id: str) -> Optional[FileInfo]:
-        file_data = self.files_metadata.get(file_id)
-        return FileInfo(**file_data) if file_data else None
+        file_metadata = self.file_metadata_service.get_file(file_id)
+        if not file_metadata:
+            return None
+        
+        return self._convert_to_file_info(file_metadata)
 
     async def delete_file(self, file_id: str) -> bool:
-        file_data = self.files_metadata.get(file_id)
-        if not file_data:
+        file_metadata = self.file_metadata_service.get_file(file_id)
+        if not file_metadata:
             return False
         
         try:
-            if os.path.exists(file_data["file_path"]):
-                os.remove(file_data["file_path"])
+            # 물리 파일 삭제
+            if os.path.exists(file_metadata.file_path):
+                os.remove(file_metadata.file_path)
+            
+            # 벡터 데이터 삭제
             await self.vector_service.delete_document_vectors(file_id)
-            self.files_metadata[file_id]["status"] = "deleted"
-            self.files_metadata[file_id]["deleted_at"] = datetime.now().isoformat()
-            self._save_files_metadata()
-            return True
+            
+            # SQLite에서 소프트 삭제 (status를 deleted로 변경)
+            success = self.file_metadata_service.delete_file(file_id, soft_delete=True)
+            return success
         except Exception as e:
             self.logger.error(f"파일 삭제 실패: {e}", exc_info=True)
             return False
+    
+    async def get_file_path(self, file_id: str) -> Optional[str]:
+        """파일 경로 조회"""
+        file_metadata = self.file_metadata_service.get_file(file_id)
+        if file_metadata and os.path.exists(file_metadata.file_path):
+            return file_metadata.file_path
+        return None
+    
+    
+    
+    async def retry_vectorization(self, file_id: str) -> bool:
+        """벡터화 재시도"""
+        try:
+            file_metadata = self.file_metadata_service.get_file(file_id)
+            if not file_metadata:
+                return False
+            
+            # 상태를 UPLOADED로 재설정하고 벡터화 재시도
+            self.file_metadata_service.update_status(
+                file_id=file_id,
+                status=FileStatus.UPLOADED,
+                vectorized=False,
+                error_message=None
+            )
+            
+            # 백그라운드에서 벡터화 시작
+            import asyncio
+            asyncio.create_task(self.start_vectorization(file_id))
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"벡터화 재시도 실패: {e}")
+            return False
+    
+    async def set_search_flow(self, flow_id: str) -> bool:
+        """검색 Flow 설정 (하위 호환성)"""
+        self.logger.warning("set_search_flow는 현재 구현되지 않았습니다.")
+        return False
+    
+    async def delete_flow(self, flow_id: str) -> bool:
+        """Flow 삭제 (하위 호환성)"""
+        self.logger.warning("delete_flow는 현재 구현되지 않았습니다.")
+        return False
+    
+    async def cleanup_orphaned_metadata(self) -> int:
+        """고아 메타데이터 정리"""
+        try:
+            files = self.file_metadata_service.list_files(include_deleted=False)
+            orphaned_count = 0
+            
+            for file_metadata in files:
+                # 실제 파일이 존재하지 않는 메타데이터를 찾음
+                if not os.path.exists(file_metadata.file_path):
+                    success = self.file_metadata_service.delete_file(
+                        file_id=file_metadata.file_id,
+                        soft_delete=True
+                    )
+                    if success:
+                        orphaned_count += 1
+                        self.logger.info(f"고아 메타데이터 삭제: {file_metadata.file_id}")
+            
+            return orphaned_count
+            
+        except Exception as e:
+            self.logger.error(f"고아 메타데이터 정리 실패: {e}")
+            return 0
+    
+    async def sync_vectorization_status(self) -> Dict[str, Any]:
+        """벡터화 상태 동기화"""
+        try:
+            files = self.file_metadata_service.list_files(include_deleted=False)
+            corrected_count = 0
+            
+            for file_metadata in files:
+                # 벡터 서비스에서 실제 벡터 데이터 존재 여부 확인
+                try:
+                    has_vectors = await self.vector_service.has_document_vectors(file_metadata.file_id)
+                    
+                    # 메타데이터와 실제 상태가 다른 경우 수정
+                    if file_metadata.vectorized != has_vectors:
+                        status = FileStatus.COMPLETED if has_vectors else FileStatus.UPLOADED
+                        self.file_metadata_service.update_status(
+                            file_id=file_metadata.file_id,
+                            status=status,
+                            vectorized=has_vectors
+                        )
+                        corrected_count += 1
+                        self.logger.info(f"벡터화 상태 동기화: {file_metadata.file_id} -> {has_vectors}")
+                        
+                except Exception as e:
+                    self.logger.warning(f"벡터 상태 확인 실패 {file_metadata.file_id}: {e}")
+            
+            return {
+                "status_corrected": corrected_count,
+                "message": f"{corrected_count}개 파일의 상태를 동기화했습니다."
+            }
+            
+        except Exception as e:
+            self.logger.error(f"벡터화 상태 동기화 실패: {e}")
+            return {"status_corrected": 0, "error": str(e)}

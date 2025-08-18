@@ -78,6 +78,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-size: 14px;
               line-height: 1.6;
               color: #212529; /* 기본 검은색 텍스트 */
               margin: 16px;
@@ -86,6 +87,11 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
             h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote {
               color: #212529; /* 모든 텍스트 요소 색상 강제 */
             }
+            h1 { font-size: 1.5em; }
+            h2 { font-size: 1.3em; }
+            h3 { font-size: 1.1em; }
+            h4, h5, h6 { font-size: 1em; }
+            p { font-size: 14px; }
             a {
               color: #0056b3; /* 링크 색상 */
             }
@@ -299,7 +305,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
   const hasChartJs = /new Chart\(|Chart\s*\(/i.test(content);
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`w-full space-y-4 ${className}`}>
       {/* HTML 감지 상태 표시 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
@@ -365,8 +371,8 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
 
       {/* HTML 미리보기 */}
       {showPreview && (
-        <Card className="border">
-          <CardHeader className="pb-3">
+        <Card className="w-full border dark:border-slate-600 dark:bg-slate-800">
+          <CardHeader className="pb-2 px-3 py-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">HTML 미리보기</CardTitle>
               <div className="flex items-center space-x-2">
@@ -435,7 +441,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className={`border-t ${
+              className={`border-t dark:border-slate-600 ${
                 isFullscreen ? "fixed inset-0 z-50 bg-white dark:bg-slate-900" : "relative"
               }`}
             >
@@ -456,25 +462,27 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
 
               {/* 렌더링 모드에 따른 컴포넌트 표시 */}
               {renderMode === "iframe" ? (
-                <iframe
-                  ref={iframeRef}
-                  className={`w-full border-0 ${
-                    isFullscreen ? "h-[calc(100vh-80px)]" : "h-64 md:h-80"
-                  }`}
-                  title="HTML 미리보기"
-                  sandbox="allow-same-origin"
-                  style={{
-                    minHeight: isFullscreen ? "calc(100vh - 80px)" : "256px",
-                  }}
-                />
+                <div className="p-1">
+                  <iframe
+                    ref={iframeRef}
+                    className={`w-full border-0 ${
+                      isFullscreen ? "h-[calc(100vh-80px)]" : "h-[600px]"
+                    }`}
+                    title="HTML 미리보기"
+                    sandbox="allow-same-origin"
+                    style={{
+                      minHeight: isFullscreen ? "calc(100vh - 80px)" : "600px"
+                    }}
+                  />
+                </div>
               ) : (
                 <div
-                  className={isFullscreen ? "h-[calc(100vh-80px)] p-4" : "p-4"}
+                  className={`p-1 ${isFullscreen ? "h-[calc(100vh-80px)]" : ""}`}
                 >
                   <CanvasHtmlRenderer
                     htmlContent={detectionResult.sanitizedHtml || ""}
-                    width={isFullscreen ? 800 : 600}
-                    height={isFullscreen ? 600 : 400}
+                    width={isFullscreen ? 1000 : 800}
+                    height={isFullscreen ? 700 : 600}
                   />
                 </div>
               )}
@@ -485,7 +493,7 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
 
       {/* HTML 코드 보기 */}
       {showCode && (
-        <Card className="border">
+        <Card className="w-full border dark:border-slate-600 dark:bg-slate-800">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">HTML 소스 코드</CardTitle>

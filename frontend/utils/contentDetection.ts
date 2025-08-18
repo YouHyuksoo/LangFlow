@@ -54,6 +54,31 @@ export function detectContentType(content: string): ContentDetectionResult {
 
   const trimmedContent = content.trim();
 
+  // 강제 마크다운 처리: 모든 Assistant 응답을 마크다운으로 처리
+  // 다음 조건 중 하나라도 만족하면 무조건 마크다운으로 처리:
+  // 1. 볼드 텍스트가 포함된 경우 (**텍스트**)
+  // 2. 이모지가 포함된 경우
+  // 3. 구조화된 번호가 포함된 경우 (①②③)
+  // 4. ASCII 테이블 문자가 포함된 경우 (│├└┌┐┘┴┬)
+  // 5. 텍스트가 100자 이상인 경우 (긴 텍스트는 보통 구조화된 내용)
+  
+  const hasBold = /\*\*.*?\*\*/.test(trimmedContent);
+  const hasEmoji = /[🔹📊📄💡📑📈📉🔍⭐✅❌🎯📝🔧⚡🚀🎨📋📌🔎💼🏢]/.test(trimmedContent);
+  const hasStructuredNumbers = /[①②③④⑤⑥⑦⑧⑨⑩]/.test(trimmedContent);
+  const hasAsciiTable = /[│├└┌┐┘┴┬─]/.test(trimmedContent);
+  const isLongText = trimmedContent.length > 100;
+  
+  if (hasBold || hasEmoji || hasStructuredNumbers || hasAsciiTable || isLongText) {
+    return {
+      contentType: "markdown",
+      confidence: 0.95, // 높은 신뢰도로 강제 설정
+      subType: "forced",
+      sanitizedContent: trimmedContent,
+      textContent: extractTextFromMarkdown(trimmedContent),
+      metadata: generateMetadata(trimmedContent),
+    };
+  }
+
   // HTML과 마크다운 동시 감지 (혼합 콘텐츠 처리)
   const htmlResult = detectHtmlContent(trimmedContent);
   const markdownResult = detectMarkdownContent(trimmedContent);
@@ -90,7 +115,20 @@ export function detectContentType(content: string): ContentDetectionResult {
     }
   }
 
-  // 단일 콘텐츠 타입 처리
+  // 단일 콘텐츠 타입 처리 - 마크다운 우선순위 개선
+  
+  // 강력한 마크다운 지표가 있는 경우 HTML보다 우선
+  if (markdownResult.confidence > 0.7) {
+    return {
+      contentType: "markdown",
+      confidence: markdownResult.confidence,
+      subType: markdownResult.subType,
+      sanitizedContent: trimmedContent,
+      textContent: markdownResult.textContent,
+      metadata: generateMetadata(trimmedContent),
+    };
+  }
+
   if (htmlResult.confidence > 0.6) {
     return {
       contentType: "html",
@@ -102,7 +140,8 @@ export function detectContentType(content: string): ContentDetectionResult {
     };
   }
 
-  if (markdownResult.confidence > 0.6) {
+  // 일반 마크다운 처리 (HTML 체크 후)
+  if (markdownResult.confidence > 0.5) {
     return {
       contentType: "markdown",
       confidence: markdownResult.confidence,
@@ -209,6 +248,28 @@ function detectHtmlContent(content: string) {
 }
 
 /**
+ * 마크다운 감지를 위한 텍스트 전처리
+ */
+function cleanContentForMarkdownDetection(content: string): string {
+  // 텍스트 끝부분의 메타데이터 제거 (UUID, 숫자, 콤마 등으로 구성된 부분)
+  // 예: ', 'a843dc62-a63b-455c-91d5-5e756579ee6b', 0.7, None, '7aed7515-1938-4fbe-b5d5-aa61f5e2e0aa', None, 30.705079793930054)'
+  
+  // 패턴 1: 긴 UUID와 숫자가 포함된 메타데이터 라인 제거
+  let cleaned = content.replace(/,\s*'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'.*$/gm, '');
+  
+  // 패턴 2: 끝부분의 숫자, None, 콤마로만 구성된 부분 제거
+  cleaned = cleaned.replace(/,\s*\d+\.\d+.*?\)?\s*$/gm, '');
+  
+  // 패턴 3: 여러 개의 콤마와 None, 숫자가 섞인 패턴 제거
+  cleaned = cleaned.replace(/,\s*(None|\d+(\.\d+)?),?\s*$/gm, '');
+  
+  // 패턴 4: 줄 끝의 불필요한 괄호와 콤마 제거
+  cleaned = cleaned.replace(/[,\s\)]+$/, '');
+  
+  return cleaned.trim();
+}
+
+/**
  * 마크다운 테이블 감지 헬퍼 함수
  */
 function detectMarkdownTable(content: string): boolean {
@@ -220,6 +281,8 @@ function detectMarkdownTable(content: string): boolean {
  * 마크다운 콘텐츠 감지
  */
 function detectMarkdownContent(content: string) {
+  // 메타데이터가 포함된 텍스트 전처리
+  const cleanedContent = cleanContentForMarkdownDetection(content);
   const markdownPatterns = [
     /^#{1,6}\s+.+$/m, // 헤더 (#, ##, ###)
     /\*\*.*?\*\*/, // 볼드 텍스트 (줄 시작 제한 제거)
@@ -241,7 +304,7 @@ function detectMarkdownContent(content: string) {
   let matchedPatterns = 0;
 
   markdownPatterns.forEach((pattern) => {
-    if (pattern.test(content)) {
+    if (pattern.test(cleanedContent)) {
       matchedPatterns++;
     }
   });
@@ -250,7 +313,7 @@ function detectMarkdownContent(content: string) {
   confidence = Math.min(matchedPatterns * 0.12, 0.95);
   
   // 테이블이 있는지 체크 (가장 강한 지표)
-  const hasTable = detectMarkdownTable(content);
+  const hasTable = detectMarkdownTable(cleanedContent);
   
   if (hasTable) {
     confidence = Math.max(confidence, 0.7); // 테이블이 있으면 최소 0.7 보장
@@ -258,14 +321,53 @@ function detectMarkdownContent(content: string) {
   }
 
   // 코드 블록이 있으면 추가 점수
-  if (CODE_BLOCK_REGEX.test(content)) {
+  if (CODE_BLOCK_REGEX.test(cleanedContent)) {
     confidence += 0.2;
     CODE_BLOCK_REGEX.lastIndex = 0; // 글로벌 플래그 리셋
   }
 
   // 헤더가 있으면 추가 점수
-  if (MARKDOWN_HEADER_REGEX.test(content)) {
+  if (MARKDOWN_HEADER_REGEX.test(cleanedContent)) {
     confidence += 0.15;
+  }
+
+  // 번호 리스트와 볼드 조합이 있는 경우 (LLM 응답에서 흔함)
+  const hasNumberedListWithBold = /^\s*\d+\.\s+\*\*.*?\*\*/m.test(cleanedContent);
+  if (hasNumberedListWithBold) {
+    confidence = Math.max(confidence, 0.8); // 번호 리스트 + 볼드가 있으면 최소 0.8 보장
+    confidence += 0.15; // 추가 점수
+  }
+
+  // 볼드 텍스트가 많은 경우 추가 점수
+  const boldMatches = cleanedContent.match(/\*\*.*?\*\*/g) || [];
+  if (boldMatches.length >= 3) {
+    confidence += 0.1;
+  } else if (boldMatches.length >= 1) {
+    confidence += 0.05; // 볼드가 하나라도 있으면 약간의 점수
+  }
+
+  // 번호 리스트가 3개 이상인 경우 추가 점수
+  const numberedListMatches = cleanedContent.match(/^\s*\d+\.\s+/gm) || [];
+  if (numberedListMatches.length >= 3) {
+    confidence += 0.15;
+  }
+
+  // 이모지와 볼드 조합 (📑 **제목** 형태)
+  const emojiWithBold = /[📑📊📈📉🔍💡⭐✅❌🎯📝🔧⚡🚀🎨📋📌🔎💼🏢]\s*\*\*.*?\*\*/g.test(cleanedContent);
+  if (emojiWithBold) {
+    confidence += 0.2; // 이모지+볼드 조합은 강한 마크다운 지표
+  }
+
+  // 구조화된 텍스트 패턴 (① ② ③ 같은 번호 기호)
+  const structuredPattern = /[①②③④⑤⑥⑦⑧⑨⑩]/g.test(cleanedContent);
+  if (structuredPattern) {
+    confidence += 0.15; // 구조화된 번호는 문서 스타일의 강한 지표
+  }
+
+  // 화살표와 함께 사용된 순서 표현 (→)
+  const arrowPattern = /[①②③④⑤⑥⑦⑧⑨⑩].*?→.*?[①②③④⑤⑥⑦⑧⑨⑩]/g.test(cleanedContent);
+  if (arrowPattern) {
+    confidence += 0.1;
   }
 
   confidence = Math.min(confidence, 0.95);
@@ -273,7 +375,7 @@ function detectMarkdownContent(content: string) {
   return {
     confidence,
     subType: confidence > 0.7 ? "structured" : "simple",
-    textContent: extractTextFromMarkdown(content),
+    textContent: extractTextFromMarkdown(cleanedContent),
   };
 }
 

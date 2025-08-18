@@ -1,6 +1,18 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
+from enum import Enum
+
+# 파일 상태 열거형
+class FileStatus(str, Enum):
+    UPLOADED = "uploaded"               # 업로드됨 (전처리 대기)
+    PREPROCESSING = "preprocessing"     # 전처리 중
+    PREPROCESSED = "preprocessed"       # 전처리 완료 (벡터화 대기)
+    VECTORIZING = "vectorizing"         # 벡터화 중
+    VECTORIZED = "vectorized"           # 벡터화 완료 (처리 완료와 동일)
+    COMPLETED = "completed"             # 모든 처리 완료
+    FAILED = "failed"                   # 처리 실패
+    DELETED = "deleted"                 # 삭제됨
 
 # 채팅 관련 스키마
 class ChatRequest(BaseModel):
@@ -13,6 +25,7 @@ class ChatRequest(BaseModel):
     flow_id: Optional[str] = Field(None, description="사용할 Langflow Flow ID")
     top_k: int = 10  # 검색 결과 수 (기본값: 10개)
     images: Optional[List[str]] = Field(None, description="첨부된 이미지 Base64 데이터 목록")
+    output_format: Optional[str] = Field(None, description="출력 형식 (text, markdown, html, json, code)")
 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="AI 응답")
@@ -22,6 +35,7 @@ class ChatResponse(BaseModel):
     categories: Optional[List[str]] = Field(None, description="사용된 카테고리 목록")
     flow_id: Optional[str] = Field(None, description="사용된 Flow ID")
     user_id: Optional[str] = Field(None, description="사용자 ID")
+    related_images: Optional[List[str]] = Field(default=[], description="관련 이미지 경로 목록")
 
 # 카테고리 관련 스키마
 class Category(BaseModel):
@@ -64,18 +78,42 @@ class FileUploadResponse(BaseModel):
 class FileInfo(BaseModel):
     file_id: str
     filename: str
-    status: str
+    saved_filename: str
+    status: FileStatus
     file_size: int
     file_path: Optional[str] = None
+    file_hash: Optional[str] = None
     category_id: Optional[str] = None
     category_name: Optional[str] = None
     upload_time: datetime
-    vectorized: bool = False
-    vectorization_status: Optional[str] = None
+    preprocessing_started_at: Optional[datetime] = None
+    preprocessing_completed_at: Optional[datetime] = None
+    vectorization_started_at: Optional[datetime] = None
+    vectorization_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     chunk_count: Optional[int] = None
+    preprocessing_method: Optional[str] = None
+    vectorized: bool = False  # 실제 벡터화 상태 필드 추가
     # 처리 옵션(존재할 수 있음). 런타임에 객체가 주입될 수 있어 Any 허용
     processing_options: Optional[Any] = None
+    
+    # JSON 직렬화에 property 포함
+    def dict(self, **kwargs):
+        d = super().dict(**kwargs)
+        d['vectorized'] = self.vectorized
+        return d
+    
+    class Config:
+        use_enum_values = True
+        
+        @staticmethod
+        def json_schema_extra(schema, model):
+            # vectorized 필드를 스키마에 추가
+            schema["properties"]["vectorized"] = {
+                "title": "Vectorized",
+                "type": "boolean",
+                "description": "파일이 벡터화되었는지 여부"
+            }
 
 # Flow 관련 스키마
 class FlowRequest(BaseModel):
@@ -258,7 +296,6 @@ class SystemSettings(BaseModel):
     chunkOverlap: int = Field(200, description="청크 오버랩")
     
     # 시스템 동작 설정
-    enableAutoVectorization: bool = Field(True, description="자동 벡터화 활성화")
     enableNotifications: bool = Field(True, description="알림 활성화")
     debugMode: bool = Field(False, description="디버그 모드")
     
@@ -279,7 +316,6 @@ class SystemSettingsUpdateRequest(BaseModel):
     chunkOverlap: Optional[int] = Field(None, description="청크 오버랩")
     
     # 시스템 동작 설정
-    enableAutoVectorization: Optional[bool] = Field(None, description="자동 벡터화 활성화")
     enableNotifications: Optional[bool] = Field(None, description="알림 활성화")
     debugMode: Optional[bool] = Field(None, description="디버그 모드")
 
@@ -355,7 +391,8 @@ class UnstructuredSettings(BaseModel):
     include_page_breaks: bool = Field(True, description="페이지 브레이크 포함")
     
     # OCR 설정
-    ocr_languages: List[str] = Field(["kor", "eng"], description="OCR 언어 (한글: kor, 영어: eng)")
+    languages: List[str] = Field(["kor", "eng"], description="OCR 언어 (한글: kor, 영어: eng)")
+    ocr_languages: Optional[List[str]] = Field(None, description="[DEPRECATED] OCR 언어 - languages 사용 권장")
     skip_infer_table_types: List[str] = Field(default=[], description="테이블 추론 제외 타입")
     
     # 청킹 설정
@@ -389,7 +426,8 @@ class UnstructuredSettingsUpdateRequest(BaseModel):
     infer_table_structure: Optional[bool] = Field(None, description="테이블 구조 추론")
     extract_images_in_pdf: Optional[bool] = Field(None, description="PDF 내 이미지 추출")
     include_page_breaks: Optional[bool] = Field(None, description="페이지 브레이크 포함")
-    ocr_languages: Optional[List[str]] = Field(None, description="OCR 언어")
+    languages: Optional[List[str]] = Field(None, description="OCR 언어 (한글: kor, 영어: eng)")
+    ocr_languages: Optional[List[str]] = Field(None, description="[DEPRECATED] OCR 언어 - languages 사용 권장")
     skip_infer_table_types: Optional[List[str]] = Field(None, description="테이블 추론 제외 타입")
     chunking_strategy: Optional[str] = Field(None, description="청킹 전략")
     max_characters: Optional[int] = Field(None, description="최대 문자 수")
@@ -408,4 +446,45 @@ class DocumentAnalysis(BaseModel):
     docling_result: Optional[DoclingResult] = Field(None, description="Docling 처리 결과")
     traditional_result: Optional[Dict[str, Any]] = Field(None, description="기존 처리 결과")
     comparison: Optional[Dict[str, Any]] = Field(None, description="처리 방식 비교")
-    recommended_processing: str = Field("traditional", description="권장 처리 방식") 
+    recommended_processing: str = Field("traditional", description="권장 처리 방식")
+
+# 모델 프로필 관리
+class ModelProfile(BaseModel):
+    """모델 프로필 (등록된 모델 설정)"""
+    id: str = Field(..., description="프로필 ID")
+    name: str = Field(..., description="프로필 이름 (사용자 정의)")
+    provider: str = Field(..., description="제공업체 (openai, google, anthropic)")
+    model: str = Field(..., description="모델명")
+    api_key: str = Field(..., description="API 키")
+    base_url: Optional[str] = Field(None, description="API 기본 URL")
+    temperature: float = Field(0.7, description="창의성 수준")
+    max_tokens: int = Field(2000, description="최대 토큰 수")
+    top_p: float = Field(1.0, description="토큰 확률 임계값")
+    is_active: bool = Field(False, description="현재 활성 모델 여부")
+    created_at: datetime = Field(default_factory=datetime.now, description="생성일시")
+    updated_at: datetime = Field(default_factory=datetime.now, description="수정일시")
+
+class ModelProfileCreateRequest(BaseModel):
+    """모델 프로필 생성 요청"""
+    name: str = Field(..., description="프로필 이름")
+    provider: str = Field(..., description="제공업체")
+    model: str = Field(..., description="모델명")
+    api_key: str = Field(..., description="API 키")
+    base_url: Optional[str] = Field(None, description="API 기본 URL")
+    temperature: float = Field(0.7, description="창의성 수준")
+    max_tokens: int = Field(2000, description="최대 토큰 수")
+    top_p: float = Field(1.0, description="토큰 확률 임계값")
+
+class ModelProfileUpdateRequest(BaseModel):
+    """모델 프로필 수정 요청"""
+    name: Optional[str] = Field(None, description="프로필 이름")
+    api_key: Optional[str] = Field(None, description="API 키")
+    base_url: Optional[str] = Field(None, description="API 기본 URL")
+    temperature: Optional[float] = Field(None, description="창의성 수준")
+    max_tokens: Optional[int] = Field(None, description="최대 토큰 수")
+    top_p: Optional[float] = Field(None, description="토큰 확률 임계값")
+
+class ModelProfileListResponse(BaseModel):
+    """모델 프로필 목록 응답"""
+    profiles: List[ModelProfile] = Field(..., description="등록된 모델 프로필 목록")
+    active_profile_id: Optional[str] = Field(None, description="현재 활성 프로필 ID") 

@@ -34,14 +34,9 @@ export function DoclingStatusBadge({
   docling_success,
   docling_result,
 }: DoclingStatusBadgeProps) {
-  // Docling 처리되지 않은 경우
+  // Docling 처리되지 않은 경우 - 배지 표시하지 않음 (전역 설정에서 이미 표시)
   if (!docling_processed) {
-    return (
-      <Badge variant="secondary" className="gap-1" title="기본 텍스트 추출 방식으로 처리됨">
-        <FileText className="h-3 w-3" />
-        기본 처리
-      </Badge>
-    );
+    return null;
   }
 
   // Docling 처리 실패한 경우

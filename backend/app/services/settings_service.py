@@ -38,7 +38,6 @@ class SettingsService:
                 "vectorDimension": 1536,
                 "chunkSize": 1000,
                 "chunkOverlap": 200,
-                "enableAutoVectorization": True,
                 "enableNotifications": True,
                 "debugMode": False,
                 "default_system_message": "",
@@ -67,6 +66,11 @@ class SettingsService:
                 "llm_model": "gpt-3.5-turbo",
                 "llm_api_key": "",
                 "llm_base_url": "",
+                "llm_temperature": 0.7,
+                "llm_max_tokens": 4000,
+                "llm_top_p": 1,
+                "google_api_key": "",
+                "anthropic_api_key": "",
                 "embedding_provider": "openai",
                 "embedding_model": "text-embedding-ada-002",
                 "embedding_api_key": "",
@@ -93,6 +97,7 @@ class SettingsService:
                 "max_characters": 1000,
                 "combine_under_n_chars": 200,
                 "processing_timeout": 300,
+                "supported_formats": ["pdf", "docx", "pptx", "xlsx"],
             }
         }
     
@@ -189,8 +194,10 @@ class SettingsService:
                     "id": "google",
                     "name": "Google",
                     "models": [
-                        {"id": "gemini-pro", "name": "Gemini Pro", "description": "Google의 고성능 모델"},
-                        {"id": "gemini-pro-vision", "name": "Gemini Pro Vision", "description": "멀티모달 모델"},
+                        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Google의 최신 고성능 모델"},
+                        {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "이전 버전 고성능 모델"},
+                        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "빠른 응답 모델"},
+                        {"id": "gemini-pro", "name": "Gemini Pro (Legacy)", "description": "레거시 모델"},
                     ]
                 },
                 {
@@ -243,7 +250,7 @@ class SettingsService:
                         {"id": "sentence-transformers/all-MiniLM-L6-v2", "name": "All MiniLM L6 v2", "dimension": 384},
                         {"id": "sentence-transformers/all-mpnet-base-v2", "name": "All MPNet Base v2", "dimension": 768},
                         {"id": "BAAI/bge-large-en-v1.5", "name": "BGE Large EN", "dimension": 1024},
-                        {"id": "BAAI/bge-small-ko-v1.5", "name": "BGE Small KO", "dimension": 384},
+                        {"id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "name": "Multilingual MiniLM L12 v2", "dimension": 384},
                     ]
                 },
                 {

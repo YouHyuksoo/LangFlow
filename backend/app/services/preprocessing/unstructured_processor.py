@@ -86,8 +86,10 @@ async def process(file_path: str, file_extension: str) -> str:
             logger.warning(f"파일 크기 {file_size_mb:.1f}MB가 제한 {max_size_mb}MB를 초과하여 폴백을 요청합니다.")
             raise FallbackException("File size exceeds limit.")
         
-        supported_formats = settings.get("supported_formats", [".pdf", ".docx", ".pptx", ".xlsx"])
-        if file_extension.lower() not in [fmt.lower() for fmt in supported_formats]:
+        supported_formats = settings.get("supported_formats", ["pdf", "docx", "pptx", "xlsx"])
+        # 파일 확장자에서 점(.) 제거하여 비교
+        file_ext_without_dot = file_extension.lower().lstrip('.')
+        if file_ext_without_dot not in [fmt.lower().lstrip('.') for fmt in supported_formats]:
             logger.info(f"지원하지 않는 형식 {file_extension} - 폴백을 요청합니다.")
             raise FallbackException(f"Unsupported file format: {file_extension}")
         
@@ -108,9 +110,10 @@ async def process(file_path: str, file_extension: str) -> str:
         if settings.get("strategy") == "hi_res" and settings.get("hi_res_model_name"):
             partition_kwargs["model_name"] = settings.get("hi_res_model_name")
         
-        ocr_languages = settings.get("ocr_languages", ["kor", "eng"])
-        if ocr_languages:
-            partition_kwargs["ocr_languages"] = ocr_languages
+        # 새로운 languages 필드를 우선 사용, 없으면 기존 ocr_languages 사용 (호환성)
+        languages = settings.get("languages") or settings.get("ocr_languages", ["kor", "eng"])
+        if languages:
+            partition_kwargs["languages"] = languages
         
         elements = partition(**partition_kwargs)
         

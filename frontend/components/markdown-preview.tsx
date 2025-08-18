@@ -42,6 +42,9 @@ export function MarkdownPreview({
       const html = parseMarkdownToHtml(markdown);
       const charts = extractChartData(markdown);
       const tables = extractTableData(html); // HTML 테이블 데이터도 추출
+      
+      // 차트로 변환 가능한 테이블만 필터링
+      const chartableTableData = tables.filter(table => isChartableTable(table));
 
       // 인라인 Chart.js 코드가 있는지 확인 (HTML 코드 블록 내)
       const hasInlineChartCode =
@@ -49,11 +52,12 @@ export function MarkdownPreview({
         /<script[\s\S]*?new Chart\([\s\S]*?<\/script>/i.test(markdown);
 
       console.log("마크다운에 인라인 Chart.js 코드 포함:", hasInlineChartCode);
+      console.log("전체 테이블 수:", tables.length, "차트 가능한 테이블 수:", chartableTableData.length);
 
       return {
         renderedHtml: html,
         chartData: charts,
-        tableData: tables,
+        tableData: chartableTableData,
         hasInlineChartJs: hasInlineChartCode,
       };
     }, [markdown]);
@@ -157,7 +161,7 @@ export function MarkdownPreview({
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-4 w-full max-w-none ${className}`} style={{ width: '100%', maxWidth: 'none' }}>
       {/* 마크다운 감지 상태 표시 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
@@ -284,7 +288,7 @@ export function MarkdownPreview({
 
             <div
               className={`${
-                isFullscreen ? "h-[calc(100vh-80px)]" : "max-h-96"
+                isFullscreen ? "h-[calc(100vh-80px)]" : "h-96"
               } overflow-auto`}
             >
               {renderMode === "rendered" ? (
@@ -577,9 +581,121 @@ function parseMarkdownToHtml(markdown: string): string {
 }
 
 /**
+ * ASCII 아트 표를 HTML 테이블로 변환
+ */
+function parseAsciiTables(html: string): string {
+  // ASCII 표 패턴 감지 (유니코드 박스 문자와 일반 ASCII 모두 지원)
+  const patterns = [
+    // 유니코드 박스 문자 패턴 (┌─┬─┐, ├─┼─┤, └─┴─┘)
+    /([┌├└](?:[─┬┼┴]+[─┬┼┴]*)*[┐┤┘]\s*\n(?:(?:[│┃]\s*[^│┃\n]*[│┃]?\s*\n)*(?:[├┼└](?:[─┬┼┴]+[─┬┼┴]*)*[┤┼┘]\s*\n)?)*)/gm,
+    
+    // 유니코드 단순 라인 패턴 (──┴────────┴────────┴)
+    /((?:.*[┌┬┐├┼┤└┴┘─│┃].*\n){2,})/gm,
+    
+    // ASCII 문자 패턴 (+---+---+)
+    /(\+(?:[-=]+\+)+\s*\n(?:(?:\|[^|\n]*\|?\s*\n)*(?:\+(?:[-=]+\+)+\s*\n)?)*)/gm,
+  ];
+
+  patterns.forEach(pattern => {
+    html = html.replace(pattern, (match) => {
+      try {
+        return convertAsciiTableToHtml(match);
+      } catch (error) {
+        console.log('ASCII 표 변환 실패:', error);
+        return match; // 변환 실패시 원본 반환
+      }
+    });
+  });
+
+  return html;
+}
+
+/**
+ * ASCII 표 텍스트를 HTML 테이블로 변환
+ */
+function convertAsciiTableToHtml(asciiTable: string): string {
+  const lines = asciiTable.split('\n').filter(line => line.trim());
+  
+  if (lines.length < 2) return asciiTable;
+
+  // 표 데이터 추출
+  const tableData: string[][] = [];
+  let isInTable = false;
+  
+  for (const line of lines) {
+    // 경계선 스킵 (┌─┬─┐, ├─┼─┤, └─┴─┘, +---+---+)
+    if (/^[┌├└\+]?[─\-=┬┼┴\+]*[┐┤┘\+]?$/.test(line.trim())) {
+      isInTable = true;
+      continue;
+    }
+    
+    // 데이터 행 처리
+    if (line.includes('│') || line.includes('┃') || line.includes('|')) {
+      const cells = line
+        .split(/[│┃|]/)
+        .map(cell => cell.trim())
+        .filter(cell => cell.length > 0);
+      
+      if (cells.length > 0) {
+        tableData.push(cells);
+      }
+    }
+  }
+
+  if (tableData.length === 0) return asciiTable;
+
+  // HTML 테이블 생성
+  let tableHtml = '<div class="overflow-x-auto my-6">';
+  tableHtml += '<table class="min-w-full border-collapse border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm rounded-lg">';
+
+  // 첫 번째 행을 헤더로 처리
+  const headers = tableData[0];
+  const bodyRows = tableData.slice(1);
+
+  // 헤더 생성
+  if (headers.length > 0) {
+    tableHtml += '<thead class="bg-gray-50 dark:bg-slate-700">';
+    tableHtml += '<tr>';
+    headers.forEach(header => {
+      tableHtml += `<th class="border border-gray-300 dark:border-slate-600 px-4 py-3 font-semibold text-gray-900 dark:text-slate-100 text-left">${header}</th>`;
+    });
+    tableHtml += '</tr>';
+    tableHtml += '</thead>';
+  }
+
+  // 바디 생성
+  if (bodyRows.length > 0) {
+    tableHtml += '<tbody>';
+    bodyRows.forEach((row, rowIndex) => {
+      const rowClass = rowIndex % 2 === 0 
+        ? "bg-white dark:bg-slate-800" 
+        : "bg-gray-50 dark:bg-slate-700";
+      tableHtml += `<tr class="${rowClass} hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">`;
+      
+      // 컬럼 수를 헤더와 맞춤
+      const maxCols = Math.max(headers.length, row.length);
+      for (let i = 0; i < maxCols; i++) {
+        const cellContent = row[i] || '';
+        tableHtml += `<td class="border border-gray-300 dark:border-slate-600 px-4 py-3 text-gray-700 dark:text-slate-200 text-left">${cellContent}</td>`;
+      }
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody>';
+  }
+
+  tableHtml += '</table>';
+  tableHtml += '</div>';
+
+  return tableHtml;
+}
+
+/**
  * 마크다운 표를 HTML 테이블로 변환 (개선된 버전)
  */
 function parseMarkdownTables(html: string): string {
+  // 먼저 ASCII 아트 표 처리
+  html = parseAsciiTables(html);
+  
   // 더 포괄적인 마크다운 표 패턴 매칭 (공백과 줄바꿈 허용)
   const tableRegex =
     /^\s*(\|.+\|)\s*\n\s*(\|[-:\s|]+\|)\s*\n((?:\s*\|.+\|\s*\n?)*)/gm;
@@ -876,6 +992,40 @@ interface TableData {
   headers: string[];
   rows: string[][];
   title?: string;
+}
+
+/**
+ * 테이블이 차트로 변환 가능한지 확인
+ */
+function isChartableTable(tableData: TableData): boolean {
+  // 2열 테이블이 아니면 차트 불가능
+  if (tableData.headers.length !== 2) {
+    return false;
+  }
+
+  // 두 번째 열의 값들을 카운트
+  const counts: { [key: string]: number } = {};
+  let validDataCount = 0;
+  
+  tableData.rows.forEach((row) => {
+    const value = row[1];
+    if (value && value.trim() !== '') {
+      counts[value] = (counts[value] || 0) + 1;
+      validDataCount++;
+    }
+  });
+
+  const uniqueValues = Object.keys(counts);
+  
+  // 차트로 만들기에 충분한 데이터가 있는지 확인
+  // - 최소 2개 이상의 행
+  // - 최소 2개 이상의 고유값 (또는 1개 값이지만 여러 번 나타남)
+  // - 전체 데이터의 80% 이상이 유효한 데이터
+  const hasEnoughData = validDataCount >= 2;
+  const hasVariation = uniqueValues.length >= 2 || (uniqueValues.length === 1 && validDataCount >= 2);
+  const hasGoodDataQuality = validDataCount >= tableData.rows.length * 0.8;
+  
+  return hasEnoughData && hasVariation && hasGoodDataQuality;
 }
 
 /**

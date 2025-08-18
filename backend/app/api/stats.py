@@ -8,7 +8,10 @@ from ..services.category_service import CategoryService
 import pandas as pd
 
 router = APIRouter(prefix="/stats", tags=["stats"])
-DB_PATH = os.path.join(settings.DATA_DIR, "users.db")
+DB_PATH = os.path.join(settings.DATA_DIR, "db", "users.db")
+FILE_METADATA_DB_PATH = os.path.join(settings.DATA_DIR, "db", "file_metadata.db")
+VECTOR_METADATA_DB_PATH = os.path.join(settings.DATA_DIR, "db", "chromadb", "metadata.db")
+CHROMA_DB_PATH = os.path.join(settings.DATA_DIR, "db", "chromadb", "chroma.sqlite3")
 
 def get_db_connection():
     """데이터베이스 연결을 반환합니다."""
@@ -48,6 +51,93 @@ def _get_sqlite_db_status() -> Dict[str, Any]:
         status["error"] = str(e)
     return status
 
+def _get_file_metadata_db_status() -> Dict[str, Any]:
+    """file_metadata.db의 상태를 확인합니다."""
+    status = {
+        "db_available": False,
+        "table_found": False,
+        "message": "파일 메타데이터 DB를 확인할 수 없습니다.",
+        "error": None,
+        "record_count": 0
+    }
+    
+    if not os.path.exists(FILE_METADATA_DB_PATH):
+        status["message"] = "file_metadata.db 파일이 존재하지 않습니다."
+        status["error"] = "Database file not found."
+        return status
+
+    try:
+        conn = sqlite3.connect(FILE_METADATA_DB_PATH)
+        cursor = conn.cursor()
+        status["db_available"] = True
+        
+        # file_metadata 테이블 확인
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_metadata'")
+        if cursor.fetchone():
+            status["table_found"] = True
+            # 레코드 수 확인
+            cursor.execute("SELECT COUNT(*) FROM file_metadata WHERE status != 'deleted'")
+            count = cursor.fetchone()[0]
+            status["record_count"] = count
+            status["message"] = f"파일 메타데이터 DB 정상 연결 ({count}개 파일)"
+        else:
+            status["message"] = "파일 메타데이터 DB 연결됨 (file_metadata 테이블 없음)"
+            status["error"] = None
+        conn.close()
+    except sqlite3.Error as e:
+        status["message"] = "파일 메타데이터 DB 연결 실패"
+        status["error"] = str(e)
+    return status
+
+def _get_vector_metadata_db_status() -> Dict[str, Any]:
+    """ChromaDB의 metadata.db 상태를 확인합니다.""" 
+    status = {
+        "db_available": False,
+        "chroma_available": False,
+        "message": "벡터 메타데이터 DB를 확인할 수 없습니다.",
+        "error": None,
+        "collection_count": 0
+    }
+    
+    # ChromaDB 메인 파일 확인
+    if not os.path.exists(CHROMA_DB_PATH):
+        status["message"] = "ChromaDB 파일이 존재하지 않습니다."
+        status["error"] = "ChromaDB file not found."
+        return status
+    
+    # 벡터 메타데이터 파일 확인
+    if not os.path.exists(VECTOR_METADATA_DB_PATH):
+        status["message"] = "벡터 메타데이터 파일이 존재하지 않습니다."
+        status["error"] = "Vector metadata file not found."
+        return status
+
+    try:
+        # ChromaDB 메인 파일 확인
+        conn_chroma = sqlite3.connect(CHROMA_DB_PATH)
+        cursor_chroma = conn_chroma.cursor()
+        status["chroma_available"] = True
+        
+        # 컬렉션 수 확인
+        try:
+            cursor_chroma.execute("SELECT COUNT(*) FROM collections")
+            collection_count = cursor_chroma.fetchone()[0]
+            status["collection_count"] = collection_count
+        except:
+            status["collection_count"] = 0
+        conn_chroma.close()
+        
+        # 벡터 메타데이터 파일 확인
+        conn_meta = sqlite3.connect(VECTOR_METADATA_DB_PATH)
+        cursor_meta = conn_meta.cursor()
+        status["db_available"] = True
+        status["message"] = f"벡터 DB 정상 연결 ({status['collection_count']}개 컬렉션)"
+        conn_meta.close()
+        
+    except sqlite3.Error as e:
+        status["message"] = "벡터 메타데이터 DB 연결 실패"
+        status["error"] = str(e)
+    return status
+
 @router.get("/dashboard/")
 async def get_dashboard_stats() -> Dict[str, Any]:
     """관리자 대시보드 통계 데이터"""
@@ -75,6 +165,8 @@ async def get_dashboard_stats() -> Dict[str, Any]:
         category_service = CategoryService()
         categories = await category_service.list_categories()
         sqlite_status = _get_sqlite_db_status()
+        file_metadata_status = _get_file_metadata_db_status()
+        vector_metadata_status = _get_vector_metadata_db_status()
 
         stats = {
             "system": {
@@ -82,6 +174,8 @@ async def get_dashboard_stats() -> Dict[str, Any]:
                 "vectorized_files": file_stats['vectorized_files'],
                 "total_categories": len(categories),
                 "sqlite_status": sqlite_status,
+                "file_metadata_status": file_metadata_status,
+                "vector_metadata_status": vector_metadata_status,
             },
             "usage": _get_usage_stats(df),
             "performance": _get_performance_stats(df, file_stats['total_vectors']),
@@ -193,8 +287,6 @@ def _get_performance_stats(df: pd.DataFrame, total_vectors: int) -> Dict[str, An
 
 def _get_category_stats(df: pd.DataFrame, categories: List[Any]) -> Dict[str, Any]:
     """카테고리별 통계를 계산합니다."""
-    print(f"=== _get_category_stats 시작 ===")
-    print(f"전달받은 categories 개수: {len(categories)}")
     
     # 검색 통계 계산
     category_search_counts = {}
@@ -208,37 +300,16 @@ def _get_category_stats(df: pd.DataFrame, categories: List[Any]) -> Dict[str, An
     categories_with_files = 0
     
     try:
-        # 직접 파일 메타데이터 읽기 (비동기 없이)
-        import json
-        metadata_file = os.path.join(settings.DATA_DIR, "files_metadata.json")
-        all_files = []
-        
-        print(f"파일 메타데이터 경로: {metadata_file}")
-        
-        if os.path.exists(metadata_file):
-            with open(metadata_file, 'r', encoding='utf-8') as f:
-                files_data = json.load(f)
-                print(f"전체 파일 데이터 개수: {len(files_data)}")
-                
-                # files_data는 {file_id: file_info} 형태이므로 값들만 추출
-                for file_id, file_info in files_data.items():
-                    # 삭제된 파일은 제외
-                    if file_info.get('status') != 'deleted':
-                        all_files.append(file_info)
-                        print(f"파일 추가: {file_info.get('filename')} - 카테고리 ID: {file_info.get('category_id')}")
-                
-                print(f"삭제되지 않은 파일 수: {len(all_files)}")
-        else:
-            print("파일 메타데이터 파일이 존재하지 않습니다.")
+        # SQLite에서 파일 메타데이터 읽기
+        from ..models.vector_models import FileMetadataService
+        file_metadata_service = FileMetadataService()
+        all_files = file_metadata_service.list_files(include_deleted=False)
         
         # 카테고리별 파일 수 계산
-        print(f"전체 카테고리 수: {len(categories)}")
         for category in categories:
             # 해당 카테고리에 속한 파일 수 계산
-            file_count = sum(1 for f in all_files if f.get('category_id') == category.category_id)
+            file_count = sum(1 for f in all_files if f.category_id == category.category_id)
             search_count = category_search_counts.get(category.name, 0)
-            
-            print(f"카테고리 '{category.name}' (ID: {category.category_id}): 파일 {file_count}개, 검색 {search_count}회")
             
             if file_count > 0:
                 categories_with_files += 1
@@ -250,9 +321,6 @@ def _get_category_stats(df: pd.DataFrame, categories: List[Any]) -> Dict[str, An
                 "icon": category.icon,
                 "color": category.color
             })
-        
-        print(f"파일이 있는 카테고리 수: {categories_with_files}")
-        print(f"최종 카테고리 통계 개수: {len(category_stats)}")
             
     except Exception as e:
         print(f"카테고리 파일 통계 계산 오류: {str(e)}")

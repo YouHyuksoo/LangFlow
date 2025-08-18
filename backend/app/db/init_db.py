@@ -6,7 +6,7 @@ def initialize_database():
     """
     데이터베이스를 초기화하고 chat_history 테이블을 생성합니다.
     """
-    db_path = os.path.join(settings.DATA_DIR, "users.db")
+    db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
     
     # data 디렉토리가 없으면 생성
     os.makedirs(os.path.dirname(db_path), exist_ok=True)

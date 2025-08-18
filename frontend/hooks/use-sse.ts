@@ -127,9 +127,7 @@ export function useVectorizationSSE(onVectorizationUpdate: (data: any) => void) 
 
   return useSSE(`${API_BASE_URL}/api/v1/sse/vectorization/events`, {
     onMessage: (message) => {
-      if (message.event === 'vectorization_started' || 
-          message.event === 'vectorization_completed' || 
-          message.event === 'vectorization_failed') {
+      if (message.event === 'vectorization_update') {
         onVectorizationUpdate(message.data);
       }
     },

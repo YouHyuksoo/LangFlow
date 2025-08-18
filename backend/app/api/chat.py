@@ -23,7 +23,7 @@ def log_chat_history(request: ChatRequest, response: ChatResponse, user_id: Opti
     """
     채팅 기록을 데이터베이스에 로깅합니다.
     """
-    db_path = os.path.join(settings.DATA_DIR, "users.db")
+    db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -376,7 +376,7 @@ async def get_admin_chat_history(
     try:
         # 관리자 권한은 get_admin_user에서 이미 확인됨
         
-        db_path = os.path.join(settings.DATA_DIR, "users.db")
+        db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
         
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
@@ -487,7 +487,7 @@ async def get_chat_history_stats(
     try:
         # 관리자 권한은 get_admin_user에서 이미 확인됨
         
-        db_path = os.path.join(settings.DATA_DIR, "users.db")
+        db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
         
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
@@ -556,38 +556,7 @@ async def get_chat_history_stats(
         print(f"채팅 통계 조회 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/admin/history/{history_id}")
-async def delete_chat_history(
-    history_id: int,
-    admin_user = Depends(get_admin_user)
-):
-    """관리자용 채팅 기록 삭제"""
-    try:
-        # 관리자 권한은 get_admin_user에서 이미 확인됨
-        
-        db_path = os.path.join(settings.DATA_DIR, "users.db")
-        
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            
-            # 기록 존재 확인
-            cursor.execute("SELECT id FROM chat_history WHERE id = ?", (history_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="채팅 기록을 찾을 수 없습니다")
-            
-            # 삭제
-            cursor.execute("DELETE FROM chat_history WHERE id = ?", (history_id,))
-            conn.commit()
-            
-            return {"message": f"채팅 기록 {history_id}이(가) 삭제되었습니다"}
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"채팅 기록 삭제 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/admin/history/all")
+@router.post("/admin/history/delete-all")
 async def delete_all_chat_history(
     admin_user = Depends(get_admin_user)
 ):
@@ -595,7 +564,7 @@ async def delete_all_chat_history(
     try:
         # 관리자 권한은 get_admin_user에서 이미 확인됨
         
-        db_path = os.path.join(settings.DATA_DIR, "users.db")
+        db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
         
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
@@ -617,4 +586,35 @@ async def delete_all_chat_history(
         raise
     except Exception as e:
         print(f"채팅 기록 전체 삭제 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/admin/history/{history_id}")
+async def delete_chat_history(
+    history_id: int,
+    admin_user = Depends(get_admin_user)
+):
+    """관리자용 채팅 기록 삭제"""
+    try:
+        # 관리자 권한은 get_admin_user에서 이미 확인됨
+        
+        db_path = os.path.join(settings.DATA_DIR, "db", "users.db")
+        
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            
+            # 기록 존재 확인
+            cursor.execute("SELECT id FROM chat_history WHERE id = ?", (history_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="채팅 기록을 찾을 수 없습니다")
+            
+            # 삭제
+            cursor.execute("DELETE FROM chat_history WHERE id = ?", (history_id,))
+            conn.commit()
+            
+            return {"message": f"채팅 기록 {history_id}이(가) 삭제되었습니다"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"채팅 기록 삭제 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

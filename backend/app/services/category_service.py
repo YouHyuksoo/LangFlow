@@ -42,6 +42,12 @@ class CategoryService:
             # 과한 디버그 제거
             self.categories = {}
     
+    def refresh_categories(self):
+        """카테고리 데이터 새로고침 (파일에서 다시 로드)"""
+        print("카테고리 데이터 새로고침 중...")
+        self._load_categories()
+        print(f"새로고침 완료. 총 {len(self.categories)}개 카테고리 로드됨")
+    
     def _save_categories(self):
         """카테고리 데이터 저장"""
         try:
@@ -161,27 +167,16 @@ class CategoryService:
         try:
             categories = []
             
-            # 파일 메타데이터를 직접 읽어서 문서 수 계산 (ChromaDB 의존성 제거)
+            # SQLite에서 파일 메타데이터 읽어서 문서 수 계산
             try:
-                files_metadata_file = os.path.join(settings.DATA_DIR, "files_metadata.json")
-                category_document_counts = {}
+                from ..models.vector_models import FileMetadataService
+                file_metadata_service = FileMetadataService()
+                all_files = file_metadata_service.list_files(include_deleted=False)
                 
-                if os.path.exists(files_metadata_file):
-                    with open(files_metadata_file, 'r', encoding='utf-8') as f:
-                        files_metadata = json.load(f)
-                    
-                    # files_metadata가 딕셔너리인지 확인
-                    if isinstance(files_metadata, dict):
-                        for file_id, file_info in files_metadata.items():
-                            category_id = file_info.get('category_id')
-                            if category_id:
-                                category_document_counts[category_id] = category_document_counts.get(category_id, 0) + 1
-                    elif isinstance(files_metadata, list):
-                        # 리스트인 경우 빈 딕셔너리로 처리
-                        pass
-                    else:
-                        # 타입 경고만 억제
-                        pass
+                category_document_counts = {}
+                for file_metadata in all_files:
+                    if file_metadata.category_id:
+                        category_document_counts[file_metadata.category_id] = category_document_counts.get(file_metadata.category_id, 0) + 1
                     
             except Exception as e:
                 print(f"파일 메타데이터 로드 오류: {str(e)}")
@@ -284,21 +279,16 @@ class CategoryService:
     async def get_category_stats(self) -> Dict[str, Any]:
         """카테고리별 통계 정보"""
         try:
-            # 파일 메타데이터를 직접 읽어서 문서 수 계산 (ChromaDB 오류 방지)
+            # SQLite에서 파일 메타데이터 읽어서 문서 수 계산
             try:
-                files_metadata_file = os.path.join(settings.DATA_DIR, "files_metadata.json")
-                category_document_counts = {}
+                from ..models.vector_models import FileMetadataService
+                file_metadata_service = FileMetadataService()
+                all_files = file_metadata_service.list_files(include_deleted=False)
                 
-                if os.path.exists(files_metadata_file):
-                    with open(files_metadata_file, 'r', encoding='utf-8') as f:
-                        files_metadata = json.load(f)
-                    
-                    for file_id, file_info in files_metadata.items():
-                        category_id = file_info.get('category_id')
-                        if category_id:
-                            category_document_counts[category_id] = category_document_counts.get(category_id, 0) + 1
-                else:
-                    print("파일 메타데이터 파일이 존재하지 않습니다.")
+                category_document_counts = {}
+                for file_metadata in all_files:
+                    if file_metadata.category_id:
+                        category_document_counts[file_metadata.category_id] = category_document_counts.get(file_metadata.category_id, 0) + 1
                     
             except Exception as e:
                 print(f"파일 메타데이터 로드 중 오류: {str(e)}")

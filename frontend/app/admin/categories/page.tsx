@@ -403,16 +403,30 @@ export default function CategoriesPage() {
   const stats = getCategoryStats();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 md:p-6 min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">카테고리 관리</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent">
+            카테고리 관리
+          </h1>
+          <p className="text-slate-400 mt-2 text-lg">
+            파일 분류를 위한 카테고리를 생성하고 관리하세요.
+          </p>
+        </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={loadCategories}>
+          <Button 
+            variant="outline" 
+            onClick={loadCategories}
+            className="bg-gradient-to-r from-slate-500/20 to-slate-400/20 border-slate-500/30 text-slate-300 hover:from-slate-500/30 hover:to-slate-400/30 backdrop-blur-sm"
+          >
             <RefreshCw className="h-4 w-4 mr-2" />
             새로고침
           </Button>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Button 
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          >
             <Plus className="h-4 w-4 mr-2" />새 카테고리
           </Button>
         </div>
@@ -420,82 +434,98 @@ export default function CategoriesPage() {
 
       {/* 통계 */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">전체 카테고리</CardTitle>
-            <Factory className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-white/90">전체 카테고리</CardTitle>
+            <div className="p-2 rounded-lg bg-white/10">
+              <Factory className="h-5 w-5 text-blue-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCategories}</div>
-            <p className="text-xs text-muted-foreground">등록된 카테고리 수</p>
+            <div className="text-3xl font-bold text-white mb-1">{stats.totalCategories}</div>
+            <p className="text-xs text-white/70">등록된 카테고리 수</p>
+            <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">총 파일 수</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border-green-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-white/90">총 파일 수</CardTitle>
+            <div className="p-2 rounded-lg bg-white/10">
+              <FileText className="h-5 w-5 text-green-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalFiles}</div>
-            <p className="text-xs text-muted-foreground">
-              모든 카테고리의 파일 수
-            </p>
+            <div className="text-3xl font-bold text-white mb-1">{stats.totalFiles}</div>
+            <p className="text-xs text-white/70">모든 카테고리의 파일 수</p>
+            <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">활성 카테고리</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-gradient-to-br from-purple-500/20 to-violet-600/20 border-purple-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-white/90">활성 카테고리</CardTitle>
+            <div className="p-2 rounded-lg bg-white/10">
+              <CheckCircle className="h-5 w-5 text-purple-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.activeCategories}</div>
-            <p className="text-xs text-muted-foreground">
-              파일이 있는 카테고리
-            </p>
+            <div className="text-3xl font-bold text-white mb-1">{stats.activeCategories}</div>
+            <p className="text-xs text-white/70">파일이 있는 카테고리</p>
+            <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">빈 카테고리</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-500/30 backdrop-blur-sm border shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-medium text-white/90">빈 카테고리</CardTitle>
+            <div className="p-2 rounded-lg bg-white/10">
+              <Clock className="h-5 w-5 text-orange-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.emptyCategories}</div>
-            <p className="text-xs text-muted-foreground">
-              파일이 없는 카테고리
-            </p>
+            <div className="text-3xl font-bold text-white mb-1">{stats.emptyCategories}</div>
+            <p className="text-xs text-white/70">파일이 없는 카테고리</p>
+            <div className="mt-3 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-white/50 to-white/30 rounded-full animate-pulse"></div>
+            </div>
           </CardContent>
         </Card>
       </div>
 
       {/* 검색 및 필터 */}
-      <Card>
+      <Card className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 backdrop-blur-sm border-slate-700/50 shadow-xl">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            검색 및 필터
+          <CardTitle className="flex items-center gap-3 text-white">
+            <div className="p-2 rounded-lg bg-cyan-500/20">
+              <Search className="h-5 w-5 text-cyan-400" />
+            </div>
+            <span>검색 및 필터</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
-              <label className="text-sm font-medium">검색</label>
+              <label className="text-sm font-medium text-white/90">검색</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   placeholder="카테고리 이름 또는 설명으로 검색..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-400"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">정렬</label>
+              <label className="text-sm font-medium text-white/90">정렬</label>
               <Select
                 value={`${sortBy}-${sortOrder}`}
                 onValueChange={(value) => {
@@ -504,10 +534,10 @@ export default function CategoriesPage() {
                   setSortOrder(order as any);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-800 border-slate-600/30">
                   <SelectItem value="name-asc">이름 (오름차순)</SelectItem>
                   <SelectItem value="name-desc">이름 (내림차순)</SelectItem>
                   <SelectItem value="created_at-desc">최신순</SelectItem>
@@ -519,15 +549,15 @@ export default function CategoriesPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">필터</label>
+              <label className="text-sm font-medium text-white/90">필터</label>
               <Select
                 value={filterBy}
                 onValueChange={(value) => setFilterBy(value as any)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-800 border-slate-600/30">
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="with_files">파일 있는 카테고리</SelectItem>
                   <SelectItem value="empty">빈 카테고리</SelectItem>
@@ -546,7 +576,7 @@ export default function CategoriesPage() {
           return (
             <Card
               key={category.category_id}
-              className="hover:shadow-md transition-shadow"
+              className="bg-gradient-to-br from-slate-800/50 to-slate-700/50 backdrop-blur-sm border-slate-600/30 shadow-lg hover:shadow-xl hover:from-slate-700/50 hover:to-slate-600/50 transition-all duration-300"
             >
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -554,11 +584,11 @@ export default function CategoriesPage() {
                     <div
                       className={`p-2 rounded-full ${
                         category.color || "bg-blue-500"
-                      } text-white`}
+                      } text-white shadow-lg`}
                     >
                       <IconComponent className="h-4 w-4" />
                     </div>
-                    <span className="truncate">{category.name}</span>
+                    <span className="truncate text-white">{category.name}</span>
                   </div>
                   <div className="flex gap-1">
                     <Button
@@ -568,6 +598,7 @@ export default function CategoriesPage() {
                         setSelectedCategory(category);
                         setIsDetailDialogOpen(true);
                       }}
+                      className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/30 backdrop-blur-sm"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -578,6 +609,7 @@ export default function CategoriesPage() {
                         setEditingCategory(category);
                         setIsEditDialogOpen(true);
                       }}
+                      className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30 backdrop-blur-sm"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -590,28 +622,29 @@ export default function CategoriesPage() {
                           category.name
                         )
                       }
+                      className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30 backdrop-blur-sm"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-slate-400">
                   {category.description || "설명이 없습니다."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
                   <Badge
-                    variant={
+                    className={
                       category.file_count && category.file_count > 0
-                        ? "default"
-                        : "secondary"
+                        ? "bg-green-500/20 text-green-400 border-green-500/30"
+                        : "bg-slate-500/20 text-slate-400 border-slate-500/30"
                     }
                   >
                     {category.file_count || 0}개 파일
                   </Badge>
                   {category.created_at && (
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm text-slate-400">
                       {new Date(category.created_at).toLocaleDateString()}
                     </span>
                   )}
@@ -622,17 +655,19 @@ export default function CategoriesPage() {
         })}
 
         {filteredCategories.length === 0 && (
-          <Card className="col-span-full">
+          <Card className="col-span-full bg-gradient-to-br from-slate-800/50 to-slate-700/50 backdrop-blur-sm border-slate-600/30 shadow-lg">
             <CardContent className="text-center py-8">
-              <Factory className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
+              <div className="p-4 rounded-full bg-slate-700/50 w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                <Factory className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-300 mb-4">
                 {searchTerm || filterBy !== "all"
                   ? "검색 조건에 맞는 카테고리가 없습니다."
                   : "등록된 카테고리가 없습니다."}
               </p>
               <Button
                 variant="outline"
-                className="mt-4"
+                className="bg-purple-500/20 text-purple-400 border-purple-500/30 hover:bg-purple-500/30 backdrop-blur-sm"
                 onClick={() => setIsCreateDialogOpen(true)}
               >
                 <Plus className="h-4 w-4 mr-2" />첫 번째 카테고리 만들기
@@ -644,26 +679,32 @@ export default function CategoriesPage() {
 
       {/* 카테고리 생성 다이얼로그 */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>새 카테고리 생성</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/20">
+                <Plus className="h-5 w-5 text-purple-400" />
+              </div>
+              새 카테고리 생성
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
               새로운 파일 카테고리를 생성합니다.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">카테고리 이름 *</label>
+              <label className="text-sm font-medium text-white/90">카테고리 이름 *</label>
               <Input
                 value={newCategory.name}
                 onChange={(e) =>
                   setNewCategory({ ...newCategory, name: e.target.value })
                 }
                 placeholder="카테고리 이름을 입력하세요"
+                className="bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-400 focus:border-purple-500/50 focus:ring-purple-500/20"
               />
             </div>
             <div>
-              <label className="text-sm font-medium">설명</label>
+              <label className="text-sm font-medium text-white/90">설명</label>
               <Textarea
                 value={newCategory.description}
                 onChange={(e) =>
@@ -674,21 +715,22 @@ export default function CategoriesPage() {
                 }
                 placeholder="카테고리 설명을 입력하세요"
                 rows={3}
+                className="bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-400 focus:border-purple-500/50 focus:ring-purple-500/20"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">아이콘</label>
+                <label className="text-sm font-medium text-white/90">아이콘</label>
                 <Select
                   value={newCategory.icon}
                   onValueChange={(value) =>
                     setNewCategory({ ...newCategory, icon: value })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-800 border-slate-600/30">
                     {Object.keys(iconMap).map((icon) => {
                       const IconComponent = getIconComponent(
                         icon || "FileText"
@@ -706,17 +748,17 @@ export default function CategoriesPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium">색상</label>
+                <label className="text-sm font-medium text-white/90">색상</label>
                 <Select
                   value={newCategory.color}
                   onValueChange={(value) =>
                     setNewCategory({ ...newCategory, color: value })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-800 border-slate-600/30">
                     {colorOptions.map((color) => (
                       <SelectItem key={color} value={color}>
                         <div className="flex items-center gap-2">
@@ -732,7 +774,7 @@ export default function CategoriesPage() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t border-slate-700/50 pt-4">
             <Button
               variant="outline"
               onClick={() => {
@@ -744,11 +786,15 @@ export default function CategoriesPage() {
                 });
                 setIsCreateDialogOpen(false);
               }}
+              className="bg-slate-700/50 border-slate-600/50 text-slate-300 hover:bg-slate-600/50 hover:text-white"
             >
               <X className="h-4 w-4 mr-2" />
               취소
             </Button>
-            <Button onClick={handleCreateCategory}>
+            <Button 
+              onClick={handleCreateCategory}
+              className="bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+            >
               <Save className="h-4 w-4 mr-2" />
               생성
             </Button>
@@ -758,14 +804,19 @@ export default function CategoriesPage() {
 
       {/* 카테고리 수정 다이얼로그 */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>카테고리 수정</DialogTitle>
-            <DialogDescription>카테고리 정보를 수정합니다.</DialogDescription>
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/20">
+                <Edit className="h-5 w-5 text-blue-400" />
+              </div>
+              카테고리 수정
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">카테고리 정보를 수정합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">카테고리 이름 *</label>
+              <label className="text-sm font-medium text-white/90">카테고리 이름 *</label>
               <Input
                 value={editingCategory?.name || ""}
                 onChange={(e) =>
@@ -774,10 +825,11 @@ export default function CategoriesPage() {
                   )
                 }
                 placeholder="카테고리 이름을 입력하세요"
+                className="bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-400 focus:border-blue-500/50 focus:ring-blue-500/20"
               />
             </div>
             <div>
-              <label className="text-sm font-medium">설명</label>
+              <label className="text-sm font-medium text-white/90">설명</label>
               <Textarea
                 value={editingCategory?.description || ""}
                 onChange={(e) =>
@@ -787,11 +839,12 @@ export default function CategoriesPage() {
                 }
                 placeholder="카테고리 설명을 입력하세요"
                 rows={3}
+                className="bg-slate-800/50 border-slate-600/30 text-white placeholder:text-slate-400 focus:border-blue-500/50 focus:ring-blue-500/20"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">아이콘</label>
+                <label className="text-sm font-medium text-white/90">아이콘</label>
                 <Select
                   value={editingCategory?.icon || "Factory"}
                   onValueChange={(value) =>
@@ -800,10 +853,10 @@ export default function CategoriesPage() {
                     )
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-800 border-slate-600/30">
                     {Object.keys(iconMap).map((icon) => {
                       const IconComponent = getIconComponent(
                         icon || "FileText"
@@ -821,7 +874,7 @@ export default function CategoriesPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium">색상</label>
+                <label className="text-sm font-medium text-white/90">색상</label>
                 <Select
                   value={editingCategory?.color || "bg-blue-500"}
                   onValueChange={(value) =>
@@ -830,10 +883,10 @@ export default function CategoriesPage() {
                     )
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-slate-800/50 border-slate-600/30 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-800 border-slate-600/30">
                     {colorOptions.map((color) => (
                       <SelectItem key={color} value={color}>
                         <div className="flex items-center gap-2">
@@ -849,18 +902,22 @@ export default function CategoriesPage() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t border-slate-700/50 pt-4">
             <Button
               variant="outline"
               onClick={() => {
                 setEditingCategory(null);
                 setIsEditDialogOpen(false);
               }}
+              className="bg-slate-700/50 border-slate-600/50 text-slate-300 hover:bg-slate-600/50 hover:text-white"
             >
               <X className="h-4 w-4 mr-2" />
               취소
             </Button>
-            <Button onClick={handleEditCategory}>
+            <Button 
+              onClick={handleEditCategory}
+              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+            >
               <Save className="h-4 w-4 mr-2" />
               저장
             </Button>
@@ -870,74 +927,90 @@ export default function CategoriesPage() {
 
       {/* 카테고리 상세 보기 다이얼로그 */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border-slate-700/50 shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-white via-purple-200 to-cyan-200 bg-clip-text text-transparent flex items-center gap-3">
               {selectedCategory && (
                 <>
                   <div
-                    className={`p-2 rounded-full ${
+                    className={`p-2 rounded-lg ${
                       selectedCategory.color || "bg-blue-500"
-                    } text-white`}
+                    } text-white shadow-lg`}
                   >
                     {React.createElement(
                       getIconComponent(selectedCategory.icon || "FileText"),
-                      { className: "h-4 w-4" }
+                      { className: "h-5 w-5" }
                     )}
                   </div>
                   {selectedCategory.name}
                 </>
               )}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-slate-400">
               카테고리 상세 정보를 확인합니다.
             </DialogDescription>
           </DialogHeader>
           {selectedCategory && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium">카테고리 이름</label>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedCategory.name}
-                  </p>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/90">카테고리 이름</label>
+                  <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-600/30">
+                    <p className="text-sm text-white font-medium">
+                      {selectedCategory.name}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">파일 수</label>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedCategory.file_count || 0}개
-                  </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/90">파일 수</label>
+                  <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-600/30">
+                    <p className="text-sm text-emerald-400 font-medium">
+                      {selectedCategory.file_count || 0}개
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">생성일</label>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedCategory.created_at
-                      ? new Date(
-                          selectedCategory.created_at
-                        ).toLocaleDateString()
-                      : "알 수 없음"}
-                  </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/90">생성일</label>
+                  <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-600/30">
+                    <p className="text-sm text-slate-300">
+                      {selectedCategory.created_at
+                        ? new Date(
+                            selectedCategory.created_at
+                          ).toLocaleDateString()
+                        : "알 수 없음"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">아이콘</label>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedCategory.icon || "Factory"}
-                  </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/90">아이콘</label>
+                  <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-600/30 flex items-center gap-2">
+                    {React.createElement(
+                      getIconComponent(selectedCategory.icon || "Factory"),
+                      { className: "h-4 w-4 text-cyan-400" }
+                    )}
+                    <p className="text-sm text-slate-300">
+                      {selectedCategory.icon || "Factory"}
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">설명</label>
-                <p className="text-sm text-muted-foreground">
-                  {selectedCategory.description || "설명이 없습니다."}
-                </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white/90">설명</label>
+                <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-600/30">
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {selectedCategory.description || "설명이 없습니다."}
+                  </p>
+                </div>
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="border-t border-slate-700/50 pt-4">
             <Button
               variant="outline"
               onClick={() => setIsDetailDialogOpen(false)}
+              className="bg-slate-700/50 border-slate-600/50 text-slate-300 hover:bg-slate-600/50 hover:text-white"
             >
+              <Eye className="h-4 w-4 mr-2" />
               닫기
             </Button>
           </DialogFooter>

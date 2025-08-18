@@ -30,18 +30,27 @@ async def process(file_path: str, options: DoclingOptions = None) -> str:
     if options is None:
         try:
             docling_settings = settings_service.get_section_settings("docling")
+            logger.info(f"🔍 Docling 설정 로드됨: {docling_settings}")
+            
+            extract_images = docling_settings.get("extract_images", True)
+            extract_tables = docling_settings.get("extract_tables", True)
+            ocr_enabled = docling_settings.get("ocr_enabled", False)
+            output_format = docling_settings.get("output_format", "markdown")
+            
+            logger.info(f"📊 추출 설정 - 이미지: {extract_images}, 테이블: {extract_tables}, OCR: {ocr_enabled}")
+            
             options = DoclingOptions(
-                output_format=docling_settings.get("outputFormat", "markdown"),
-                extract_tables=docling_settings.get("extractTables", True),
-                extract_images=docling_settings.get("extractImages", False),
-                ocr_enabled=docling_settings.get("ocrEnabled", False)
+                output_format=output_format,
+                extract_tables=extract_tables,
+                extract_images=extract_images,
+                ocr_enabled=ocr_enabled
             )
         except Exception as e:
             logger.warning(f"Docling 설정 로드 실패, 기본값 사용: {e}")
             options = DoclingOptions(
                 output_format="markdown",
                 extract_tables=True,
-                extract_images=False,
+                extract_images=True,
                 ocr_enabled=False
             )
 

@@ -10,7 +10,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "ThinkFlow - AI 문서 챗봇",
-  description: "사내 지식관리 RAG 시스템",
+  description: "사내 지식관리 RAG 시스템 by Jisung Solution Works",
 };
 
 export default function RootLayout({
@@ -29,7 +29,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <MainNavigation />
-            <main className="min-h-screen bg-background">
+            <main className="bg-background">
               {children}
             </main>
             <Toaster />

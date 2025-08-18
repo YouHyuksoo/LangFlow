@@ -5,8 +5,15 @@ import sys
 # 윈도우 환경에서 UTF-8 인코딩 강제 설정
 if os.name == 'nt':  # Windows
     import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+    try:
+        # stdout/stderr에 detach 메소드가 있는 경우에만 실행
+        if hasattr(sys.stdout, 'detach'):
+            sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+        if hasattr(sys.stderr, 'detach'):
+            sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+    except (AttributeError, OSError):
+        # detach가 실패하거나 지원되지 않는 경우 환경변수로만 처리
+        pass
     
     # 환경 변수로 UTF-8 설정
     os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -16,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import setup_logging, get_console_logger
-from app.api import chat, files, flows, stats, categories, langflow, users, personas, sse, vectors, database_management
+from app.api import chat, files, flows, stats, categories, langflow, users, personas, sse, vectors, database_management, model_profiles
 from app.api import settings as settings_api
 from app.db.init_db import initialize_database
 import uvicorn
@@ -152,6 +159,7 @@ app.include_router(settings_api.router, prefix=settings.API_V1_STR)
 app.include_router(personas.router, prefix=settings.API_V1_STR)
 app.include_router(vectors.router, prefix=settings.API_V1_STR)
 app.include_router(database_management.router, prefix=settings.API_V1_STR)
+app.include_router(model_profiles.router, prefix=f"{settings.API_V1_STR}/model-profiles", tags=["model-profiles"])
 app.include_router(sse.router)  # SSE는 별도 prefix 사용
 
 # 정적 파일 서빙 설정 (아바타 이미지 및 문서 이미지용)
