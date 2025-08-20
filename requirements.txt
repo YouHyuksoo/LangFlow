@@ -61,10 +61,10 @@ opencv-python-headless==4.12.0.88
 pandas==2.2.3
 numpy==2.1.3
 tiktoken==0.10.0
-tokenizers==0.21.4
+tokenizers>=0.13.2,<=0.20.3
 
 # 한국어 자연어 처리 (프로덕션 개선)
-kss>=4.5.4  # Korean Sentence Splitter
+kss==6.0.5  # Korean Sentence Splitter
 kiwipiepy>=0.17.0  # 형태소 분석기
 
 # 유사도 및 중복 검사 (프로덕션 개선)

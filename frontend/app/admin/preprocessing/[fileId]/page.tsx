@@ -48,7 +48,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
-import { preprocessingAPI, api } from '@/lib/api'
+import { preprocessingAPI, api, vectorAPI } from '@/lib/api'
 import DocumentViewer from '@/components/document-viewer'
 import { useToast } from '@/hooks/use-toast'
 import { Toaster } from '@/components/ui/toaster'
@@ -814,6 +814,26 @@ export default function PreprocessingEditorPage() {
       setLoading(true)
       setError(null)
 
+      // 설정 페이지에서 기본 문장 분할기 설정을 불러와서 초기값으로 설정
+      try {
+        console.log('🔍 수동 전처리 설정 로드 시작...')
+        const settingsResponse = await vectorAPI.getManualPreprocessingSettings()
+        if (settingsResponse && settingsResponse.manual_preprocessing) {
+          const defaultSplitter = settingsResponse.manual_preprocessing.default_sentence_splitter
+          console.log('📋 설정에서 불러온 기본 문장 분할기:', defaultSplitter)
+          
+          // 현재 청킹 규칙의 문장 분할기를 기본값으로 설정 (사용자가 아직 선택하지 않은 경우에만)
+          setChunkingRules(prev => ({
+            ...prev,
+            sentence_splitter: defaultSplitter as SentenceSplitterMethod || prev.sentence_splitter
+          }))
+          
+          console.log('✅ 기본 문장 분할기 설정 적용:', defaultSplitter)
+        }
+      } catch (err) {
+        console.warn('⚠️ 수동 전처리 설정 로드 실패:', err)
+      }
+      
       // 주석 타입 조회
       try {
         const annotationTypesResponse = await preprocessingAPI.getAnnotationTypes()

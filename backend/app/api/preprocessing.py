@@ -121,17 +121,52 @@ class ChunkingRulesRequest:
         self.recursive_is_separator_regex = recursive_options.get("is_separator_regex", False)
     
     def to_chunking_rules(self) -> ChunkingRules:
-        """ChunkingRules 객체로 변환 (중앙 집중 설정 기반)"""
-        # TODO(human): 에디터에서 전달받은 규칙을 중앙 집중 설정과 병합하는 로직 구현
-        # 중앙 집중 설정을 기본값으로 하고, 에디터에서 오버라이드된 값만 적용
-        return ChunkingRules.from_settings({
-            # 에디터에서 오버라이드된 값들 전달
-            "max_tokens": getattr(self, 'max_tokens', None),
-            "min_tokens": getattr(self, 'min_tokens', None),
-            "overlap_tokens": getattr(self, 'overlap_tokens', None),
-            "sentence_splitter": getattr(self, 'sentence_splitter', None),
-            # 기타 필요한 오버라이드 값들...
-        })
+        """ChunkingRules 객체로 변환 (에디터 우선, 설정은 보조)"""
+        # 에디터에서 전달받은 모든 값을 직접 사용하도록 수정
+        # 중앙 집중 설정은 참고용으로만 사용
+        logger.info(f"🔧 에디터 규칙 변환: sentence_splitter = {self.sentence_splitter}")
+        
+        return ChunkingRules(
+            # 공통 규칙 - 에디터 값 직접 사용
+            max_tokens=self.max_tokens,
+            min_tokens=self.min_tokens,
+            overlap_tokens=self.overlap_tokens,
+            hard_sentence_max_tokens=self.hard_sentence_max_tokens,
+            respect_headings=self.respect_headings,
+            preserve_tables=self.preserve_tables,
+            preserve_lists=self.preserve_lists,
+            drop_short_chunks=self.drop_short_chunks,
+            
+            # 문장 분할 방법 - 에디터에서 선택한 값 사용
+            sentence_splitter=self.sentence_splitter,
+            
+            # KSS 옵션
+            kss_backend=self.kss_backend,
+            kss_num_workers=self.kss_num_workers,
+            kss_strip=self.kss_strip,
+            kss_return_morphemes=self.kss_return_morphemes,
+            kss_ignores=self.kss_ignores,
+            
+            # Kiwi 옵션
+            kiwi_model_path=self.kiwi_model_path,
+            kiwi_integrate_allomorph=self.kiwi_integrate_allomorph,
+            kiwi_load_default_dict=self.kiwi_load_default_dict,
+            kiwi_max_unk_form_len=self.kiwi_max_unk_form_len,
+            
+            # 정규식 옵션
+            regex_sentence_endings=self.regex_sentence_endings,
+            regex_preserve_abbreviations=self.regex_preserve_abbreviations,
+            regex_custom_patterns=self.regex_custom_patterns,
+            
+            # Recursive 옵션
+            recursive_separators=self.recursive_separators,
+            recursive_keep_separator=self.recursive_keep_separator,
+            recursive_is_separator_regex=self.recursive_is_separator_regex,
+            
+            # 메타데이터
+            created_at=datetime.now().isoformat(),
+            version=self.version
+        )
 
 
 class ChunkEditRequest:

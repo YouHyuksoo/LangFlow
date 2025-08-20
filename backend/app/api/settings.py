@@ -407,45 +407,6 @@ async def get_all_settings():
         _clog.error(f"전체 설정 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail="전체 설정 조회 중 오류가 발생했습니다.")
 
-@router.get("/{section}")
-async def get_section_settings(section: str):
-    """특정 섹션 설정 조회"""
-    try:
-        settings_data = settings_service.get_section_settings(section)
-        if not settings_data:
-            raise HTTPException(status_code=404, detail=f"'{section}' 섹션을 찾을 수 없습니다.")
-        
-        _clog.info(f"{section} 설정 조회 완료")
-        return settings_data
-    except HTTPException:
-        raise
-    except Exception as e:
-        _clog.error(f"{section} 설정 조회 중 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"{section} 설정 조회 중 오류가 발생했습니다.")
-
-@router.post("/{section}")
-async def update_section_settings(section: str, new_settings: Dict[str, Any]):
-    """특정 섹션 설정 업데이트"""
-    try:
-        # 설정 유효성 검증
-        is_valid, error_message = settings_service.validate_settings(section, new_settings)
-        if not is_valid:
-            raise HTTPException(status_code=400, detail=error_message)
-        
-        # 설정 저장
-        if settings_service.update_section_settings(section, new_settings):
-            updated_settings = settings_service.get_section_settings(section)
-            _clog.info(f"{section} 설정 업데이트 완료")
-            return {"message": f"{section} 설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
-        else:
-            raise HTTPException(status_code=500, detail=f"{section} 설정 저장에 실패했습니다.")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        _clog.error(f"{section} 설정 업데이트 중 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"{section} 설정 업데이트 중 오류가 발생했습니다.")
-
 @router.get("/fallback-control")
 async def get_fallback_control_settings():
     """폴백 제어 설정 조회"""
@@ -465,39 +426,6 @@ async def get_fallback_control_settings():
     except Exception as e:
         _clog.error(f"폴백 제어 설정 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail="폴백 제어 설정 조회 중 오류가 발생했습니다.")
-
-@router.post("/fallback-control")
-async def update_fallback_control_settings(new_settings: Dict[str, Any]):
-    """폴백 제어 설정 업데이트"""
-    try:
-        # 설정 유효성 검증
-        required_keys = ["enable_similarity_fallback", "enable_sentence_splitter_fallback", 
-                        "enable_token_counter_fallback", "enable_pdf_extraction_fallback", "strict_mode"]
-        
-        for key in required_keys:
-            if key in new_settings and not isinstance(new_settings[key], bool):
-                raise HTTPException(status_code=400, detail=f"{key}는 불린 값이어야 합니다.")
-        
-        # 위험한 설정 조합 경고
-        if new_settings.get("strict_mode") is False and any(new_settings.get(key) is False for key in required_keys[:-1]):
-            _clog.warning("⚠️ 위험한 설정: strict_mode=False이면서 폴백도 비활성화됨 - 시스템 오류 발생 가능")
-        
-        # 설정 업데이트
-        if settings_service.update_section_settings("fallback_control", new_settings):
-            updated_settings = settings_service.get_section_settings("fallback_control")
-            _clog.info("폴백 제어 설정 업데이트 완료")
-            return {
-                "message": "폴백 제어 설정이 업데이트되었습니다.",
-                "fallback_control": updated_settings
-            }
-        else:
-            raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트에 실패했습니다.")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        _clog.error(f"폴백 제어 설정 업데이트 중 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트 중 오류가 발생했습니다.")
 
 @router.get("/manual-preprocessing")
 async def get_manual_preprocessing_settings():
@@ -682,6 +610,78 @@ async def test_sentence_splitter(test_data: Dict[str, Any]):
     except Exception as e:
         _clog.error(f"문장 분할기 테스트 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail="문장 분할기 테스트 중 오류가 발생했습니다.")
+
+@router.get("/{section}")
+async def get_section_settings(section: str):
+    """특정 섹션 설정 조회"""
+    try:
+        settings_data = settings_service.get_section_settings(section)
+        if not settings_data:
+            raise HTTPException(status_code=404, detail=f"'{section}' 섹션을 찾을 수 없습니다.")
+        
+        _clog.info(f"{section} 설정 조회 완료")
+        return settings_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"{section} 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{section} 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/{section}")
+async def update_section_settings(section: str, new_settings: Dict[str, Any]):
+    """특정 섹션 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        is_valid, error_message = settings_service.validate_settings(section, new_settings)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_message)
+        
+        # 설정 저장
+        if settings_service.update_section_settings(section, new_settings):
+            updated_settings = settings_service.get_section_settings(section)
+            _clog.info(f"{section} 설정 업데이트 완료")
+            return {"message": f"{section} 설정이 성공적으로 업데이트되었습니다.", "settings": updated_settings}
+        else:
+            raise HTTPException(status_code=500, detail=f"{section} 설정 저장에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"{section} 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{section} 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.post("/fallback-control")
+async def update_fallback_control_settings(new_settings: Dict[str, Any]):
+    """폴백 제어 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        required_keys = ["enable_similarity_fallback", "enable_sentence_splitter_fallback", 
+                        "enable_token_counter_fallback", "enable_pdf_extraction_fallback", "strict_mode"]
+        
+        for key in required_keys:
+            if key in new_settings and not isinstance(new_settings[key], bool):
+                raise HTTPException(status_code=400, detail=f"{key}는 불린 값이어야 합니다.")
+        
+        # 위험한 설정 조합 경고
+        if new_settings.get("strict_mode") is False and any(new_settings.get(key) is False for key in required_keys[:-1]):
+            _clog.warning("⚠️ 위험한 설정: strict_mode=False이면서 폴백도 비활성화됨 - 시스템 오류 발생 가능")
+        
+        # 설정 업데이트
+        if settings_service.update_section_settings("fallback_control", new_settings):
+            updated_settings = settings_service.get_section_settings("fallback_control")
+            _clog.info("폴백 제어 설정 업데이트 완료")
+            return {
+                "message": "폴백 제어 설정이 업데이트되었습니다.",
+                "fallback_control": updated_settings
+            }
+        else:
+            raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"폴백 제어 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트 중 오류가 발생했습니다.")
 
 @router.post("/reset-all")
 async def reset_all_settings():

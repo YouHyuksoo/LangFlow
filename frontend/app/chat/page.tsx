@@ -126,6 +126,10 @@ interface ChatSession {
   title: string;
   lastMessage: string;
   timestamp: Date;
+  messages?: Message[];
+  categories?: string[];
+  personaId?: string;
+  topK?: number;
 }
 
 // ChatHistory: 좌측 채팅 히스토리 패널 (메모이제이션으로 최적화)
@@ -171,7 +175,7 @@ const ChatHistory = memo(
       </Button>
       
       {/* 대화 주제 선택 섹션 */}
-      <div className="stat-card relative overflow-hidden flex-shrink-0 mb-4 p-4 bg-background/50 rounded-xl border space-y-3">
+      <div className="stat-card relative overflow-hidden mb-4 p-4 bg-background/50 rounded-xl border space-y-3 overflow-y-auto" style={{ maxHeight: isEditingCategories ? 'calc(70vh - 8rem)' : '240px' }}>
         {isEditingCategories ? (
           <>
             <h3 className="text-sm font-medium flex items-center gap-2">
@@ -287,8 +291,8 @@ const ChatHistory = memo(
         )}
       </div>
 
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="space-y-2 pb-4">
           {sessions.map((session) => (
             <button
               key={session.id}
@@ -302,7 +306,7 @@ const ChatHistory = memo(
             </button>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </aside>
   )
 );
@@ -545,6 +549,15 @@ export default function ChatPage() {
     loadFromStorage(STORAGE_KEYS.INPUT_VALUE, "")
   );
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 채팅 세션 관리 상태
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() =>
+    loadFromStorage("chat_sessions", [])
+  );
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() =>
+    loadFromStorage("current_session_id", null)
+  );
+  
   // 카테고리 선택 상태
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     () => loadFromStorage(STORAGE_KEYS.SELECTED_CATEGORIES, []) as string[]
@@ -713,6 +726,8 @@ export default function ChatPage() {
       saveToStorage("chat_user_name", userName);
       saveToStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, sidebarVisible);
       saveToStorage("chat_output_format", outputFormat);
+      saveToStorage("chat_sessions", chatSessions);
+      saveToStorage("current_session_id", currentSessionId);
     }, 100); // 100ms 디바운스
 
     return () => clearTimeout(timeoutId);
@@ -726,6 +741,8 @@ export default function ChatPage() {
     userName,
     sidebarVisible,
     outputFormat,
+    chatSessions,
+    currentSessionId,
   ]);
 
   // 이미지 처리 함수들
@@ -773,19 +790,96 @@ export default function ChatPage() {
     setImagePreviewUrls([]);
   };
 
-  const handleNewChat = useCallback(() => {
-    // localStorage 클리어
-    clearChatStorage();
+  // 새 채팅 세션 생성
+  const createNewSession = useCallback(() => {
+    // 현재 세션이 있고 메시지가 있다면 저장
+    if (currentSessionId && messages.length > 1) {
+      const sessionToSave = {
+        id: currentSessionId,
+        title: messages[1]?.content.slice(0, 50) + "..." || "새 대화",
+        lastMessage: messages[messages.length - 1]?.content.slice(0, 100) || "",
+        timestamp: new Date(),
+        messages: messages,
+        categories: selectedCategories,
+        personaId: selectedPersonaId,
+        topK: topK,
+      };
+
+      setChatSessions(prev => {
+        const existing = prev.find(s => s.id === currentSessionId);
+        if (existing) {
+          return prev.map(s => s.id === currentSessionId ? sessionToSave : s);
+        } else {
+          return [sessionToSave, ...prev].slice(0, 50); // 최대 50개 세션만 보관
+        }
+      });
+    }
+
+    // 새 세션 ID 생성
+    const newSessionId = Date.now().toString();
+    setCurrentSessionId(newSessionId);
+    
     // 상태 초기화
     setMessages([initialMessage]);
     setSelectedCategories([]);
     setIsEditingCategories(true);
     setInputValue("");
-    // 이미지 상태도 초기화
     clearImages();
     setIsLoading(false);
     setSelectedPersonaId(undefined);
     setTopK(5);
+  }, [currentSessionId, messages, selectedCategories, selectedPersonaId, topK]);
+
+  const handleNewChat = useCallback(() => {
+    createNewSession();
+  }, [createNewSession]);
+
+  // 채팅 세션 선택
+  const handleSelectSession = useCallback((sessionId: string) => {
+    const session = chatSessions.find(s => s.id === sessionId);
+    if (session) {
+      // 현재 세션 저장 (필요한 경우)
+      if (currentSessionId && messages.length > 1) {
+        const currentSession = {
+          id: currentSessionId,
+          title: messages[1]?.content.slice(0, 50) + "..." || "새 대화",
+          lastMessage: messages[messages.length - 1]?.content.slice(0, 100) || "",
+          timestamp: new Date(),
+          messages: messages,
+          categories: selectedCategories,
+          personaId: selectedPersonaId,
+          topK: topK,
+        };
+
+        setChatSessions(prev => {
+          const existing = prev.find(s => s.id === currentSessionId);
+          if (existing) {
+            return prev.map(s => s.id === currentSessionId ? currentSession : s);
+          } else {
+            return [currentSession, ...prev];
+          }
+        });
+      }
+
+      // 선택된 세션으로 상태 복원
+      setCurrentSessionId(session.id);
+      setMessages(session.messages || [initialMessage]);
+      setSelectedCategories(session.categories || []);
+      setSelectedPersonaId(session.personaId);
+      setTopK(session.topK || 5);
+      setInputValue("");
+      clearImages();
+      setIsLoading(false);
+      setIsEditingCategories(false);
+    }
+  }, [chatSessions, currentSessionId, messages, selectedCategories, selectedPersonaId, topK]);
+
+  // 초기 세션 설정
+  useEffect(() => {
+    if (!currentSessionId) {
+      const newSessionId = Date.now().toString();
+      setCurrentSessionId(newSessionId);
+    }
   }, []);
 
   useEffect(() => {
@@ -1085,9 +1179,9 @@ export default function ChatPage() {
       {/* 사이드바 - 조건부 렌더링 */}
       {sidebarVisible && (
         <ChatHistory
-          sessions={[]}
+          sessions={chatSessions}
           onNewChat={handleNewChat}
-          onSelectSession={() => {}}
+          onSelectSession={handleSelectSession}
           selectedCategories={selectedCategories}
           onCategoryChange={setSelectedCategories}
           categories={categories}
@@ -1147,17 +1241,31 @@ export default function ChatPage() {
                 <Menu className="h-5 w-5" />
               )}
             </Button>
-            <h1 className="text-xl font-semibold text-foreground">AI 챗봇</h1>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-semibold text-foreground">AI 챗봇</h1>
+              {activeModelProfile && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                  <div className="p-0.5 rounded-sm bg-primary/20">
+                    <Bot className="h-2.5 w-2.5 text-primary" />
+                  </div>
+                  <span className="font-medium">{activeModelProfile.name}</span>
+                  <span className="text-muted-foreground/70">({activeModelProfile.provider})</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 모델 선택 드롭다운 */}
           <div className="flex items-center gap-3">
             {activeModelProfile && (
-              <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 rounded-lg border border-primary/20">
                 <div className="p-1 rounded-md bg-primary/20">
-                  <Bot className="h-3 w-3 text-primary" />
+                  <Bot className="h-4 w-4 text-primary" />
                 </div>
-                <span>{activeModelProfile.name}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-foreground">{activeModelProfile.name}</span>
+                  <span className="text-xs text-muted-foreground">{activeModelProfile.provider} • {activeModelProfile.model}</span>
+                </div>
               </div>
             )}
             

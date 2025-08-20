@@ -700,12 +700,23 @@ class SmartTextSplitter:
             logger.debug(f"KSS 첫 3개 문장 샘플: {sentences[:3] if len(sentences) >= 3 else sentences}")
             return sentences
             
-        except ImportError:
-            logger.error("KSS 6.x 라이브러리가 설치되지 않았습니다")
-            raise RuntimeError("KSS 라이브러리가 설치되지 않았습니다. pip install kss로 설치하세요.")
+        except ImportError as e:
+            logger.error(f"KSS import 실패 - ImportError: {e}")
+            logger.error(f"Python 경로: {__import__('sys').executable}")
+            logger.error(f"현재 작업 디렉토리: {__import__('os').getcwd()}")
+            try:
+                import kss
+                logger.error(f"kss 모듈은 찾았지만 Kss 클래스 import 실패. kss.__version__: {kss.__version__}")
+                logger.error(f"kss 모듈 위치: {kss.__file__}")
+            except Exception as kss_e:
+                logger.error(f"kss 모듈 자체도 import 실패: {kss_e}")
+            raise RuntimeError(f"KSS 라이브러리 import 실패: {e}. pip install kss로 재설치하거나 가상환경을 확인하세요.")
                 
         except Exception as e:
             logger.error(f"KSS 6.0.5 문장 분리 실패: {e}")
+            logger.error(f"에러 타입: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise RuntimeError(f"KSS 문장 분리 실패: {e}")
 
     def _split_sentences_kiwi(self, text: str, rules: ChunkingRules) -> List[str]:

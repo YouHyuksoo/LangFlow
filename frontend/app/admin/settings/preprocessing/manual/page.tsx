@@ -129,11 +129,11 @@ export default function ManualPreprocessingSettingsPage() {
   const loadSettings = async () => {
     try {
       setLoading(true)
-      const response = await vectorAPI.get('/settings/manual-preprocessing')
-      setSettings(response.data.manual_preprocessing)
-      setFallbackSettings(response.data.fallback_control)
-      setSplitterOptions(response.data.splitter_options)
-      setKSSBackendOptions(response.data.kss_backend_options)
+      const response = await vectorAPI.getManualPreprocessingSettings()
+      setSettings(response.manual_preprocessing)
+      setFallbackSettings(response.fallback_control)
+      setSplitterOptions(response.splitter_options)
+      setKSSBackendOptions(response.kss_backend_options)
     } catch (error) {
       console.error('설정 로드 실패:', error)
       toast({
@@ -151,7 +151,7 @@ export default function ManualPreprocessingSettingsPage() {
 
     try {
       setSaving(true)
-      await vectorAPI.post('/settings/manual-preprocessing', settings)
+      await vectorAPI.updateManualPreprocessingSettings(settings)
       toast({
         title: "설정 저장 완료",
         description: "수동 전처리 설정이 성공적으로 저장되었습니다.",
@@ -173,7 +173,7 @@ export default function ManualPreprocessingSettingsPage() {
 
     try {
       setSaving(true)
-      await vectorAPI.post('/settings/fallback-control', fallbackSettings)
+      await vectorAPI.updateFallbackControlSettings(fallbackSettings)
       toast({
         title: "폴백 설정 저장 완료",
         description: "폴백 제어 설정이 성공적으로 저장되었습니다.",
@@ -202,12 +202,12 @@ export default function ManualPreprocessingSettingsPage() {
 
     try {
       setTesting(true)
-      const response = await vectorAPI.post('/settings/manual-preprocessing/test-splitter', {
+      const response = await vectorAPI.testSentenceSplitter({
         text: testText,
         splitter: settings.default_sentence_splitter,
         settings: settings
       })
-      setTestResult(response.data)
+      setTestResult(response)
     } catch (error: any) {
       console.error('문장 분할 테스트 실패:', error)
       toast({
@@ -292,11 +292,10 @@ export default function ManualPreprocessingSettingsPage() {
             <CardContent className="space-y-6">
               <div className="flex items-center space-x-2">
                 <Switch
-                  id="enabled"
                   checked={settings.enabled}
                   onCheckedChange={(checked) => updateSettings('enabled', checked)}
                 />
-                <Label htmlFor="enabled">수동 전처리 활성화</Label>
+                <Label>수동 전처리 활성화</Label>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -362,38 +361,34 @@ export default function ManualPreprocessingSettingsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center space-x-2">
                     <Switch
-                      id="respect-headings"
                       checked={settings.respect_headings}
                       onCheckedChange={(checked) => updateSettings('respect_headings', checked)}
                     />
-                    <Label htmlFor="respect-headings">헤딩 경계 존중</Label>
+                    <Label>헤딩 경계 존중</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <Switch
-                      id="preserve-tables"
                       checked={settings.preserve_tables}
                       onCheckedChange={(checked) => updateSettings('preserve_tables', checked)}
                     />
-                    <Label htmlFor="preserve-tables">표 구조 보존</Label>
+                    <Label>표 구조 보존</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <Switch
-                      id="preserve-lists"
                       checked={settings.preserve_lists}
                       onCheckedChange={(checked) => updateSettings('preserve_lists', checked)}
                     />
-                    <Label htmlFor="preserve-lists">목록 구조 보존</Label>
+                    <Label>목록 구조 보존</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <Switch
-                      id="drop-short-chunks"
                       checked={settings.drop_short_chunks}
                       onCheckedChange={(checked) => updateSettings('drop_short_chunks', checked)}
                     />
-                    <Label htmlFor="drop-short-chunks">짧은 청크 제거</Label>
+                    <Label>짧은 청크 제거</Label>
                   </div>
                 </div>
               </div>
@@ -483,20 +478,18 @@ export default function ManualPreprocessingSettingsPage() {
                       <div className="space-y-4">
                         <div className="flex items-center space-x-2">
                           <Switch
-                            id="kss-strip"
                             checked={settings.kss_strip}
                             onCheckedChange={(checked) => updateSettings('kss_strip', checked)}
                           />
-                          <Label htmlFor="kss-strip">양끝 공백 제거</Label>
+                          <Label>양끝 공백 제거</Label>
                         </div>
 
                         <div className="flex items-center space-x-2">
                           <Switch
-                            id="kss-morphemes"
                             checked={settings.kss_return_morphemes}
                             onCheckedChange={(checked) => updateSettings('kss_return_morphemes', checked)}
                           />
-                          <Label htmlFor="kss-morphemes">형태소 반환</Label>
+                          <Label>형태소 반환</Label>
                         </div>
                       </div>
                     </div>
@@ -536,20 +529,18 @@ export default function ManualPreprocessingSettingsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex items-center space-x-2">
                         <Switch
-                          id="kiwi-allomorph"
                           checked={settings.kiwi_integrate_allomorph}
                           onCheckedChange={(checked) => updateSettings('kiwi_integrate_allomorph', checked)}
                         />
-                        <Label htmlFor="kiwi-allomorph">이형태 통합</Label>
+                        <Label>이형태 통합</Label>
                       </div>
 
                       <div className="flex items-center space-x-2">
                         <Switch
-                          id="kiwi-default-dict"
                           checked={settings.kiwi_load_default_dict}
                           onCheckedChange={(checked) => updateSettings('kiwi_load_default_dict', checked)}
                         />
-                        <Label htmlFor="kiwi-default-dict">기본 사전 로드</Label>
+                        <Label>기본 사전 로드</Label>
                       </div>
                     </div>
                   </CardContent>
@@ -575,11 +566,10 @@ export default function ManualPreprocessingSettingsPage() {
 
                     <div className="flex items-center space-x-2">
                       <Switch
-                        id="regex-abbreviations"
                         checked={settings.regex_preserve_abbreviations}
                         onCheckedChange={(checked) => updateSettings('regex_preserve_abbreviations', checked)}
                       />
-                      <Label htmlFor="regex-abbreviations">줄임말 보존</Label>
+                      <Label>줄임말 보존</Label>
                     </div>
 
                     <div className="space-y-2">
@@ -615,20 +605,18 @@ export default function ManualPreprocessingSettingsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex items-center space-x-2">
                         <Switch
-                          id="recursive-keep"
                           checked={settings.recursive_keep_separator}
                           onCheckedChange={(checked) => updateSettings('recursive_keep_separator', checked)}
                         />
-                        <Label htmlFor="recursive-keep">구분자 유지</Label>
+                        <Label>구분자 유지</Label>
                       </div>
 
                       <div className="flex items-center space-x-2">
                         <Switch
-                          id="recursive-regex"
                           checked={settings.recursive_is_separator_regex}
                           onCheckedChange={(checked) => updateSettings('recursive_is_separator_regex', checked)}
                         />
-                        <Label htmlFor="recursive-regex">정규식 구분자</Label>
+                        <Label>정규식 구분자</Label>
                       </div>
                     </div>
                   </CardContent>
@@ -650,20 +638,18 @@ export default function ManualPreprocessingSettingsPage() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="quality-check"
                     checked={settings.enable_quality_check}
                     onCheckedChange={(checked) => updateSettings('enable_quality_check', checked)}
                   />
-                  <Label htmlFor="quality-check">품질 검사 활성화</Label>
+                  <Label>품질 검사 활성화</Label>
                 </div>
 
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="duplicate-check"
                     checked={settings.enable_duplicate_check}
                     onCheckedChange={(checked) => updateSettings('enable_duplicate_check', checked)}
                   />
-                  <Label htmlFor="duplicate-check">중복 검사 활성화</Label>
+                  <Label>중복 검사 활성화</Label>
                 </div>
               </div>
 
@@ -712,11 +698,10 @@ export default function ManualPreprocessingSettingsPage() {
                 
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="image-extraction"
                     checked={settings.enable_image_extraction}
                     onCheckedChange={(checked) => updateSettings('enable_image_extraction', checked)}
                   />
-                  <Label htmlFor="image-extraction">이미지 추출 활성화</Label>
+                  <Label>이미지 추출 활성화</Label>
                 </div>
 
                 {settings.enable_image_extraction && (
@@ -773,11 +758,10 @@ export default function ManualPreprocessingSettingsPage() {
 
               <div className="flex items-center space-x-2">
                 <Switch
-                  id="strict-mode"
                   checked={fallbackSettings.strict_mode}
                   onCheckedChange={(checked) => updateFallbackSettings('strict_mode', checked)}
                 />
-                <Label htmlFor="strict-mode">엄격 모드 (권장)</Label>
+                <Label>엄격 모드 (권장)</Label>
                 {fallbackSettings.strict_mode && (
                   <Badge variant="default">활성화됨</Badge>
                 )}

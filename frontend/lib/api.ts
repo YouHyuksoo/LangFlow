@@ -1241,6 +1241,34 @@ export const vectorAPI = {
     return response.data;
   },
 
+  // 수동 전처리 설정 조회
+  getManualPreprocessingSettings: async () => {
+    const response = await api.get("/api/v1/settings/manual-preprocessing");
+    return response.data;
+  },
+
+  // 수동 전처리 설정 업데이트
+  updateManualPreprocessingSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/manual-preprocessing", settings);
+    return response.data;
+  },
+
+  // 폴백 제어 설정 업데이트
+  updateFallbackControlSettings: async (settings: any) => {
+    const response = await api.post("/api/v1/settings/fallback-control", settings);
+    return response.data;
+  },
+
+  // 문장 분할 테스트
+  testSentenceSplitter: async (data: {
+    text: string;
+    splitter: string;
+    settings: any;
+  }) => {
+    const response = await api.post("/api/v1/settings/manual-preprocessing/test-splitter", data);
+    return response.data;
+  },
+
 };
 
 // 데이터베이스 관리 API (새로운 통합 관리)

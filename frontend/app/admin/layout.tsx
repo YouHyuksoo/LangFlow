@@ -162,9 +162,10 @@ export default function AdminLayout({
           </div>
         </div>
 
-        {/* 네비게이션 메뉴 - 스크롤 추가 */}
-        <nav className="mt-6 px-3 flex-1 overflow-y-auto pb-4">
-          <ul className="space-y-2">
+        {/* 네비게이션 메뉴 - 스크롤 개선 */}
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4rem)', minHeight: '0' }}>
+          <nav className="px-3 py-6">
+            <ul className="space-y-2 pb-12">
             {navigation.map((item) => {
               const isActive = pathname === item.href
               const hasChildren = item.children && item.children.length > 0
@@ -275,9 +276,9 @@ export default function AdminLayout({
                 </li>
               )
             })}
-          </ul>
-        </nav>
-
+            </ul>
+          </nav>
+        </div>
         </div>
       )}
 
@@ -314,7 +315,13 @@ export default function AdminLayout({
             ? "overflow-hidden p-0" // preprocessing 에디터는 스크롤 없음, 패딩 없음
             : "overflow-y-auto p-6" // 다른 페이지는 기존대로
         )}>
-          {children}
+          <div className={cn(
+            pathname.startsWith('/admin/preprocessing/') 
+              ? "" // preprocessing 에디터는 패딩 없음
+              : "pb-12" // 다른 페이지는 내부 컨텐츠에만 하단 여백
+          )}>
+            {children}
+          </div>
         </main>
       </div>
     </div>
