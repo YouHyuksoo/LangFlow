@@ -24,11 +24,24 @@ class ModelProfileService:
             try:
                 with open(self.profiles_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+                    
+                    # 마이그레이션: 기존 프로필에 ai_chunking_system_message 필드 추가
+                    profiles_data = data.get("profiles", {})
+                    for profile_id, profile_data in profiles_data.items():
+                        if "ai_chunking_system_message" not in profile_data:
+                            profile_data["ai_chunking_system_message"] = None
+                    
                     self.profiles = {
                         profile_id: ModelProfile(**profile_data) 
-                        for profile_id, profile_data in data.get("profiles", {}).items()
+                        for profile_id, profile_data in profiles_data.items()
                     }
                     self.active_profile_id = data.get("active_profile_id")
+                    
+                    # 마이그레이션 후 저장
+                    if any("ai_chunking_system_message" not in pd for pd in data.get("profiles", {}).values()):
+                        self._save_profiles()
+                        print("✅ 모델 프로필에 AI 청킹 시스템 메시지 필드 추가 완료")
+                        
             except Exception as e:
                 print(f"프로필 로드 실패: {e}")
                 self.profiles = {}
@@ -68,6 +81,7 @@ class ModelProfileService:
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             top_p=request.top_p,
+            ai_chunking_system_message=request.ai_chunking_system_message,
             is_active=len(self.profiles) == 0,  # 첫 번째 프로필은 자동으로 활성화
             created_at=now,
             updated_at=now
@@ -90,6 +104,40 @@ class ModelProfileService:
     def get_profile(self, profile_id: str) -> Optional[ModelProfile]:
         """특정 프로필 조회"""
         return self.profiles.get(profile_id)
+    
+    def get_default_ai_chunking_system_message(self, provider: str = "openai") -> str:
+        """제공업체별 기본 AI 청킹 시스템 메시지 생성"""
+        base_message = """You are an expert RAG chunker. Analyze the document and create optimal chunks for retrieval.
+
+RULES:
+- Return ONLY strict JSON format
+- Each chunk should be semantically coherent and complete
+- Respect document structure (headings, paragraphs, lists, tables)
+- Maintain context within chunks
+- Follow token limits strictly
+- No markdown fences, no explanations outside JSON
+
+JSON Schema:
+{
+  "chunks": [
+    {
+      "order": 1,
+      "text": "complete chunk text here",
+      "heading_path": ["Section 1", "Subsection 1.1"] or null,
+      "reasoning": "brief explanation why this forms a good chunk"
+    }
+  ]
+}"""
+        
+        # 제공업체별 최적화된 메시지
+        if provider.lower() == "anthropic":
+            return base_message + "\n\nUse your strong analytical skills to identify semantic boundaries and maintain logical flow between chunks."
+        elif provider.lower() == "upstage":
+            return base_message + "\n\nFocus on precise token counting and efficient chunk boundaries for optimal retrieval performance."
+        elif provider.lower() == "google":
+            return base_message + "\n\nLeverage your multimodal understanding and advanced pattern recognition to create semantically coherent chunks with optimal information density."
+        else:  # OpenAI 기본값
+            return base_message
     
     def get_active_profile(self) -> Optional[ModelProfile]:
         """활성 프로필 조회"""
@@ -117,6 +165,8 @@ class ModelProfileService:
             profile.max_tokens = request.max_tokens
         if request.top_p is not None:
             profile.top_p = request.top_p
+        if request.ai_chunking_system_message is not None:
+            profile.ai_chunking_system_message = request.ai_chunking_system_message
         
         profile.updated_at = datetime.now()
         

@@ -27,6 +27,12 @@ from .settings_service import settings_service
 from ..models.schemas import DoclingOptions
 from ..models.vector_models import VectorMetadata, VectorMetadataService
 
+# PRD2 개선: 스마트 청킹 서비스 임포트 (헤딩 헤더 임베딩용)
+try:
+    from .chunking_service import ChunkProposal
+except ImportError:
+    ChunkProposal = None
+
 # ChromaDB 관련 패키지 임포트 시도
 try:
     import chromadb
@@ -311,27 +317,87 @@ class VectorService:
         text_content: str, 
         metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """전처리된 텍스트를 받아 청킹, 임베딩, 저장을 수행합니다."""
+        """전처리된 텍스트를 받아 청킹, 임베딩, 저장을 수행합니다. (PRD2: 스마트 청킹 지원)"""
         try:
-            # 1. 청킹
             from .settings_service import settings_service
             system_settings = settings_service.get_section_settings("system")
-            chunk_size = system_settings.get("chunkSize", settings.DEFAULT_CHUNK_SIZE)
-            overlap_size = system_settings.get("chunkOverlap", settings.DEFAULT_CHUNK_OVERLAP)
             
-            chunks = self._robust_chunking(text_content, chunk_size, overlap_size)
-            if not chunks:
-                return {"success": False, "error": "유효한 청크를 생성할 수 없습니다."}
-
-            # 2. 임베딩 및 저장 (병렬 처리 옵션)
-            if self.enable_parallel and len(chunks) > 10:  # 청크가 많을 때만 병렬 처리
-                success = await self._add_document_chunks_parallel(file_id, chunks, metadata)
-                if success:
-                    print(f"📊 벡터화 완료 처리 시작 - 파일 ID: {file_id}")
+            # PRD2: 스마트 청킹 활성화 여부 확인
+            use_smart_chunking = system_settings.get("use_smart_chunking", True)
+            enable_heading_headers = system_settings.get("enable_heading_headers", True)
+            
+            if use_smart_chunking and ChunkProposal is not None:
+                # 1. PRD2 스마트 청킹 사용
+                print(f"🧠 스마트 청킹 모드 사용 - 헤더 임베딩: {enable_heading_headers}")
+                
+                from .chunking_service import chunking_service, ChunkingRules
+                
+                # 청킹 규칙 설정
+                chunk_size = system_settings.get("chunkSize", settings.DEFAULT_CHUNK_SIZE)
+                overlap_size = system_settings.get("chunkOverlap", settings.DEFAULT_CHUNK_OVERLAP)
+                min_tokens = max(100, chunk_size // 4)  # 최소 토큰은 최대 토큰의 1/4
+                
+                rules = ChunkingRules(
+                    max_tokens=chunk_size,
+                    min_tokens=min_tokens,
+                    overlap_tokens=overlap_size,
+                    respect_headings=True,
+                    preserve_tables=True,
+                    preserve_lists=True,
+                    hard_sentence_max_tokens=chunk_size // 2  # 강제 분절 기준
+                )
+                
+                # PDF 경로 확인 (이미지 연관성을 위해)
+                pdf_path = metadata.get("file_path") if metadata.get("filename", "").lower().endswith('.pdf') else None
+                
+                # 스마트 청킹 제안 생성
+                chunk_proposals = chunking_service.propose_chunks(
+                    text_content, 
+                    rules, 
+                    use_hierarchical=True, 
+                    pdf_path=pdf_path
+                )
+                
+                if not chunk_proposals:
+                    return {"success": False, "error": "스마트 청킹에서 유효한 청크를 생성할 수 없습니다."}
+                
+                print(f"📋 스마트 청킹 완료 - {len(chunk_proposals)}개 청크 생성")
+                
+                # 2. 헤더 포함 임베딩 및 저장
+                if enable_heading_headers:
+                    success = await self.add_document_chunks_with_headers(file_id, chunk_proposals, metadata)
+                    processing_method = "smart_chunking_with_headers"
+                else:
+                    # 헤더 없이 일반 청크로 변환
+                    chunks = [chunk.text for chunk in chunk_proposals]
+                    if self.enable_parallel and len(chunks) > 10:
+                        success = await self._add_document_chunks_parallel(file_id, chunks, metadata)
+                    else:
+                        success = await self.add_document_chunks(file_id, chunks, metadata)
+                    processing_method = "smart_chunking"
+                
+                chunks_count = len(chunk_proposals)
             else:
-                success = await self.add_document_chunks(file_id, chunks, metadata)
-                if success:
-                    print(f"📊 벡터화 완료 처리 시작 - 파일 ID: {file_id} (순차 처리)")
+                # 1. 기존 고정 크기 청킹 사용
+                print(f"📄 기존 청킹 모드 사용")
+                chunk_size = system_settings.get("chunkSize", settings.DEFAULT_CHUNK_SIZE)
+                overlap_size = system_settings.get("chunkOverlap", settings.DEFAULT_CHUNK_OVERLAP)
+                
+                chunks = self._robust_chunking(text_content, chunk_size, overlap_size)
+                if not chunks:
+                    return {"success": False, "error": "유효한 청크를 생성할 수 없습니다."}
+
+                # 2. 임베딩 및 저장 (병렬 처리 옵션)
+                if self.enable_parallel and len(chunks) > 10:  # 청크가 많을 때만 병렬 처리
+                    success = await self._add_document_chunks_parallel(file_id, chunks, metadata)
+                else:
+                    success = await self.add_document_chunks(file_id, chunks, metadata)
+                
+                chunks_count = len(chunks)
+                processing_method = "fixed_size_chunking"
+            
+            if success:
+                print(f"📊 벡터화 완료 처리 시작 - 파일 ID: {file_id} ({processing_method})")
             
             if success:
                 # 3. SQLite DB에 벡터 메타데이터 저장
@@ -342,8 +408,8 @@ class VectorService:
                         filename=metadata.get("filename", "Unknown"),
                         category_id=metadata.get("category_id"),
                         category_name=metadata.get("category_name"),
-                        processing_method=metadata.get("preprocessing_method", "basic"),
-                        chunk_count=len(chunks),
+                        processing_method=processing_method,
+                        chunk_count=chunks_count,
                         file_size=metadata.get("file_size", 0),
                         page_count=metadata.get("page_count"),
                         table_count=metadata.get("table_count", 0),
@@ -357,8 +423,8 @@ class VectorService:
                         # 기존 메타데이터 업데이트
                         update_success = self.metadata_service.update_metadata(
                             file_id=file_id,
-                            chunk_count=len(chunks),
-                            processing_method=metadata.get("preprocessing_method", "basic"),
+                            chunk_count=chunks_count,
+                            processing_method=processing_method,
                             page_count=metadata.get("page_count"),
                             table_count=metadata.get("table_count", 0),
                             image_count=metadata.get("image_count", 0),
@@ -380,8 +446,8 @@ class VectorService:
                     print(f"⚠️ SQLite DB 메타데이터 저장 중 오류: {e}")
                     # 메타데이터 저장 실패해도 벡터화는 성공으로 처리
                 
-                print(f"✅ 벡터화 최종 완료 - {len(chunks)}개 청크 저장 성공")
-                return {"success": True, "chunks_count": len(chunks)}
+                print(f"✅ 벡터화 최종 완료 - {chunks_count}개 청크 저장 성공")
+                return {"success": True, "chunks_count": chunks_count}
             else:
                 print(f"❌ 벡터화 실패 - 청크 저장 실패")
                 return {"success": False, "error": "벡터 저장에 실패했습니다."}
@@ -701,6 +767,115 @@ class VectorService:
             
         except Exception as e:
             print(f"❌ ChromaDB에 청크 추가 실패: {e}")
+            return False
+    
+    # TODO(human): PRD2 헤딩 헤더 임베딩 기능
+    # ChunkProposal 객체들을 받아 헤딩 경로를 포함한 텍스트로 임베딩하는 메서드를 구현하세요.
+    # 헤딩 경로가 있으면 "[헤딩1 > 헤딩2] 본문내용" 형식으로 구성하고,
+    # settings에서 enable_heading_headers 옵션을 확인하여 기능을 활성화할지 결정하세요.
+    async def add_document_chunks_with_headers(self, file_id: str, chunk_proposals: List[ChunkProposal], metadata: Dict[str, Any]) -> bool:
+        """PRD2: 헤딩 헤더를 포함한 청크 임베딩 (검색 품질 개선)"""
+        print(f"📝 헤더 포함 벡터화 모드: {len(chunk_proposals)}개 청크 처리 시작")
+        
+        if not chunk_proposals or not CHROMADB_AVAILABLE:
+            return False
+        
+        # 설정에서 헤딩 헤더 기능 활성화 여부 확인
+        try:
+            from .settings_service import settings_service
+            system_settings = settings_service.get_section_settings("system")
+            enable_heading_headers = system_settings.get("enable_heading_headers", True)
+        except:
+            enable_heading_headers = True  # 기본값: 활성화
+        
+        await self._ensure_client()
+        if not self._client:
+            return False
+        
+        # 벡터화 전 차원 불일치 검사
+        if not await self._connect_to_chromadb(create_if_missing=True):
+            print("❌ 벡터화 실패: 임베딩 모델 차원이 기존 컬렉션과 일치하지 않습니다.")
+            return False
+        
+        try:
+            # 청크별로 고유 ID 생성
+            chunk_ids = [f"{file_id}_chunk_{chunk.order}" for chunk in chunk_proposals]
+            
+            # 헤딩 헤더를 포함한 텍스트 생성
+            enhanced_texts = []
+            chunk_metadatas = []
+            
+            for i, chunk in enumerate(chunk_proposals):
+                # 헤딩 헤더 생성
+                if enable_heading_headers and chunk.heading_path:
+                    # "[헤딩1 > 헤딩2 > 헤딩3] 본문내용" 형식
+                    heading_header = " > ".join(chunk.heading_path)
+                    enhanced_text = f"[{heading_header}] {chunk.text}"
+                    print(f"📋 청크 {chunk.order}: 헤딩 헤더 적용 - {heading_header}")
+                else:
+                    enhanced_text = chunk.text
+                
+                enhanced_texts.append(enhanced_text)
+                
+                # 메타데이터 생성
+                chunk_metadata = {
+                    "file_id": file_id,
+                    "filename": metadata.get("filename", "Unknown"),
+                    "category_id": metadata.get("category_id"),
+                    "category_name": metadata.get("category_name"),
+                    "preprocessing_method": metadata.get("preprocessing_method", "basic"),
+                    "chunk_index": i,
+                    "chunk_order": chunk.order,
+                    "chunk_length": len(chunk.text),
+                    "enhanced_length": len(enhanced_text),
+                    "has_heading_header": enable_heading_headers and bool(chunk.heading_path),
+                    "heading_path": " > ".join(chunk.heading_path) if chunk.heading_path else None,
+                    "page_start": chunk.page_start,
+                    "page_end": chunk.page_end,
+                    "token_estimate": chunk.token_estimate,
+                    "quality_warnings_count": len(chunk.quality_warnings) if chunk.quality_warnings else 0
+                }
+                
+                # 이미지 참조 정보 추가 (PRD2 개선)
+                if chunk.image_refs:
+                    chunk_metadata["has_images"] = True
+                    chunk_metadata["chunk_image_count"] = len(chunk.image_refs)
+                    # 이미지 정보를 JSON으로 저장
+                    import json
+                    image_data = []
+                    for img_ref in chunk.image_refs:
+                        image_data.append({
+                            "image_id": img_ref.image_id,
+                            "image_type": img_ref.image_type,
+                            "distance_to_text": img_ref.distance_to_text,
+                            "page": img_ref.bbox.page if img_ref.bbox else None,
+                            "description": img_ref.description
+                        })
+                    chunk_metadata["chunk_images_json"] = json.dumps(image_data, ensure_ascii=False)
+                else:
+                    chunk_metadata["has_images"] = False
+                    chunk_metadata["chunk_image_count"] = 0
+                
+                chunk_metadatas.append(chunk_metadata)
+            
+            # ChromaDB에 추가
+            self._collection.add(
+                ids=chunk_ids,
+                documents=enhanced_texts,
+                metadatas=chunk_metadatas
+            )
+            
+            # 성능 통계 업데이트
+            if hasattr(self, '_performance_stats'):
+                self._performance_stats["chunks_added"] += len(chunk_proposals)
+                self._performance_stats["sequential_operations"] += 1
+            
+            header_count = sum(1 for chunk in chunk_proposals if chunk.heading_path)
+            print(f"✅ 헤더 포함 벡터화 완료 - {len(chunk_proposals)}개 청크 저장 (헤더 적용: {header_count}개)")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 헤더 포함 벡터화 실패: {e}")
             return False
     
     def _find_related_images_for_chunk(self, chunk_text: str, metadata: Dict) -> List[Dict]:

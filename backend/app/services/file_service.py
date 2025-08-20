@@ -531,6 +531,125 @@ class FileService:
             return None
         
         return self._convert_to_file_info(file_metadata)
+    
+    async def get_file_content(self, file_id: str) -> Dict[str, Any]:
+        """파일 내용을 추출하여 반환 (청킹용)"""
+        try:
+            # 파일 정보 조회
+            file_metadata = self.file_metadata_service.get_file(file_id)
+            if not file_metadata:
+                return {"success": False, "error": "파일을 찾을 수 없습니다"}
+            
+            # 전처리된 텍스트 파일 경로
+            preprocessed_path = os.path.join(settings.DATA_DIR, "preprocessed", f"{file_id}.txt")
+            
+            # 전처리된 파일이 있으면 해당 내용 사용
+            if os.path.exists(preprocessed_path):
+                try:
+                    with open(preprocessed_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    return {"success": True, "content": content}
+                except Exception as e:
+                    self.logger.error(f"전처리된 파일 읽기 실패 {file_id}: {e}")
+            
+            # 전처리된 파일이 없으면 원본 파일에서 추출
+            original_path = file_metadata.file_path
+            if not os.path.exists(original_path):
+                return {"success": False, "error": "원본 파일을 찾을 수 없습니다"}
+            
+            filename_lower = file_metadata.filename.lower()
+            
+            # 텍스트 파일인 경우 직접 읽기
+            if filename_lower.endswith(('.txt', '.md', '.html', '.json', '.xml', '.csv')):
+                try:
+                    with open(original_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    return {"success": True, "content": content}
+                except UnicodeDecodeError:
+                    try:
+                        with open(original_path, 'r', encoding='cp949') as f:
+                            content = f.read()
+                        return {"success": True, "content": content}
+                    except Exception as e:
+                        return {"success": False, "error": f"텍스트 파일 읽기 실패: {str(e)}"}
+            
+            # PPTX 파일인 경우 - 텍스트 추출 (빠른청킹용)
+            elif filename_lower.endswith('.pptx'):
+                try:
+                    from pptx import Presentation
+                    
+                    prs = Presentation(original_path)
+                    text_content = ""
+                    
+                    for i, slide in enumerate(prs.slides, 1):
+                        slide_text = f"\n=== 슬라이드 {i} ===\n"
+                        
+                        # 슬라이드의 모든 텍스트 추출
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_text += shape.text + "\n"
+                        
+                        text_content += slide_text
+                    
+                    return {"success": True, "content": text_content.strip()}
+                    
+                except ImportError:
+                    return {"success": False, "error": "PPTX 텍스트 추출을 위해 python-pptx 패키지가 필요합니다."}
+                except Exception as e:
+                    self.logger.error(f"PPTX 텍스트 추출 실패 {file_id}: {e}")
+                    return {"success": False, "error": f"PPTX 텍스트 추출 중 오류 발생: {str(e)}"}
+            
+            # DOCX 파일인 경우 - 텍스트 추출 (빠른청킹용)
+            elif filename_lower.endswith('.docx'):
+                try:
+                    from docx import Document
+                    
+                    doc = Document(original_path)
+                    text_content = ""
+                    
+                    for paragraph in doc.paragraphs:
+                        if paragraph.text.strip():
+                            text_content += paragraph.text + "\n"
+                    
+                    return {"success": True, "content": text_content.strip()}
+                    
+                except ImportError:
+                    return {"success": False, "error": "DOCX 텍스트 추출을 위해 python-docx 패키지가 필요합니다."}
+                except Exception as e:
+                    self.logger.error(f"DOCX 텍스트 추출 실패 {file_id}: {e}")
+                    return {"success": False, "error": f"DOCX 텍스트 추출 중 오류 발생: {str(e)}"}
+            
+            # PDF 파일인 경우 - 텍스트 추출 (빠른청킹용)
+            elif filename_lower.endswith('.pdf'):
+                try:
+                    import fitz  # PyMuPDF
+                    
+                    doc = fitz.open(original_path)
+                    text_content = ""
+                    
+                    for page_num in range(len(doc)):
+                        page = doc[page_num]
+                        page_text = page.get_text()
+                        if page_text.strip():
+                            text_content += f"\n=== 페이지 {page_num + 1} ===\n"
+                            text_content += page_text + "\n"
+                    
+                    doc.close()
+                    return {"success": True, "content": text_content.strip()}
+                    
+                except ImportError:
+                    return {"success": False, "error": "PDF 텍스트 추출을 위해 PyMuPDF 패키지가 필요합니다."}
+                except Exception as e:
+                    self.logger.error(f"PDF 텍스트 추출 실패 {file_id}: {e}")
+                    return {"success": False, "error": f"PDF 텍스트 추출 중 오류 발생: {str(e)}"}
+            
+            # 기타 파일은 전처리가 필요
+            else:
+                return {"success": False, "error": "파일이 아직 전처리되지 않았습니다. 먼저 전처리를 진행해주세요."}
+            
+        except Exception as e:
+            self.logger.error(f"파일 내용 추출 실패 {file_id}: {e}")
+            return {"success": False, "error": f"파일 내용 추출 중 오류 발생: {str(e)}"}
 
     async def delete_file(self, file_id: str) -> bool:
         file_metadata = self.file_metadata_service.get_file(file_id)

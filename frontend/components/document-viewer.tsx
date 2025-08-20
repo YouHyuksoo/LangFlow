@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { AlertCircleIcon, FileTextIcon, ImageIcon } from 'lucide-react'
+import { AlertCircleIcon, FileTextIcon, ImageIcon, TableIcon } from 'lucide-react'
+
 
 // PDF 뷰어 컴포넌트 - 이미지로 변환하여 표시
 function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, content: DocumentContent, currentTool: 'select' | 'draw' }) {
@@ -16,8 +17,9 @@ function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, con
         setLoading(true)
         setError(null)
         
-        // 현재는 PDF 이미지 변환 API가 없으므로 바로 fallback 사용
-        throw new Error('PDF 이미지 변환 API 준비 중')
+        // 현재는 PDF 이미지 변환 API가 없으므로 바로 fallback 사용 (조용히 처리)
+        console.log('PDF 이미지 변환 API 준비 중 - 기본 뷰어 사용')
+        setError(null) // 오류 메시지 없이 기본 뷰어 사용
         
         // TODO: 나중에 PDF 이미지 변환 API가 준비되면 아래 코드 활성화
         // const response = await fetch(`/api/convert-pdf/${fileInfo.file_id}`)
@@ -30,8 +32,8 @@ function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, con
         //   setError('PDF 이미지 변환을 사용할 수 없어 기본 뷰어를 사용합니다.')
         // }
       } catch (err) {
-        console.error('PDF 이미지 변환 오류:', err)
-        setError('PDF 이미지 변환을 사용할 수 없어 기본 뷰어를 사용합니다.')
+        console.log('PDF 이미지 변환 기능 비활성화 - 기본 뷰어 사용:', err instanceof Error ? err.message : String(err))
+        setError(null) // 오류 메시지 표시하지 않음
       } finally {
         setLoading(false)
       }
@@ -48,18 +50,12 @@ function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, con
   }, [fileInfo.file_id])
 
   return (
-    <div className="p-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <div className="text-center mb-4">
-          <FileTextIcon className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-blue-800 mb-2">PDF 문서</h3>
-          <p className="text-blue-600 mb-4">{content.filename}</p>
-        </div>
+    <div>
+      <div>
         
         {loading ? (
-          <div className="bg-white rounded-lg shadow-inner p-8 text-center">
-            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">PDF를 최적화된 뷰어로 변환 중...</p>
+          <div className="flex items-center justify-center h-64">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : pdfImageUrl ? (
           /* PDF 이미지 표시 */
@@ -76,13 +72,14 @@ function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, con
           </div>
         ) : (
           /* 기본 PDF 뷰어 (fallback) - 마우스 이벤트 차단 오버레이 포함 */
-          <div className="relative bg-white rounded-lg shadow-inner overflow-hidden">
-            <div className="relative w-full" style={{ height: '600px' }}>
+          <div className="relative bg-white overflow-hidden">
+            <div className="relative w-full">
               <object
                 data={`http://localhost:8000${content.view_url}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH`}
                 type="application/pdf"
-                className="w-full h-full"
+                className="w-full"
                 style={{ 
+                  height: '80vh',
                   border: 'none',
                   display: 'block',
                   pointerEvents: currentTool === 'draw' ? 'none' : 'auto', // 드로우 모드에서만 이벤트 차단
@@ -166,17 +163,6 @@ function PDFViewer({ fileInfo, content, currentTool }: { fileInfo: FileInfo, con
           </div>
         )}
         
-        {/* 주석 작성 안내 */}
-        <div className="mt-4 text-center">
-          <p className="text-sm text-blue-600">
-            👆 {pdfImageUrl ? 'PDF 이미지' : 'PDF'} 위에 영역을 그려서 텍스트 구조를 정의하세요
-          </p>
-          {error && (
-            <p className="text-xs text-amber-600 mt-1">
-              {error}
-            </p>
-          )}
-        </div>
       </div>
     </div>
   )
@@ -192,12 +178,15 @@ interface FileInfo {
 
 interface DocumentContent {
   success: boolean
-  file_type: 'text' | 'pdf' | 'image'
+  file_type: 'text' | 'pdf' | 'image' | 'docx' | 'xlsx' | 'pptx'
   content?: string
   view_url?: string
   error?: string
   filename: string
   file_size: number
+  page_count?: number
+  slide_count?: number
+  message?: string
 }
 
 interface DocumentViewerProps {
@@ -226,20 +215,26 @@ export default function DocumentViewer({ fileInfo, currentTool = 'select', onCon
       const filename = fileInfo.filename.toLowerCase()
       
       // 파일 확장자로 타입 결정
-      let fileType: 'text' | 'pdf' | 'image' = 'pdf'
+      let fileType: 'text' | 'pdf' | 'image' | 'docx' | 'xlsx' | 'pptx' = 'pdf'
       if (filename.endsWith('.pdf')) {
         fileType = 'pdf'
       } else if (filename.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
         fileType = 'image'
       } else if (filename.match(/\.(txt|md|html|json|xml|csv)$/)) {
         fileType = 'text'
+      } else if (filename.endsWith('.docx')) {
+        fileType = 'docx'
+      } else if (filename.match(/\.(xlsx|xls)$/)) {
+        fileType = 'xlsx'
+      } else if (filename.endsWith('.pptx')) {
+        fileType = 'pptx'
       }
       
       console.log('📄 감지된 파일 타입:', fileType)
       
       // 파일 타입별 API 호출
-      if (fileType === 'text') {
-        // 텍스트 파일의 경우 content API 사용
+      if (['text', 'docx', 'xlsx', 'pptx'].includes(fileType)) {
+        // 텍스트 추출이 가능한 파일들은 content API 사용
         try {
           const response = await fetch(`http://localhost:8000/api/v1/files/${fileInfo.file_id}/content`, {
             method: 'GET',
@@ -251,13 +246,13 @@ export default function DocumentViewer({ fileInfo, currentTool = 'select', onCon
 
           if (response.ok) {
             const data = await response.json()
-            console.log('📥 텍스트 파일 API 응답:', data)
+            console.log(`📥 ${fileType.toUpperCase()} 파일 API 응답:`, data)
             setContent(data)
             onContentLoad?.(data)
             return
           }
         } catch (contentErr) {
-          console.warn('📄 content API 실패, view API로 fallback')
+          console.warn(`📄 ${fileType} content API 실패, preview API로 fallback`)
         }
       }
       
@@ -391,6 +386,83 @@ export default function DocumentViewer({ fileInfo, currentTool = 'select', onCon
               <p className="text-sm text-green-600">
                 👆 이미지 위에 영역을 그려서 텍스트 구조를 정의하세요
               </p>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'docx':
+      return (
+        <div className="p-4">
+          <div className="bg-white border rounded-lg">
+            <div className="bg-blue-50 border-b px-4 py-3 flex items-center gap-2">
+              <FileTextIcon className="h-5 w-5 text-blue-500" />
+              <h3 className="font-semibold text-gray-800">{content.filename}</h3>
+              <span className="text-sm text-gray-500">({Math.round(content.file_size / 1024)}KB)</span>
+              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">DOCX</span>
+            </div>
+            <div className="p-4">
+              {content.message && (
+                <div className="mb-4 text-sm text-green-600 bg-green-50 p-2 rounded">
+                  {content.message}
+                </div>
+              )}
+              <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded border max-h-96 overflow-y-auto">
+                {content.content}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'xlsx':
+      return (
+        <div className="p-4">
+          <div className="bg-white border rounded-lg">
+            <div className="bg-green-50 border-b px-4 py-3 flex items-center gap-2">
+              <TableIcon className="h-5 w-5 text-green-500" />
+              <h3 className="font-semibold text-gray-800">{content.filename}</h3>
+              <span className="text-sm text-gray-500">({Math.round(content.file_size / 1024)}KB)</span>
+              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">XLSX</span>
+            </div>
+            <div className="p-4">
+              {content.message && (
+                <div className="mb-4 text-sm text-green-600 bg-green-50 p-2 rounded">
+                  {content.message}
+                </div>
+              )}
+              <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded border max-h-96 overflow-y-auto">
+                {content.content}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'pptx':
+      return (
+        <div className="p-4">
+          <div className="bg-white border rounded-lg">
+            <div className="bg-purple-50 border-b px-4 py-3 flex items-center gap-2">
+              <FileTextIcon className="h-5 w-5 text-purple-500" />
+              <h3 className="font-semibold text-gray-800">{content.filename}</h3>
+              <span className="text-sm text-gray-500">({Math.round(content.file_size / 1024)}KB)</span>
+              <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded">PPTX</span>
+              {content.slide_count && (
+                <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded ml-1">
+                  {content.slide_count}슬라이드
+                </span>
+              )}
+            </div>
+            <div className="p-4">
+              {content.message && (
+                <div className="mb-4 text-sm text-purple-600 bg-purple-50 p-2 rounded">
+                  {content.message}
+                </div>
+              )}
+              <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono bg-gray-50 p-4 rounded border max-h-96 overflow-y-auto">
+                {content.content}
+              </pre>
             </div>
           </div>
         </div>

@@ -1,0 +1,37 @@
+{
+  "name": "KSS",
+  "rules": {
+    "max_tokens": 800,
+    "min_tokens": 200,
+    "overlap_tokens": 80,
+    "hard_sentence_max_tokens": 1000,
+    "respect_headings": true,
+    "preserve_tables": true,
+    "preserve_lists": true,
+    "drop_short_chunks": true,
+    "snap_to_sentence": true,
+    "use_hierarchical": true,
+    "version": "2.0",
+    "sentence_splitter": "regex",
+    "kss_options": {
+      "backend": "punct",
+      "num_workers": 1,
+      "strip": true,
+      "return_morphemes": false,
+      "ignores": []
+    },
+    "kiwi_options": {
+      "model_path": "",
+      "integrate_allomorph": true,
+      "load_default_dict": true,
+      "max_unk_form_len": 8
+    },
+    "regex_options": {
+      "sentence_endings": "[.!?]",
+      "preserve_abbreviations": true,
+      "custom_patterns": []
+    }
+  },
+  "created_at": "2025-08-20T00:25:03.471823",
+  "version": "1.0"
+}

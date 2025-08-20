@@ -139,3 +139,18 @@ async def test_model_profile(profile_id: str):
     except Exception as e:
         _clog.error(f"모델 프로필 테스트 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/default-ai-chunking-message")
+async def get_default_ai_chunking_message(provider: str = "openai"):
+    """제공업체별 기본 AI 청킹 시스템 메시지 조회"""
+    try:
+        default_message = model_profile_service.get_default_ai_chunking_system_message(provider)
+        _clog.info(f"기본 AI 청킹 시스템 메시지 조회: {provider}")
+        return {
+            "provider": provider,
+            "system_message": default_message,
+            "description": f"{provider.title()} 모델에 최적화된 기본 AI 청킹 시스템 메시지"
+        }
+    except Exception as e:
+        _clog.error(f"기본 시스템 메시지 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

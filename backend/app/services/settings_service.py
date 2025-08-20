@@ -44,6 +44,67 @@ class SettingsService:
                 "default_persona_id": "",
                 "preprocessing_method": "basic",  # basic, docling, unstructured
             },
+            "fallback_control": {
+                "enable_similarity_fallback": False,  # datasketch 실패 시 코사인 유사도 폴백 허용
+                "enable_sentence_splitter_fallback": False,  # KSS/Kiwi 실패 시 정규식 폴백 허용
+                "enable_token_counter_fallback": False,  # tiktoken 실패 시 단어 기반 추정 폴백 허용
+                "enable_pdf_extraction_fallback": False,  # PyMuPDF 실패 시 pdfplumber 폴백 허용
+                "strict_mode": True,  # 엄격 모드: 폴백 대신 명시적 오류 발생
+                "required_packages": {
+                    "datasketch": "고정밀 중복 검사",
+                    "tiktoken": "정확한 토큰 계산", 
+                    "kss": "한국어 문장 분할",
+                    "kiwipiepy": "한국어 형태소 분석",
+                    "fitz": "고정밀 PDF 처리"
+                }
+            },
+            "manual_preprocessing": {
+                "enabled": True,
+                "default_sentence_splitter": "kss",  # kss, kiwi, regex, recursive
+                # 공통 청킹 규칙
+                "max_tokens": 800,
+                "min_tokens": 200,
+                "overlap_tokens": 80,
+                "hard_sentence_max_tokens": 1000,
+                "respect_headings": True,
+                "preserve_tables": True,
+                "preserve_lists": True,
+                "drop_short_chunks": False,
+                
+                # KSS 설정
+                "kss_backend": "punct",  # mecab, pecab, punct, fast
+                "kss_num_workers": 1,
+                "kss_strip": True,
+                "kss_return_morphemes": False,
+                "kss_ignores": [],
+                
+                # Kiwi 설정
+                "kiwi_model_path": "",
+                "kiwi_integrate_allomorph": True,
+                "kiwi_load_default_dict": True,
+                "kiwi_max_unk_form_len": 8,
+                
+                # 정규식 설정
+                "regex_sentence_endings": "[.!?]",
+                "regex_preserve_abbreviations": True,
+                "regex_custom_patterns": [],
+                
+                # RecursiveCharacterTextSplitter 설정
+                "recursive_separators": ["\n\n", "\n", " ", ""],
+                "recursive_keep_separator": False,
+                "recursive_is_separator_regex": False,
+                
+                # 품질 및 중복 검사 설정
+                "enable_quality_check": True,
+                "enable_duplicate_check": True,
+                "similarity_threshold": 0.95,
+                "word_overlap_threshold": 0.85,
+                
+                # 이미지 처리 설정 (PDF용)
+                "enable_image_extraction": False,
+                "max_image_distance": 100.0,
+                "max_images_per_chunk": 3
+            },
             "performance": {
                 "maxConcurrentEmbeddings": 5,
                 "maxConcurrentChunks": 20,

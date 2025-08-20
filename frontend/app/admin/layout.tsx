@@ -47,6 +47,7 @@ const navigation = [
       { name: '성능 관리', href: '/admin/settings/performance', icon: CpuIcon },
       { name: 'Docling 전처리', href: '/admin/settings/preprocessing/docling', icon: FileTextIcon },
       { name: 'Unstructured 전처리', href: '/admin/settings/preprocessing/unstructured', icon: FileSearchIcon },
+      { name: '수동 전처리 설정', href: '/admin/settings/preprocessing/manual', icon: EditIcon },
       { name: '데이터베이스 관리', href: '/admin/settings/database', icon: DatabaseIcon },
     ]
   },
@@ -162,7 +163,7 @@ export default function AdminLayout({
         </div>
 
         {/* 네비게이션 메뉴 - 스크롤 추가 */}
-        <nav className="mt-6 px-3 flex-1 overflow-y-auto">
+        <nav className="mt-6 px-3 flex-1 overflow-y-auto pb-4">
           <ul className="space-y-2">
             {navigation.map((item) => {
               const isActive = pathname === item.href

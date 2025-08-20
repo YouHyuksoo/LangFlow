@@ -26,6 +26,7 @@ interface ModelProfile {
   temperature: number;
   max_tokens: number;
   top_p: number;
+  ai_chunking_system_message?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -177,6 +178,7 @@ function ModelProfileForm({
     temperature: 0.7,
     max_tokens: 2000,
     top_p: 1.0,
+    ai_chunking_system_message: "",
   });
 
   useEffect(() => {
@@ -190,6 +192,7 @@ function ModelProfileForm({
         temperature: profile.temperature,
         max_tokens: profile.max_tokens,
         top_p: profile.top_p,
+        ai_chunking_system_message: profile.ai_chunking_system_message || "",
       });
     } else {
       setFormData({
@@ -201,6 +204,7 @@ function ModelProfileForm({
         temperature: 0.7,
         max_tokens: 2000,
         top_p: 1.0,
+        ai_chunking_system_message: "",
       });
     }
   }, [profile, isOpen]);
@@ -250,6 +254,7 @@ function ModelProfileForm({
           temperature: formData.temperature,
           max_tokens: formData.max_tokens,
           top_p: formData.top_p,
+          ai_chunking_system_message: formData.ai_chunking_system_message.trim() || undefined,
         });
         
         toast({
@@ -267,6 +272,7 @@ function ModelProfileForm({
           temperature: formData.temperature,
           max_tokens: formData.max_tokens,
           top_p: formData.top_p,
+          ai_chunking_system_message: formData.ai_chunking_system_message.trim() || undefined,
         });
         
         toast({
@@ -294,13 +300,15 @@ function ModelProfileForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {profile ? "모델 프로필 수정" : "새 모델 프로필 등록"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex gap-6 h-[70vh]">
+          {/* 왼쪽 패널: 기본 설정 */}
+          <div className="flex-1 space-y-4 overflow-y-auto pr-2">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">프로필 이름</label>
@@ -368,6 +376,7 @@ function ModelProfileForm({
             </div>
           )}
 
+
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="text-sm font-medium">온도 (Temperature)</label>
@@ -404,8 +413,47 @@ function ModelProfileForm({
               />
             </div>
           </div>
+          </div>
 
-          <div className="flex justify-end gap-2 pt-4">
+          {/* 오른쪽 패널: AI 청킹 시스템 메시지 */}
+          <div className="w-96 border-l pl-6 flex flex-col">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Bot className="h-5 w-5 text-blue-500" />
+                AI 청킹 시스템 메시지
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                AI 청킹 기능 사용 시 모델에게 전달할 지시사항을 설정하세요.
+              </p>
+            </div>
+            
+            <div className="flex-1 flex flex-col">
+              <label className="text-sm font-medium mb-2">시스템 메시지 (선택사항)</label>
+              <textarea
+                value={formData.ai_chunking_system_message}
+                onChange={(e) => setFormData({ ...formData, ai_chunking_system_message: e.target.value })}
+                placeholder="예시:&#10;&#10;문서를 의미적으로 연관된 단위로 나누되, 각 청크가 독립적으로 이해 가능하도록 분할해주세요.&#10;&#10;다음 규칙을 따라주세요:&#10;- 표와 목록은 온전하게 보존&#10;- 제목과 본문 내용 함께 유지&#10;- 적절한 크기로 분할 (너무 크거나 작지 않게)&#10;- 문장 중간에서 분할하지 않기"
+                className="flex-1 w-full border rounded-md p-3 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                style={{ 
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+                  minHeight: '200px',
+                  maxHeight: '350px'
+                }}
+              />
+              <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
+                <div className="flex items-start gap-2">
+                  <div className="text-blue-600 dark:text-blue-400 mt-0.5">💡</div>
+                  <div className="text-xs text-blue-800 dark:text-blue-200">
+                    <strong>팁:</strong> 구체적이고 명확한 지시사항을 제공하면 더 일관된 청킹 결과를 얻을 수 있습니다.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={onClose}>
               취소
             </Button>

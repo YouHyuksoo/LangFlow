@@ -460,6 +460,7 @@ class ModelProfile(BaseModel):
     temperature: float = Field(0.7, description="창의성 수준")
     max_tokens: int = Field(2000, description="최대 토큰 수")
     top_p: float = Field(1.0, description="토큰 확률 임계값")
+    ai_chunking_system_message: Optional[str] = Field(None, description="AI 청킹용 시스템 메시지")
     is_active: bool = Field(False, description="현재 활성 모델 여부")
     created_at: datetime = Field(default_factory=datetime.now, description="생성일시")
     updated_at: datetime = Field(default_factory=datetime.now, description="수정일시")
@@ -474,6 +475,7 @@ class ModelProfileCreateRequest(BaseModel):
     temperature: float = Field(0.7, description="창의성 수준")
     max_tokens: int = Field(2000, description="최대 토큰 수")
     top_p: float = Field(1.0, description="토큰 확률 임계값")
+    ai_chunking_system_message: Optional[str] = Field(None, description="AI 청킹용 시스템 메시지")
 
 class ModelProfileUpdateRequest(BaseModel):
     """모델 프로필 수정 요청"""
@@ -483,6 +485,7 @@ class ModelProfileUpdateRequest(BaseModel):
     temperature: Optional[float] = Field(None, description="창의성 수준")
     max_tokens: Optional[int] = Field(None, description="최대 토큰 수")
     top_p: Optional[float] = Field(None, description="토큰 확률 임계값")
+    ai_chunking_system_message: Optional[str] = Field(None, description="AI 청킹용 시스템 메시지")
 
 class ModelProfileListResponse(BaseModel):
     """모델 프로필 목록 응답"""

@@ -565,6 +565,14 @@ async def preview_file(file_id: str):
             media_type = 'text/plain; charset=utf-8'
         elif filename_lower.endswith('.html'):
             media_type = 'text/html; charset=utf-8'
+        elif filename_lower.endswith('.csv'):
+            media_type = 'text/csv; charset=utf-8'
+        elif filename_lower.endswith('.docx'):
+            media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif filename_lower.endswith('.xlsx'):
+            media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        elif filename_lower.endswith('.pptx'):
+            media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         else:
             media_type = 'application/octet-stream'
         
@@ -628,16 +636,211 @@ async def get_file_content(file_id: str):
                         "success": False,
                         "error": "텍스트 파일을 읽을 수 없습니다. 인코딩 문제일 수 있습니다."
                     }
-        # PDF 파일인 경우
+        # DOCX 파일인 경우 - 텍스트 추출
+        elif filename_lower.endswith('.docx'):
+            try:
+                from docx import Document
+                
+                doc = Document(file_path)
+                text_content = ""
+                
+                # 문단별로 텍스트 추출
+                for paragraph in doc.paragraphs:
+                    if paragraph.text.strip():
+                        text_content += paragraph.text + "\n"
+                
+                # 표 내용도 추출
+                for table in doc.tables:
+                    for row in table.rows:
+                        row_text = []
+                        for cell in row.cells:
+                            if cell.text.strip():
+                                row_text.append(cell.text.strip())
+                        if row_text:
+                            text_content += " | ".join(row_text) + "\n"
+                
+                return {
+                    "success": True,
+                    "file_type": "docx",
+                    "content": text_content.strip(),
+                    "message": "DOCX에서 텍스트를 추출했습니다.",
+                    "view_url": f"/api/v1/files/{file_id}/preview",
+                    "filename": file_info.filename,
+                    "file_size": file_info.file_size
+                }
+                
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "DOCX 텍스트 추출을 위해 python-docx 패키지가 필요합니다."
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"DOCX 텍스트 추출 중 오류 발생: {str(e)}"
+                }
+        
+        # XLSX 파일인 경우 - 구조화된 데이터 추출
+        elif filename_lower.endswith(('.xlsx', '.xls')):
+            try:
+                from openpyxl import load_workbook
+                import pandas as pd
+                
+                # openpyxl로 Excel 파일 읽기 (data_only=True로 수식 대신 값 가져오기)
+                workbook = load_workbook(file_path, read_only=True, data_only=True)
+                
+                # 구조화된 데이터 저장
+                sheets_data = {}
+                text_content = ""  # 기존 텍스트 형태도 유지
+                
+                for sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
+                    
+                    # 시트 데이터를 2차원 배열로 추출
+                    sheet_data = []
+                    max_row = 0
+                    max_col = 0
+                    
+                    # 실제 데이터가 있는 영역 확인
+                    for row in sheet.iter_rows():
+                        row_data = []
+                        has_data = False
+                        for cell in row:
+                            cell_value = cell.value
+                            if cell_value is not None:
+                                # 수식이 여전히 나오는 경우 빈 값으로 처리하거나 오류 메시지 표시
+                                if isinstance(cell_value, str) and cell_value.startswith('='):
+                                    # 수식이 계산되지 않은 경우 빈 값으로 처리
+                                    row_data.append("[수식]")
+                                else:
+                                    row_data.append(str(cell_value))
+                                has_data = True
+                                max_col = max(max_col, len(row_data))
+                            else:
+                                row_data.append("")
+                        
+                        if has_data or sheet_data:  # 첫 데이터 이후 빈 행도 포함
+                            sheet_data.append(row_data)
+                            max_row = len(sheet_data)
+                    
+                    # 모든 행의 길이를 max_col로 맞춤
+                    for row in sheet_data:
+                        while len(row) < max_col:
+                            row.append("")
+                    
+                    sheets_data[sheet_name] = {
+                        "data": sheet_data,
+                        "rows": max_row,
+                        "cols": max_col
+                    }
+                    
+                    # 텍스트 형태도 생성 (기존 청킹용)
+                    text_content += f"\n=== {sheet_name} 시트 ===\n"
+                    for row_data in sheet_data:
+                        if any(cell.strip() for cell in row_data if cell):
+                            text_content += " | ".join(row_data) + "\n"
+                
+                workbook.close()
+                
+                return {
+                    "success": True,
+                    "file_type": "xlsx",
+                    "content": text_content.strip(),  # 텍스트 형태 (청킹용)
+                    "sheets_data": sheets_data,       # 구조화된 데이터 (뷰어용)
+                    "message": f"XLSX에서 데이터를 추출했습니다. ({len(sheets_data)}개 시트)",
+                    "view_url": f"/api/v1/files/{file_id}/preview",
+                    "filename": file_info.filename,
+                    "file_size": file_info.file_size
+                }
+                
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "XLSX 데이터 추출을 위해 openpyxl 패키지가 필요합니다."
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"XLSX 데이터 추출 중 오류 발생: {str(e)}"
+                }
+        
+        # PPTX 파일인 경우 - 텍스트 추출
+        elif filename_lower.endswith('.pptx'):
+            try:
+                from pptx import Presentation
+                
+                prs = Presentation(file_path)
+                text_content = ""
+                slide_count = len(prs.slides)
+                
+                for i, slide in enumerate(prs.slides, 1):
+                    text_content += f"\n=== 슬라이드 {i} ===\n"
+                    
+                    # 슬라이드의 모든 텍스트 추출
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text.strip():
+                            text_content += shape.text + "\n"
+                
+                return {
+                    "success": True,
+                    "file_type": "pptx",
+                    "content": text_content.strip(),
+                    "message": f"PPTX에서 텍스트를 추출했습니다. ({slide_count}슬라이드)",
+                    "view_url": f"/api/v1/files/{file_id}/preview",
+                    "filename": file_info.filename,
+                    "file_size": file_info.file_size,
+                    "slide_count": slide_count
+                }
+                
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "PPTX 텍스트 추출을 위해 python-pptx 패키지가 필요합니다."
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"PPTX 텍스트 추출 중 오류 발생: {str(e)}"
+                }
+        
+        # PDF 파일인 경우 - 텍스트 추출 (AI 청킹 지원)
         elif filename_lower.endswith('.pdf'):
-            return {
-                "success": True,
-                "file_type": "pdf",
-                "message": "PDF 파일은 뷰어를 통해 표시됩니다.",
-                "view_url": f"/api/v1/files/{file_id}/view",
-                "filename": file_info.filename,
-                "file_size": file_info.file_size
-            }
+            try:
+                # PDF에서 텍스트 추출 (PyMuPDF 사용)
+                import fitz  # PyMuPDF
+                
+                doc = fitz.open(file_path)
+                text_content = ""
+                page_count = len(doc)
+                
+                for page_num in range(page_count):
+                    page = doc[page_num]
+                    page_text = page.get_text()
+                    text_content += f"\n--- 페이지 {page_num + 1} ---\n{page_text}"
+                
+                doc.close()
+                
+                return {
+                    "success": True,
+                    "file_type": "pdf",
+                    "content": text_content.strip(),
+                    "message": f"PDF에서 텍스트를 추출했습니다. ({page_count}페이지)",
+                    "view_url": f"/api/v1/files/{file_id}/view",
+                    "filename": file_info.filename,
+                    "file_size": file_info.file_size,
+                    "page_count": page_count
+                }
+                
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "PDF 텍스트 추출을 위해 PyMuPDF 패키지가 필요합니다. 'pip install PyMuPDF'로 설치하세요."
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"PDF 텍스트 추출 중 오류 발생: {str(e)}"
+                }
         # 이미지 파일인 경우
         elif filename_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
             return {

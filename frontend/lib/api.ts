@@ -1381,6 +1381,7 @@ export const modelProfileAPI = {
     temperature?: number;
     max_tokens?: number;
     top_p?: number;
+    ai_chunking_system_message?: string;  // AI 청킹 시스템 메시지
   }) => {
     const response = await api.post("/api/v1/model-profiles/", profileData);
     return response.data;
@@ -1394,6 +1395,7 @@ export const modelProfileAPI = {
     temperature?: number;
     max_tokens?: number;
     top_p?: number;
+    ai_chunking_system_message?: string;  // AI 청킹 시스템 메시지
   }) => {
     const response = await api.put(`/api/v1/model-profiles/${profileId}`, profileData);
     return response.data;
@@ -1498,5 +1500,8 @@ export const preprocessingAPI = {
     return response.data;
   }
 };
+
+// Named export for api instance
+export { api };
 
 export default api;

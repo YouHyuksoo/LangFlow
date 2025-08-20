@@ -446,6 +446,243 @@ async def update_section_settings(section: str, new_settings: Dict[str, Any]):
         _clog.error(f"{section} 설정 업데이트 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=f"{section} 설정 업데이트 중 오류가 발생했습니다.")
 
+@router.get("/fallback-control")
+async def get_fallback_control_settings():
+    """폴백 제어 설정 조회"""
+    try:
+        fallback_settings = settings_service.get_section_settings("fallback_control")
+        _clog.info("폴백 제어 설정 조회 완료")
+        return {
+            "fallback_control": fallback_settings,
+            "description": "시스템 폴백 동작 제어 설정",
+            "recommendations": {
+                "strict_mode": "프로덕션 환경에서는 True 권장",
+                "enable_similarity_fallback": "datasketch 없을 때만 False→True",
+                "enable_sentence_splitter_fallback": "KSS/Kiwi 없을 때만 False→True",
+                "enable_token_counter_fallback": "tiktoken 없을 때만 False→True"
+            }
+        }
+    except Exception as e:
+        _clog.error(f"폴백 제어 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="폴백 제어 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/fallback-control")
+async def update_fallback_control_settings(new_settings: Dict[str, Any]):
+    """폴백 제어 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        required_keys = ["enable_similarity_fallback", "enable_sentence_splitter_fallback", 
+                        "enable_token_counter_fallback", "enable_pdf_extraction_fallback", "strict_mode"]
+        
+        for key in required_keys:
+            if key in new_settings and not isinstance(new_settings[key], bool):
+                raise HTTPException(status_code=400, detail=f"{key}는 불린 값이어야 합니다.")
+        
+        # 위험한 설정 조합 경고
+        if new_settings.get("strict_mode") is False and any(new_settings.get(key) is False for key in required_keys[:-1]):
+            _clog.warning("⚠️ 위험한 설정: strict_mode=False이면서 폴백도 비활성화됨 - 시스템 오류 발생 가능")
+        
+        # 설정 업데이트
+        if settings_service.update_section_settings("fallback_control", new_settings):
+            updated_settings = settings_service.get_section_settings("fallback_control")
+            _clog.info("폴백 제어 설정 업데이트 완료")
+            return {
+                "message": "폴백 제어 설정이 업데이트되었습니다.",
+                "fallback_control": updated_settings
+            }
+        else:
+            raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"폴백 제어 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="폴백 제어 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.get("/manual-preprocessing")
+async def get_manual_preprocessing_settings():
+    """수동 전처리 설정 조회"""
+    try:
+        manual_settings = settings_service.get_section_settings("manual_preprocessing")
+        fallback_settings = settings_service.get_section_settings("fallback_control")
+        
+        _clog.info("수동 전처리 설정 조회 완료")
+        return {
+            "manual_preprocessing": manual_settings,
+            "fallback_control": fallback_settings,
+            "description": "수동 전처리 중앙 집중 설정 관리",
+            "splitter_options": [
+                {"value": "kss", "label": "KSS (한국어 문장 분할)", "requires": "kss"},
+                {"value": "kiwi", "label": "Kiwi (형태소 분석 기반)", "requires": "kiwipiepy"},
+                {"value": "regex", "label": "정규식 (사용자 정의)", "requires": None},
+                {"value": "recursive", "label": "RecursiveCharacterTextSplitter", "requires": "langchain_text_splitters"}
+            ],
+            "kss_backend_options": [
+                {"value": "punct", "label": "Punct (빠름, 안정적)", "description": "구두점 기반 분할"},
+                {"value": "mecab", "label": "MeCab (정확함)", "description": "형태소 분석 기반"},
+                {"value": "pecab", "label": "Pecab (균형)", "description": "성능과 정확도 균형"},
+                {"value": "fast", "label": "Fast (가장 빠름)", "description": "단순 규칙 기반"}
+            ],
+            "recommendations": {
+                "max_tokens": "일반적으로 800-1200 토큰 권장",
+                "min_tokens": "200-400 토큰 권장",
+                "overlap_tokens": "max_tokens의 10-15% 권장",
+                "kss_backend": "안정성을 위해 punct 권장",
+                "similarity_threshold": "0.90-0.95 사이 권장"
+            }
+        }
+    except Exception as e:
+        _clog.error(f"수동 전처리 설정 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="수동 전처리 설정 조회 중 오류가 발생했습니다.")
+
+@router.post("/manual-preprocessing")
+async def update_manual_preprocessing_settings(new_settings: Dict[str, Any]):
+    """수동 전처리 설정 업데이트"""
+    try:
+        # 설정 유효성 검증
+        validation_errors = []
+        
+        # 숫자 범위 검증
+        if "max_tokens" in new_settings:
+            if not isinstance(new_settings["max_tokens"], int) or new_settings["max_tokens"] < 100 or new_settings["max_tokens"] > 4000:
+                validation_errors.append("max_tokens는 100-4000 사이의 정수여야 합니다.")
+        
+        if "min_tokens" in new_settings:
+            if not isinstance(new_settings["min_tokens"], int) or new_settings["min_tokens"] < 50 or new_settings["min_tokens"] > 2000:
+                validation_errors.append("min_tokens는 50-2000 사이의 정수여야 합니다.")
+        
+        if "overlap_tokens" in new_settings:
+            if not isinstance(new_settings["overlap_tokens"], int) or new_settings["overlap_tokens"] < 0 or new_settings["overlap_tokens"] > 500:
+                validation_errors.append("overlap_tokens는 0-500 사이의 정수여야 합니다.")
+        
+        # 문장 분할기 옵션 검증
+        if "default_sentence_splitter" in new_settings:
+            valid_splitters = ["kss", "kiwi", "regex", "recursive"]
+            if new_settings["default_sentence_splitter"] not in valid_splitters:
+                validation_errors.append(f"default_sentence_splitter는 {valid_splitters} 중 하나여야 합니다.")
+        
+        # KSS 백엔드 검증
+        if "kss_backend" in new_settings:
+            valid_backends = ["punct", "mecab", "pecab", "fast"]
+            if new_settings["kss_backend"] not in valid_backends:
+                validation_errors.append(f"kss_backend는 {valid_backends} 중 하나여야 합니다.")
+        
+        # 임계값 검증
+        if "similarity_threshold" in new_settings:
+            if not isinstance(new_settings["similarity_threshold"], (int, float)) or not (0.0 <= new_settings["similarity_threshold"] <= 1.0):
+                validation_errors.append("similarity_threshold는 0.0-1.0 사이의 숫자여야 합니다.")
+        
+        if "word_overlap_threshold" in new_settings:
+            if not isinstance(new_settings["word_overlap_threshold"], (int, float)) or not (0.0 <= new_settings["word_overlap_threshold"] <= 1.0):
+                validation_errors.append("word_overlap_threshold는 0.0-1.0 사이의 숫자여야 합니다.")
+        
+        if validation_errors:
+            raise HTTPException(status_code=400, detail=f"설정 검증 실패: {'; '.join(validation_errors)}")
+        
+        # 논리적 일관성 검증
+        current_settings = settings_service.get_section_settings("manual_preprocessing")
+        merged_settings = {**current_settings, **new_settings}
+        
+        if merged_settings["min_tokens"] >= merged_settings["max_tokens"]:
+            raise HTTPException(status_code=400, detail="min_tokens는 max_tokens보다 작아야 합니다.")
+        
+        if merged_settings["overlap_tokens"] >= merged_settings["max_tokens"]:
+            raise HTTPException(status_code=400, detail="overlap_tokens는 max_tokens보다 작아야 합니다.")
+        
+        # 설정 업데이트
+        if settings_service.update_section_settings("manual_preprocessing", new_settings):
+            updated_settings = settings_service.get_section_settings("manual_preprocessing")
+            _clog.info("수동 전처리 설정 업데이트 완료")
+            return {
+                "message": "수동 전처리 설정이 업데이트되었습니다.",
+                "manual_preprocessing": updated_settings
+            }
+        else:
+            raise HTTPException(status_code=500, detail="수동 전처리 설정 업데이트에 실패했습니다.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"수동 전처리 설정 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="수동 전처리 설정 업데이트 중 오류가 발생했습니다.")
+
+@router.post("/manual-preprocessing/test-splitter")
+async def test_sentence_splitter(test_data: Dict[str, Any]):
+    """문장 분할기 테스트"""
+    try:
+        text = test_data.get("text", "")
+        splitter = test_data.get("splitter", "kss")
+        settings_override = test_data.get("settings", {})
+        
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="테스트할 텍스트를 입력해주세요.")
+        
+        # 현재 설정 가져오기
+        current_settings = settings_service.get_section_settings("manual_preprocessing")
+        test_settings = {**current_settings, **settings_override}
+        
+        # 청킹 규칙 생성
+        from ..services.chunking_service import ChunkingRules
+        rules = ChunkingRules(
+            max_tokens=test_settings["max_tokens"],
+            min_tokens=test_settings["min_tokens"],
+            overlap_tokens=test_settings["overlap_tokens"],
+            sentence_splitter=splitter,
+            kss_backend=test_settings["kss_backend"],
+            kss_num_workers=test_settings["kss_num_workers"],
+            kss_strip=test_settings["kss_strip"],
+            kss_return_morphemes=test_settings["kss_return_morphemes"],
+            kss_ignores=test_settings["kss_ignores"],
+            regex_sentence_endings=test_settings["regex_sentence_endings"],
+            regex_preserve_abbreviations=test_settings["regex_preserve_abbreviations"],
+            regex_custom_patterns=test_settings["regex_custom_patterns"],
+            recursive_separators=test_settings["recursive_separators"],
+            recursive_keep_separator=test_settings["recursive_keep_separator"],
+            recursive_is_separator_regex=test_settings["recursive_is_separator_regex"]
+        )
+        
+        # 문장 분할 테스트
+        from ..services.chunking_service import SmartTextSplitter
+        splitter_service = SmartTextSplitter()
+        
+        try:
+            sentences = splitter_service.split_into_sentences(text, rules)
+            result = {
+                "success": True,
+                "splitter": splitter,
+                "sentence_count": len(sentences),
+                "sentences": [
+                    {
+                        "text": sent.text,
+                        "tokens": sent.tokens,
+                        "is_heading": sent.is_heading,
+                        "is_list_item": sent.is_list_item,
+                        "is_table_content": sent.is_table_content
+                    } for sent in sentences[:10]  # 처음 10개만 반환
+                ],
+                "total_tokens": sum(sent.tokens for sent in sentences),
+                "avg_tokens_per_sentence": sum(sent.tokens for sent in sentences) / len(sentences) if sentences else 0
+            }
+            
+            if len(sentences) > 10:
+                result["note"] = f"처음 10개 문장만 표시됨 (전체 {len(sentences)}개)"
+            
+            return result
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "splitter": splitter,
+                "suggestion": "폴백 설정을 확인하거나 다른 분할기를 시도해보세요."
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        _clog.error(f"문장 분할기 테스트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail="문장 분할기 테스트 중 오류가 발생했습니다.")
+
 @router.post("/reset-all")
 async def reset_all_settings():
     """모든 설정을 기본값으로 초기화"""
