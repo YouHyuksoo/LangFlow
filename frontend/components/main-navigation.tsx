@@ -78,59 +78,60 @@ export function MainNavigation() {
   return (
     <nav className="bg-gradient-to-br from-white via-slate-50 to-gray-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-b border-slate-200/80 dark:border-slate-700/50 shadow-lg dark:shadow-2xl backdrop-blur-sm sticky top-0 z-50">
       {/* TODO(human): 라이트 모드 네비게이션 색상 수정 필요 - 기본은 라이트, dark: 접두사로 다크모드 오버라이드 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex">
+      <div className="px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Left side - Logo와 Navigation Links */}
+          <div className="flex items-center space-x-8">
             {/* Logo/Brand */}
-            <div className="flex-shrink-0 flex items-center">
+            <div className="flex-shrink-0">
               <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-slate-800 via-blue-600 to-purple-600 dark:from-white dark:via-purple-200 dark:to-cyan-200 bg-clip-text text-transparent">
                 ThinkFlow
               </Link>
             </div>
 
             {/* Desktop Navigation Links */}
-            <div className="hidden lg:ml-8 lg:flex lg:space-x-2">
-              {navItems.map((item) => {
-                if (item.isAdmin && !isAdminUser) {
-                  return null;
-                }
+            <div className="hidden lg:flex lg:space-x-2">
+                {navItems.map((item) => {
+                  if (item.isAdmin && !isAdminUser) {
+                    return null;
+                  }
 
-                const Icon = item.icon;
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/" && pathname.startsWith(item.href));
+                  const Icon = item.icon;
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== "/" && pathname.startsWith(item.href));
 
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      "inline-flex items-center px-4 py-2 text-sm font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
-                      isActive
-                        ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300 dark:border-purple-500/30 shadow-lg shadow-purple-300/50 dark:shadow-purple-500/20"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30 hover:shadow-md dark:hover:shadow-lg"
-                    )}
-                    title={item.description}
-                  >
-                    <div className={`p-1.5 rounded-lg mr-2 ${
-                      isActive 
-                        ? 'bg-purple-200/60 dark:bg-purple-500/20'
-                        : 'bg-slate-100/80 dark:bg-white/10 group-hover:bg-slate-200/80 dark:group-hover:bg-white/20'
-                    }`}>
-                      <Icon className={`h-4 w-4 ${
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={cn(
+                        "inline-flex items-center px-4 py-2 text-sm font-medium transition-all duration-300 rounded-xl relative group overflow-hidden",
+                        isActive
+                          ? "text-purple-700 dark:text-white bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-500/20 dark:to-cyan-500/20 border border-purple-300 dark:border-purple-500/30 shadow-lg shadow-purple-300/50 dark:shadow-purple-500/20"
+                          : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 dark:hover:from-slate-800/50 dark:hover:to-slate-700/50 border border-transparent hover:border-slate-300/50 dark:hover:border-slate-600/30 hover:shadow-md dark:hover:shadow-lg"
+                      )}
+                      title={item.description}
+                    >
+                      <div className={`p-1.5 rounded-lg mr-2 ${
                         isActive 
-                          ? 'text-purple-600 dark:text-purple-400'
-                          : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
-                      }`} />
-                    </div>
-                    {item.name}
-                    {isActive && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
+                          ? 'bg-purple-200/60 dark:bg-purple-500/20'
+                          : 'bg-slate-100/80 dark:bg-white/10 group-hover:bg-slate-200/80 dark:group-hover:bg-white/20'
+                      }`}>
+                        <Icon className={`h-4 w-4 ${
+                          isActive 
+                            ? 'text-purple-600 dark:text-purple-400'
+                            : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
+                        }`} />
+                      </div>
+                      {item.name}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl animate-pulse"></div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
           </div>
 
           {/* Right side - User menu, theme toggle and mobile menu */}

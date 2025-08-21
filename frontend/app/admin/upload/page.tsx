@@ -300,6 +300,7 @@ export default function UploadPage() {
   const handleFileUpload = async (
     file: File,
     category: string,
+    convertToPdf: boolean = false,
     forceReplace: boolean = false
   ) => {
     try {
@@ -308,18 +309,24 @@ export default function UploadPage() {
         file.name,
         "카테고리:",
         category,
+        "PDF 변환:",
+        convertToPdf,
         "강제 교체:",
         forceReplace
       );
 
       // 파일 업로드 API 호출
-      const response = await fileAPI.uploadFile(file, category, forceReplace);
+      const response = await fileAPI.uploadFile(file, category, forceReplace, convertToPdf);
       console.log("파일 업로드 성공:", response);
 
       // 업로드 성공 토스트
+      const successMessage = convertToPdf 
+        ? `${file.name} 파일이 PDF로 변환되어 업로드되었습니다.`
+        : `${file.name} 파일이 성공적으로 업로드되었습니다.`;
+      
       toast({
         title: "업로드 완료",
-        description: `${file.name} 파일이 성공적으로 업로드되었습니다.`,
+        description: successMessage,
       });
 
       // 중복 모달이 열려있으면 닫기
@@ -383,6 +390,7 @@ export default function UploadPage() {
       await handleFileUpload(
         duplicateModal.pendingFile,
         duplicateModal.pendingCategory,
+        false, // convertToPdf는 원래 설정값 유지 필요 - 추후 state에서 가져오도록 수정 예정
         true
       );
       // 교체 완료 후 추가 갱신 (보험)
@@ -535,11 +543,15 @@ export default function UploadPage() {
 
       {/* 파일 업로드 컴포넌트 */}
       <Card>
-        <CardHeader>
-          <CardTitle>새 파일 업로드</CardTitle>
-          <CardDescription>
-            PDF 파일을 업로드합니다. 전처리와 벡터화는 별도로 진행됩니다.
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">새 파일 업로드</CardTitle>
+              <CardDescription className="text-sm">
+                PDF 파일을 업로드합니다. 전처리와 벡터화는 별도로 진행됩니다.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <FileUpload

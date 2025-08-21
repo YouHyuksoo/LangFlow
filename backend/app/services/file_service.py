@@ -424,7 +424,7 @@ class FileService:
     def _ensure_data_dir(self):
         os.makedirs(settings.DATA_DIR, exist_ok=True)
 
-    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False) -> FileUploadResponse:
+    async def upload_file(self, file: UploadFile, category_id: Optional[str] = None, allow_global_duplicates: bool = False, force_replace: bool = False, convert_to_pdf: bool = False) -> FileUploadResponse:
         try:
             file_extension = os.path.splitext(file.filename)[1].lower()
             if file_extension not in self.allowed_extensions:
@@ -468,6 +468,28 @@ class FileService:
             
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
+            
+            # PDF 변환 처리
+            if convert_to_pdf and file_extension.lower() != '.pdf':
+                self.logger.info(f"PDF 변환 시작: {file.filename} -> PDF")
+                try:
+                    pdf_path = await self._convert_to_pdf(file_path, file_id)
+                    if pdf_path and os.path.exists(pdf_path):
+                        # 원본 파일 삭제하고 PDF로 교체
+                        os.remove(file_path)
+                        file_path = pdf_path
+                        saved_filename = f"{file_id}.pdf"
+                        file_extension = '.pdf'
+                        # 변환된 PDF 파일 크기 재계산
+                        file_size = os.path.getsize(file_path)
+                        self.logger.info(f"PDF 변환 완료: {saved_filename}")
+                    else:
+                        self.logger.error(f"PDF 변환 실패: {file.filename}")
+                        raise HTTPException(status_code=500, detail="PDF 변환에 실패했습니다.")
+                except Exception as convert_error:
+                    self.logger.error(f"PDF 변환 중 오류: {convert_error}")
+                    # 변환 실패 시 원본 파일 유지하고 경고만 로그
+                    self.logger.warning(f"PDF 변환 실패로 원본 파일 유지: {file.filename}")
             
             # 기본 전처리 방법을 설정에서 가져오기
             system_settings = settings_service.get_section_settings("system")
@@ -771,3 +793,285 @@ class FileService:
         except Exception as e:
             self.logger.error(f"벡터화 상태 동기화 실패: {e}")
             return {"status_corrected": 0, "error": str(e)}
+    
+    async def _register_korean_font(self) -> str:
+        """한글 폰트를 등록하고 폰트명을 반환합니다."""
+        try:
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            
+            # Windows 시스템 폰트 경로에서 한글 폰트 찾기
+            font_paths = [
+                "C:/Windows/Fonts/malgun.ttf",  # 맑은고딕
+                "C:/Windows/Fonts/batang.ttf",   # 바탕
+                "C:/Windows/Fonts/gulim.ttf",    # 굴림
+            ]
+            
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    font_name = os.path.basename(font_path).split('.')[0]
+                    try:
+                        pdfmetrics.registerFont(TTFont(font_name, font_path))
+                        self.logger.info(f"한글 폰트 등록 성공: {font_name}")
+                        return font_name
+                    except Exception as font_error:
+                        self.logger.warning(f"폰트 등록 실패 {font_name}: {font_error}")
+                        continue
+            
+            self.logger.warning("한글 폰트를 찾을 수 없습니다. 기본 폰트를 사용합니다.")
+            return "Helvetica"
+            
+        except Exception as e:
+            self.logger.error(f"폰트 등록 중 오류: {e}")
+            return "Helvetica"
+    
+    async def _convert_to_pdf(self, file_path: str, file_id: str) -> Optional[str]:
+        """파일을 PDF로 변환합니다."""
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            import openpyxl
+            from docx import Document
+            
+            # 변환된 PDF 파일 경로
+            pdf_path = os.path.join(self.upload_dir, f"{file_id}.pdf")
+            file_extension = os.path.splitext(file_path)[1].lower()
+            
+            self.logger.info(f"Python 라이브러리를 사용하여 PDF 변환 시작: {file_path} ({file_extension})")
+            
+            # 파일 형식별 변환 로직
+            if file_extension == '.xlsx' or file_extension == '.xls':
+                # Excel 파일 변환
+                return await self._convert_excel_to_pdf(file_path, pdf_path)
+            elif file_extension == '.docx' or file_extension == '.doc':
+                # Word 파일 변환
+                return await self._convert_word_to_pdf(file_path, pdf_path)
+            elif file_extension == '.txt':
+                # 텍스트 파일 변환
+                return await self._convert_text_to_pdf(file_path, pdf_path)
+            else:
+                self.logger.warning(f"지원되지 않는 변환 형식: {file_extension}")
+                return None
+                
+        except ImportError as e:
+            self.logger.error(f"필요한 라이브러리가 설치되지 않았습니다: {e}")
+            self.logger.info("pip install reportlab openpyxl python-docx 명령으로 필요한 라이브러리를 설치해주세요.")
+            return None
+        except Exception as e:
+            self.logger.error(f"PDF 변환 중 예외 발생: {e}")
+            return None
+    
+    async def _convert_excel_to_pdf(self, excel_path: str, pdf_path: str) -> Optional[str]:
+        """Excel 파일을 PDF로 변환"""
+        try:
+            import openpyxl
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            
+            # 한글 폰트 등록
+            korean_font = await self._register_korean_font()
+            
+            # Excel 파일 읽기 (data_only=True로 수식의 계산된 값 가져오기)
+            workbook = openpyxl.load_workbook(excel_path, data_only=True)
+            sheet = workbook.active
+            
+            # PDF 생성
+            c = canvas.Canvas(pdf_path, pagesize=letter)
+            width, height = letter
+            
+            y_position = height - 50
+            
+            # 제목 추가
+            c.setFont(korean_font, 16)
+            title = f"Excel 파일 변환: {os.path.basename(excel_path)}"
+            c.drawString(50, y_position, title)
+            y_position -= 40
+            
+            # 셀 데이터 출력 (셀 객체에 직접 접근)
+            c.setFont(korean_font, 10)
+            for row in sheet.iter_rows():
+                if y_position < 50:  # 새 페이지
+                    c.showPage()
+                    c.setFont(korean_font, 10)  # 새 페이지에서도 폰트 재설정
+                    y_position = height - 50
+                
+                # 한글 텍스트 처리
+                row_cells = []
+                for cell in row:
+                    if cell.value is not None:
+                        # 계산된 값 우선 사용
+                        if hasattr(cell, 'displayed_value') and cell.displayed_value is not None:
+                            cell_str = str(cell.displayed_value)
+                        elif cell.data_type == 'f' and cell.value:  # 수식 셀
+                            # 수식의 계산된 결과값 시도
+                            try:
+                                # 계산된 값이 있으면 사용
+                                if hasattr(cell, '_value') and cell._value is not None:
+                                    cell_str = str(cell._value)
+                                else:
+                                    cell_str = f"[계산값 없음: {str(cell.value)[:15]}...]"
+                            except:
+                                cell_str = f"[수식: {str(cell.value)[:15]}...]"
+                        else:
+                            cell_str = str(cell.value)
+                        
+                        # 한글이 포함된 텍스트는 더 짧게 자르기
+                        if any('\u4e00' <= char <= '\u9fff' or '\uac00' <= char <= '\ud7af' for char in cell_str):
+                            cell_str = cell_str[:30]  # 한글/한자 포함 시 짧게
+                        else:
+                            cell_str = cell_str[:50]  # 영문은 좀 더 길게
+                        row_cells.append(cell_str)
+                    else:
+                        row_cells.append("")
+                
+                row_text = " | ".join(row_cells)
+                try:
+                    c.drawString(50, y_position, row_text)
+                except Exception as draw_error:
+                    # 한글 출력 실패 시 ASCII만 출력
+                    ascii_text = ''.join(char if ord(char) < 128 else '?' for char in row_text)
+                    c.drawString(50, y_position, ascii_text)
+                    
+                y_position -= 15
+            
+            c.save()
+            self.logger.info(f"Excel -> PDF 변환 완료: {pdf_path}")
+            return pdf_path
+            
+        except Exception as e:
+            self.logger.error(f"Excel PDF 변환 실패: {e}")
+            return None
+    
+    async def _convert_word_to_pdf(self, word_path: str, pdf_path: str) -> Optional[str]:
+        """Word 파일을 PDF로 변환"""
+        try:
+            from docx import Document
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            
+            # 한글 폰트 등록
+            korean_font = await self._register_korean_font()
+            
+            # Word 파일 읽기
+            doc = Document(word_path)
+            
+            # PDF 생성
+            c = canvas.Canvas(pdf_path, pagesize=letter)
+            width, height = letter
+            
+            y_position = height - 50
+            
+            # 제목 추가
+            c.setFont(korean_font, 16)
+            title = f"Word 파일 변환: {os.path.basename(word_path)}"
+            c.drawString(50, y_position, title)
+            y_position -= 40
+            
+            # 문단 출력
+            c.setFont(korean_font, 12)
+            for paragraph in doc.paragraphs:
+                if y_position < 50:  # 새 페이지
+                    c.showPage()
+                    c.setFont(korean_font, 12)
+                    y_position = height - 50
+                
+                # 긴 텍스트를 여러 줄로 나누기
+                text = paragraph.text
+                if text.strip():
+                    # 한글 고려하여 줄 길이 조정
+                    line_length = 40 if any('\uac00' <= char <= '\ud7af' for char in text) else 80
+                    lines = [text[i:i+line_length] for i in range(0, len(text), line_length)]
+                    for line in lines:
+                        if y_position < 50:
+                            c.showPage()
+                            c.setFont(korean_font, 12)
+                            y_position = height - 50
+                        try:
+                            c.drawString(50, y_position, line)
+                        except Exception:
+                            # 한글 출력 실패 시 ASCII만 출력
+                            ascii_line = ''.join(char if ord(char) < 128 else '?' for char in line)
+                            c.drawString(50, y_position, ascii_line)
+                        y_position -= 15
+                    y_position -= 5  # 문단 간격
+            
+            c.save()
+            self.logger.info(f"Word -> PDF 변환 완료: {pdf_path}")
+            return pdf_path
+            
+        except Exception as e:
+            self.logger.error(f"Word PDF 변환 실패: {e}")
+            return None
+    
+    async def _convert_text_to_pdf(self, text_path: str, pdf_path: str) -> Optional[str]:
+        """텍스트 파일을 PDF로 변환"""
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            
+            # 한글 폰트 등록
+            korean_font = await self._register_korean_font()
+            
+            # 텍스트 파일 읽기
+            with open(text_path, 'r', encoding='utf-8') as f:
+                text_content = f.read()
+            
+            # PDF 생성
+            c = canvas.Canvas(pdf_path, pagesize=letter)
+            width, height = letter
+            
+            y_position = height - 50
+            
+            # 제목 추가
+            c.setFont(korean_font, 16)
+            title = f"텍스트 파일 변환: {os.path.basename(text_path)}"
+            c.drawString(50, y_position, title)
+            y_position -= 40
+            
+            # 텍스트 출력
+            c.setFont(korean_font, 12)
+            lines = text_content.split('\n')
+            for line in lines:
+                if y_position < 50:  # 새 페이지
+                    c.showPage()
+                    c.setFont(korean_font, 12)
+                    y_position = height - 50
+                
+                # 한글 고려하여 줄 길이 조정
+                line_length = 40 if any('\uac00' <= char <= '\ud7af' for char in line) else 80
+                
+                # 긴 줄을 여러 줄로 나누기
+                if len(line) > line_length:
+                    sub_lines = [line[i:i+line_length] for i in range(0, len(line), line_length)]
+                    for sub_line in sub_lines:
+                        if y_position < 50:
+                            c.showPage()
+                            c.setFont(korean_font, 12)
+                            y_position = height - 50
+                        try:
+                            c.drawString(50, y_position, sub_line)
+                        except Exception:
+                            # 한글 출력 실패 시 ASCII만 출력
+                            ascii_line = ''.join(char if ord(char) < 128 else '?' for char in sub_line)
+                            c.drawString(50, y_position, ascii_line)
+                        y_position -= 15
+                else:
+                    try:
+                        c.drawString(50, y_position, line)
+                    except Exception:
+                        # 한글 출력 실패 시 ASCII만 출력
+                        ascii_line = ''.join(char if ord(char) < 128 else '?' for char in line)
+                        c.drawString(50, y_position, ascii_line)
+                    y_position -= 15
+            
+            c.save()
+            self.logger.info(f"Text -> PDF 변환 완료: {pdf_path}")
+            return pdf_path
+            
+        except Exception as e:
+            self.logger.error(f"Text PDF 변환 실패: {e}")
+            return None

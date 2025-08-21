@@ -54,29 +54,34 @@ export function detectContentType(content: string): ContentDetectionResult {
 
   const trimmedContent = content.trim();
 
-  // 강제 마크다운 처리: 모든 Assistant 응답을 마크다운으로 처리
-  // 다음 조건 중 하나라도 만족하면 무조건 마크다운으로 처리:
-  // 1. 볼드 텍스트가 포함된 경우 (**텍스트**)
-  // 2. 이모지가 포함된 경우
-  // 3. 구조화된 번호가 포함된 경우 (①②③)
-  // 4. ASCII 테이블 문자가 포함된 경우 (│├└┌┐┘┴┬)
-  // 5. 텍스트가 100자 이상인 경우 (긴 텍스트는 보통 구조화된 내용)
+  // 강제 마크다운 처리: HTML 코드 블록이 아닌 경우만 적용
+  // 먼저 HTML 코드 블록인지 확인
+  const isHtmlCodeBlock = /```html\s*\n[\s\S]*?```/.test(trimmedContent);
   
-  const hasBold = /\*\*.*?\*\*/.test(trimmedContent);
-  const hasEmoji = /[🔹📊📄💡📑📈📉🔍⭐✅❌🎯📝🔧⚡🚀🎨📋📌🔎💼🏢]/.test(trimmedContent);
-  const hasStructuredNumbers = /[①②③④⑤⑥⑦⑧⑨⑩]/.test(trimmedContent);
-  const hasAsciiTable = /[│├└┌┐┘┴┬─]/.test(trimmedContent);
-  const isLongText = trimmedContent.length > 100;
-  
-  if (hasBold || hasEmoji || hasStructuredNumbers || hasAsciiTable || isLongText) {
-    return {
-      contentType: "markdown",
-      confidence: 0.95, // 높은 신뢰도로 강제 설정
-      subType: "forced",
-      sanitizedContent: trimmedContent,
-      textContent: extractTextFromMarkdown(trimmedContent),
-      metadata: generateMetadata(trimmedContent),
-    };
+  if (!isHtmlCodeBlock) {
+    // 다음 조건 중 하나라도 만족하면 마크다운으로 처리:
+    // 1. 볼드 텍스트가 포함된 경우 (**텍스트**)
+    // 2. 이모지가 포함된 경우
+    // 3. 구조화된 번호가 포함된 경우 (①②③)
+    // 4. ASCII 테이블 문자가 포함된 경우 (│├└┌┐┘┴┬)
+    // 5. 마크다운 구조가 명확한 긴 텍스트 (헤더나 리스트 포함)
+    
+    const hasBold = /\*\*.*?\*\*/.test(trimmedContent);
+    const hasEmoji = /[🔹📊📄💡📑📈📉🔍⭐✅❌🎯📝🔧⚡🚀🎨📋📌🔎💼🏢]/.test(trimmedContent);
+    const hasStructuredNumbers = /[①②③④⑤⑥⑦⑧⑨⑩]/.test(trimmedContent);
+    const hasAsciiTable = /[│├└┌┐┘┴┬─]/.test(trimmedContent);
+    const hasMarkdownStructure = trimmedContent.length > 100 && (/^#{1,6}\s+/m.test(trimmedContent) || /^\s*[-*+]\s+/m.test(trimmedContent) || /^\s*\d+\.\s+/m.test(trimmedContent));
+    
+    if (hasBold || hasEmoji || hasStructuredNumbers || hasAsciiTable || hasMarkdownStructure) {
+      return {
+        contentType: "markdown",
+        confidence: 0.95, // 높은 신뢰도로 강제 설정
+        subType: "forced",
+        sanitizedContent: trimmedContent,
+        textContent: extractTextFromMarkdown(trimmedContent),
+        metadata: generateMetadata(trimmedContent),
+      };
+    }
   }
 
   // HTML과 마크다운 동시 감지 (혼합 콘텐츠 처리)
@@ -115,9 +120,21 @@ export function detectContentType(content: string): ContentDetectionResult {
     }
   }
 
-  // 단일 콘텐츠 타입 처리 - 마크다운 우선순위 개선
+  // 단일 콘텐츠 타입 처리 - HTML 코드 블록 우선순위 최고
   
-  // 강력한 마크다운 지표가 있는 경우 HTML보다 우선
+  // HTML 코드 블록이 감지되면 최우선 처리
+  if (htmlResult.confidence > 0.8 && htmlResult.htmlType === "code-block") {
+    return {
+      contentType: "html",
+      confidence: htmlResult.confidence,
+      subType: htmlResult.htmlType,
+      sanitizedContent: htmlResult.sanitizedHtml,
+      textContent: htmlResult.textContent,
+      metadata: generateMetadata(trimmedContent),
+    };
+  }
+
+  // 강력한 마크다운 지표가 있는 경우 (HTML 코드 블록이 아닌 경우만)
   if (markdownResult.confidence > 0.7) {
     return {
       contentType: "markdown",
@@ -129,6 +146,7 @@ export function detectContentType(content: string): ContentDetectionResult {
     };
   }
 
+  // 일반 HTML 처리
   if (htmlResult.confidence > 0.6) {
     return {
       contentType: "html",
@@ -205,10 +223,32 @@ export function detectContentType(content: string): ContentDetectionResult {
  * HTML 콘텐츠 감지 (기존 함수 개선)
  */
 function detectHtmlContent(content: string) {
-
   let confidence = 0;
-  let htmlType: "full-page" | "snippet" | "mixed" | "none" = "none";
+  let htmlType: "full-page" | "snippet" | "mixed" | "code-block" | "none" = "none";
 
+  // HTML 코드 블록 패턴 감지 (마크다운 코드 블록 안의 HTML)
+  const htmlCodeBlockPattern = /```html\s*\n([\s\S]*?)```/;
+  const htmlCodeBlockMatch = htmlCodeBlockPattern.exec(content);
+  
+  if (htmlCodeBlockMatch) {
+    // 코드 블록 안의 HTML 내용 추출
+    const htmlContent = htmlCodeBlockMatch[1];
+    const hasValidHtmlTags = /<[a-z][^>]*>/i.test(htmlContent);
+    
+    if (hasValidHtmlTags) {
+      confidence = 0.9;
+      htmlType = "code-block";
+      
+      return {
+        confidence,
+        htmlType,
+        sanitizedHtml: sanitizeHtml(htmlContent),
+        textContent: extractTextFromHtml(htmlContent),
+      };
+    }
+  }
+
+  // 일반 HTML 감지
   if (DOCTYPE_REGEX.test(content) || HTML_STRUCTURE_REGEX.test(content)) {
     confidence = 0.95;
     htmlType = "full-page";
@@ -225,6 +265,8 @@ function detectHtmlContent(content: string) {
       "h1",
       "h2",
       "h3",
+      "ul",
+      "li",
     ];
     const hasCommonTags = commonTags.some((tag) =>
       new RegExp(`<${tag}(\\s|>|/>)`, "i").test(content)

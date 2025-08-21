@@ -162,22 +162,18 @@ export function MarkdownPreview({
 
   return (
     <div className={`space-y-4 w-full max-w-none ${className}`} style={{ width: '100%', maxWidth: 'none' }}>
-      {/* 마크다운 감지 상태 표시 */}
+      {/* 마크다운 감지 상태 표시 - 통합된 정보 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <FileText className="h-4 w-4 text-green-600" />
-          <span className="text-sm font-medium">마크다운 문서</span>
-          <Badge variant="secondary" className="text-xs">
-            신뢰도: {Math.round(confidence * 100)}%
-          </Badge>
-          <Badge variant="outline" className="text-xs">
-            {stats.lines}줄
-          </Badge>
-          {stats.headers > 0 && (
-            <Badge variant="outline" className="text-xs">
-              {stats.headers}개 헤더
-            </Badge>
-          )}
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <FileText className="h-4 w-4 text-green-600" />
+            <span className="text-sm font-medium">마크다운 문서</span>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {stats.lines}줄 • {stats.words}단어 • 신뢰도 {Math.round(confidence * 100)}%
+            {stats.headers > 0 && ` • ${stats.headers}개 헤더`}
+            {stats.codeBlocks > 0 && ` • ${stats.codeBlocks}개 코드블록`}
+          </div>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -197,12 +193,7 @@ export function MarkdownPreview({
       <Card className="border dark:border-slate-600 dark:bg-slate-800">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <CardTitle className="text-sm">마크다운 미리보기</CardTitle>
-              <Badge variant="secondary" className="text-xs">
-                {stats.words}단어
-              </Badge>
-            </div>
+            <CardTitle className="text-sm">미리보기</CardTitle>
 
             <div className="flex items-center space-x-2">
               {/* 렌더링 모드 선택 */}
@@ -421,43 +412,6 @@ export function MarkdownPreview({
         </CardContent>
       </Card>
 
-      {/* 마크다운 통계 */}
-      <div className="text-xs text-muted-foreground grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="flex items-center space-x-1">
-          <span className="font-medium">라인:</span>
-          <span>{stats.lines}</span>
-        </div>
-        <div className="flex items-center space-x-1">
-          <span className="font-medium">단어:</span>
-          <span>{stats.words}</span>
-        </div>
-        <div className="flex items-center space-x-1">
-          <span className="font-medium">헤더:</span>
-          <span>{stats.headers}</span>
-        </div>
-        <div className="flex items-center space-x-1">
-          <span className="font-medium">코드블록:</span>
-          <span>{stats.codeBlocks}</span>
-        </div>
-        {stats.links > 0 && (
-          <div className="flex items-center space-x-1">
-            <span className="font-medium">링크:</span>
-            <span>{stats.links}</span>
-          </div>
-        )}
-        {stats.images > 0 && (
-          <div className="flex items-center space-x-1">
-            <span className="font-medium">이미지:</span>
-            <span>{stats.images}</span>
-          </div>
-        )}
-        {stats.tables > 0 && (
-          <div className="flex items-center space-x-1">
-            <span className="font-medium">표:</span>
-            <span>{stats.tables}</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -22,11 +22,15 @@ async def upload_file(
     file: UploadFile = File(...),
     category_id: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
-    force_replace: bool = Form(False)
+    force_replace: bool = Form(False),
+    convert_to_pdf: Optional[str] = Form(None)
 ):
     """파일 업로드"""
     try:
-        _clog.info(f"파일 업로드 요청 수신: filename={file.filename}, category_id={category_id}, category={category}, force_replace={force_replace}")
+        # convert_to_pdf 문자열을 boolean으로 변환
+        convert_pdf_bool = convert_to_pdf == "true" if convert_to_pdf else False
+        
+        _clog.info(f"파일 업로드 요청 수신: filename={file.filename}, category_id={category_id}, category={category}, force_replace={force_replace}, convert_to_pdf={convert_pdf_bool}")
         
         # 카테고리 검증
         if not category_id and not category:
@@ -61,7 +65,8 @@ async def upload_file(
         response = await get_file_service_instance().upload_file(
             file, 
             category_id or category, 
-            force_replace=force_replace
+            force_replace=force_replace,
+            convert_to_pdf=convert_pdf_bool
         )
         _clog.info("FileService.upload_file 호출 완료")
         

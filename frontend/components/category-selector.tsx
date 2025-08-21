@@ -574,7 +574,6 @@ export function CategorySelector({
       {/* 단일 선택 모드 (드롭다운) */}
       {!multiSelect && (
         <div className="space-y-2">
-          <label className="text-sm font-medium">카테고리 선택</label>
           <Select value={selectedCategory} onValueChange={handleSelectChange}>
             <SelectTrigger>
               <SelectValue placeholder="카테고리를 선택하세요" />
@@ -608,10 +607,10 @@ export function CategorySelector({
       {/* 다중 선택 모드 (버튼 그리드) */}
       {multiSelect && (
         <div
-          className={`grid gap-3 ${
+          className={`grid ${
             compactMode
-              ? "grid-cols-2" // 컴팩트 모드: 한 줄에 2개 고정
-              : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" // 기본 모드: 반응형
+              ? "grid-cols-1 category-grid-compact" // 컴팩트 모드: 한 줄에 1개 + 최적화 스타일
+              : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" // 기본 모드: 반응형
           }`}
         >
           {categories.map((category) => {
@@ -627,10 +626,10 @@ export function CategorySelector({
                 key={category.category_id}
                 variant="outline"
                 size="default"
-                className={`h-auto transition-all duration-200 ease-in-out transform hover:scale-105 ${
+                className={`h-auto ${
                   compactMode
-                    ? "px-2 py-2 min-h-[50px] flex items-center space-x-2" // 컴팩트 모드: 가로 레이아웃, 작은 높이
-                    : "px-3 py-2 flex flex-col items-center justify-center space-y-2" // 기본 모드: 세로 레이아웃
+                    ? "category-card-compact flex items-center space-x-2 text-left justify-start" // 컴팩트 모드: 최적화 스타일
+                    : "px-3 py-1.5 flex items-center justify-start transition-all duration-200 ease-in-out transform hover:scale-[1.02]" // 기본 모드: 높이 줄임
                 } ${
                   isSelected
                     ? `${colorClass} text-white shadow-md hover:brightness-110 border-transparent`
@@ -641,35 +640,48 @@ export function CategorySelector({
                 <div
                   className={`flex items-center ${
                     compactMode
-                      ? "space-x-2 truncate flex-1" // 컴팩트 모드: 가로 정렬
-                      : "flex-col space-y-1" // 기본 모드: 세로 정렬
+                      ? "space-x-2 flex-1 min-w-0" // 컴팩트 모드: 가로 정렬
+                      : "space-x-2 flex-1 min-w-0" // 기본 모드: 가로 정렬로 변경
                   }`}
                 >
                   <IconComponent
                     className={`${
-                      compactMode ? "h-4 w-4" : "h-5 w-5"
+                      compactMode ? "category-icon" : "h-4 w-4"
                     } flex-shrink-0 ${
                       isSelected ? "text-white" : textColorClass
                     }`}
                   />
-                  <span
-                    className={`${
-                      compactMode
-                        ? "text-[10px] truncate"
-                        : "text-[10px] text-center leading-tight"
-                    } font-medium ${
-                      isSelected ? "text-white" : "text-foreground"
-                    }`}
-                  >
-                    {category.name}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={`${
+                        compactMode
+                          ? "category-name"
+                          : "text-xs font-medium leading-tight"
+                      } ${
+                        isSelected ? "text-white" : "text-foreground"
+                      } truncate`}
+                      title={category.name}
+                    >
+                      {category.name}
+                    </div>
+                    {showDocumentCount && (
+                      <div className="flex items-center mt-0.5">
+                        <Badge
+                          variant={isSelected ? "default" : "secondary"}
+                          className="text-xs px-1.5 py-0.5 h-5"
+                        >
+                          {categoryStats[category.category_id]?.document_count || 0}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {showDocumentCount && (
+                {showDocumentCount && compactMode && (
                   <Badge
                     variant={isSelected ? "default" : "secondary"}
-                    className="text-xs flex-shrink-0 ml-auto"
+                    className="category-badge ml-2 flex-shrink-0"
                   >
-                    {categoryStats[category.category_id]?.document_count || 0}개
+                    {categoryStats[category.category_id]?.document_count || 0}
                   </Badge>
                 )}
               </Button>

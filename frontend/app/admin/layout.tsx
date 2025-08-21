@@ -59,6 +59,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
   const pathname = usePathname()
   const router = useRouter()
@@ -79,10 +80,14 @@ export default function AdminLayout({
     }
   }, [loading, isAuthenticated, isAdminUser, router])
 
-  // 현재 경로가 설정 페이지인 경우 설정 메뉴 자동 확장
+  // 현재 경로가 설정 페이지인 경우 설정 메뉴 자동 확장 및 사이드바 펼치기
   useEffect(() => {
     if (pathname.startsWith('/admin/settings')) {
       setExpandedMenus(prev => ({ ...prev, '설정': true }))
+      // 설정 하위 페이지에 있을 때는 사이드바를 펼친 상태로 유지
+      if (pathname !== '/admin/settings') {
+        setSidebarCollapsed(false)
+      }
     }
   }, [pathname])
 
@@ -139,32 +144,51 @@ export default function AdminLayout({
       {/* 사이드바 - 전처리 에디터에서는 숨김 */}
       {!isPreprocessingEditorPage && (
         <div className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-background border-r transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 bg-background border-r transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          sidebarCollapsed ? "lg:w-16" : "lg:w-64",
+          "w-64" // 모바일에서는 항상 전체 너비
         )}>
           {/* 사이드바 헤더 */}
-        <div className="flex-shrink-0 h-16 px-6 border-b">
+        <div className={cn("flex-shrink-0 h-16 border-b", sidebarCollapsed ? "px-2" : "px-6")}>
           <div className="flex items-center justify-between h-full">
-            <div className="flex items-center space-x-3">
+            <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
               <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
                 <ShieldIcon className="h-5 w-5 text-purple-500" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">관리자</h1>
+              {!sidebarCollapsed && <h1 className="text-xl font-bold text-foreground">관리자</h1>}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-muted-foreground hover:text-accent-foreground hover:bg-accent"
-            >
-              <ChevronLeftIcon className="h-4 w-4 text-orange-500" />
-            </Button>
+            <div className="flex items-center space-x-1">
+              {/* 데스크톱 접기/펼치기 버튼 */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="hidden lg:flex text-muted-foreground hover:text-accent-foreground hover:bg-accent"
+                title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRightIcon className="h-4 w-4 text-purple-500" />
+                ) : (
+                  <ChevronLeftIcon className="h-4 w-4 text-purple-500" />
+                )}
+              </Button>
+              {/* 모바일 닫기 버튼 */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden text-muted-foreground hover:text-accent-foreground hover:bg-accent"
+              >
+                <ChevronLeftIcon className="h-4 w-4 text-orange-500" />
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* 네비게이션 메뉴 - 스크롤 개선 */}
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4rem)', minHeight: '0' }}>
-          <nav className="px-3 py-6">
+          <nav className={cn("py-6", sidebarCollapsed ? "px-2" : "px-3")}>
             <ul className="space-y-2 pb-12">
             {navigation.map((item) => {
               const isActive = pathname === item.href
@@ -177,17 +201,19 @@ export default function AdminLayout({
                   {hasChildren ? (
                     <div>
                       <button
-                        onClick={() => toggleMenu(item.name)}
+                        onClick={() => !sidebarCollapsed && toggleMenu(item.name)}
                         className={cn(
-                          "group flex items-center justify-between w-full px-4 py-3 text-sm font-medium rounded-xl transition-colors",
+                          "group flex items-center w-full text-sm font-medium rounded-xl transition-colors",
+                          sidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-3 justify-between",
                           isActive || isChildActive
                             ? "bg-primary/10 text-primary"
                             : "text-muted-foreground hover:text-accent-foreground hover:bg-accent"
                         )}
+                        title={sidebarCollapsed ? item.name : undefined}
                       >
-                        <div className="flex items-center">
+                        <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "")}>
                           <item.icon
-                            className={`h-4 w-4 mr-3 ${
+                            className={`h-4 w-4 ${sidebarCollapsed ? "" : "mr-3"} ${
                               item.icon === LayoutDashboardIcon ? 'text-purple-500' :
                               item.icon === UsersIcon ? 'text-orange-500' :
                               item.icon === FolderIcon ? 'text-blue-500' :
@@ -200,17 +226,19 @@ export default function AdminLayout({
                               'text-muted-foreground'
                             }`}
                           />
-                          {item.name}
+                          {!sidebarCollapsed && item.name}
                         </div>
-                        <div>
-                          {isExpanded ? (
-                            <ChevronDownIcon className="h-3 w-3 text-orange-500" />
-                          ) : (
-                            <ChevronRightIcon className="h-3 w-3 text-orange-500" />
-                          )}
-                        </div>
+                        {!sidebarCollapsed && (
+                          <div>
+                            {isExpanded ? (
+                              <ChevronDownIcon className="h-3 w-3 text-orange-500" />
+                            ) : (
+                              <ChevronRightIcon className="h-3 w-3 text-orange-500" />
+                            )}
+                          </div>
+                        )}
                       </button>
-                      {isExpanded && (
+                      {isExpanded && !sidebarCollapsed && (
                         <ul className="mt-2 ml-6 space-y-1">
                           {item.children.map((child) => {
                             const isChildItemActive = pathname === child.href
@@ -249,15 +277,17 @@ export default function AdminLayout({
                     <Link
                       href={item.href}
                       className={cn(
-                        "group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-colors",
+                        "group flex items-center text-sm font-medium rounded-xl transition-colors",
+                        sidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-3",
                         isActive
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:text-accent-foreground hover:bg-accent"
                       )}
                       onClick={() => setSidebarOpen(false)}
+                      title={sidebarCollapsed ? item.name : undefined}
                     >
                       <item.icon
-                        className={`h-4 w-4 mr-3 ${
+                        className={`h-4 w-4 ${sidebarCollapsed ? "" : "mr-3"} ${
                           item.icon === LayoutDashboardIcon ? 'text-purple-500' :
                           item.icon === UsersIcon ? 'text-orange-500' :
                           item.icon === FolderIcon ? 'text-blue-500' :
@@ -270,7 +300,7 @@ export default function AdminLayout({
                           'text-muted-foreground'
                         }`}
                       />
-                      {item.name}
+                      {!sidebarCollapsed && item.name}
                     </Link>
                   )}
                 </li>

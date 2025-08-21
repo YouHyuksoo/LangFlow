@@ -284,7 +284,7 @@ export const doclingAPI = {
 
 // 파일 업로드 API
 export const fileAPI = {
-  uploadFile: async (file: File, category?: string, forceReplace?: boolean) => {
+  uploadFile: async (file: File, category?: string, forceReplace?: boolean, convertToPdf?: boolean) => {
     const formData = new FormData();
     formData.append("file", file);
     if (category) {
@@ -292,6 +292,11 @@ export const fileAPI = {
     }
     if (forceReplace) {
       formData.append("force_replace", "true");
+    }
+    if (convertToPdf) {
+      formData.append("convert_to_pdf", "true");
+    } else {
+      formData.append("convert_to_pdf", "false");
     }
 
     const response = await api.post("/api/v1/files/upload", formData, {
@@ -516,6 +521,14 @@ export const fileAPI = {
   resetFileMetadata: async () => {
     const response = await api.post("/api/v1/files/metadata/files/reset");
     return response.data;
+  },
+
+  // 파일 다운로드
+  downloadFile: async (fileId: string) => {
+    const response = await api.get(`/api/v1/files/${fileId}/download`, {
+      responseType: 'blob',
+    });
+    return response;
   },
 };
 

@@ -190,7 +190,7 @@ const OverviewChart = ({ data }: OverviewChartProps) => {
         <CardDescription>기간별 질문 수 추이입니다.</CardDescription>
       </CardHeader>
       <CardContent className="pl-2">
-        <ResponsiveContainer width="100%" height={350}>
+        <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData}>
             <defs>
               <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
@@ -558,67 +558,61 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      {/* 메인 그리드 */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* 왼쪽 메인 컨텐츠 */}
-        <div className="xl:col-span-3 space-y-6">
-          {/* 주요 통계 카드 */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              icon={FileText}
-              title="전체 파일"
-              value={dashboardData?.system.total_files || 0}
-              description="업로드된 PDF 파일 수"
-              colorClass="text-blue-500"
-            />
-            <StatCard
-              icon={Database}
-              title="벡터화 완료"
-              value={dashboardData?.system.vectorized_files || 0}
-              description={`${
-                dashboardData?.performance.vector_performance.total_vectors || 0
-              } 벡터`}
-              colorClass="text-green-500"
-            />
-            <StatCard
-              icon={MessageSquare}
-              title="오늘 질문"
-              value={dashboardData?.usage.daily_questions.today || 0}
-              description="오늘 발생한 질문 수"
-              colorClass="text-purple-500"
-            />
-            <StatCard
-              icon={Target}
-              title="평균 적중률"
-              value={`${dashboardData?.usage.avg_relevance || 0}%`}
-              description="검색 결과 관련성 점수"
-              colorClass="text-orange-500"
-            />
-          </div>
+      {/* 주요 통계 카드 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={FileText}
+          title="전체 파일"
+          value={dashboardData?.system.total_files || 0}
+          description="업로드된 PDF 파일 수"
+          colorClass="text-blue-500"
+        />
+        <StatCard
+          icon={Database}
+          title="벡터화 완료"
+          value={dashboardData?.system.vectorized_files || 0}
+          description={`${
+            dashboardData?.performance.vector_performance.total_vectors || 0
+          } 벡터`}
+          colorClass="text-green-500"
+        />
+        <StatCard
+          icon={MessageSquare}
+          title="오늘 질문"
+          value={dashboardData?.usage.daily_questions.today || 0}
+          description="오늘 발생한 질문 수"
+          colorClass="text-purple-500"
+        />
+        <StatCard
+          icon={Target}
+          title="평균 적중률"
+          value={`${dashboardData?.usage.avg_relevance || 0}%`}
+          description="검색 결과 관련성 점수"
+          colorClass="text-orange-500"
+        />
+      </div>
 
-          {/* 차트 */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <div className="lg:col-span-3">
-              <OverviewChart data={dashboardData} />
-            </div>
-            <div className="lg:col-span-2">
-              <CategoryDistributionChart data={dashboardData} />
-            </div>
-          </div>
+      {/* 차트 */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-2">
+          <OverviewChart data={dashboardData} />
         </div>
+        <div className="lg:col-span-3">
+          <CategoryDistributionChart data={dashboardData} />
+        </div>
+      </div>
 
-        {/* 오른쪽 사이드바 */}
-        <div className="space-y-6">
-          <FastActionWidget actions={fastActions} />
-          <SystemHealthWidget
-            chromaStatus={chromaDBStatus}
-            sqliteStatus={dashboardData?.system.sqlite_status}
-            fileMetadataStatus={dashboardData?.system.file_metadata_status}
-            vectorMetadataStatus={dashboardData?.system.vector_metadata_status}
-            onReset={handleChromaDBReset}
-          />
-          <ActivityFeed data={dashboardData} />
-        </div>
+      {/* 빠른액션, 시스템상태, 최근활동 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <FastActionWidget actions={fastActions} />
+        <SystemHealthWidget
+          chromaStatus={chromaDBStatus}
+          sqliteStatus={dashboardData?.system.sqlite_status}
+          fileMetadataStatus={dashboardData?.system.file_metadata_status}
+          vectorMetadataStatus={dashboardData?.system.vector_metadata_status}
+          onReset={handleChromaDBReset}
+        />
+        <ActivityFeed data={dashboardData} />
       </div>
     </div>
   );

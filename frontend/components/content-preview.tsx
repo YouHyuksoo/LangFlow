@@ -45,9 +45,12 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({ content, outputFormat }
     detectionResult;
 
   // 신뢰도가 너무 낮으면 일반 텍스트로 처리 (text 타입 제외)
+  // 사용자가 강제 선택한 형식은 신뢰도 체크를 건너뜀
   // 마크다운의 경우 기준을 낮춰서 더 자주 렌더링되도록 함
   const confidenceThreshold = contentType === "markdown" ? 0.5 : 0.6;
-  if (confidence < confidenceThreshold && contentType !== "text") {
+  const isUserForced = detectionResult.subType === "user-forced";
+  
+  if (!isUserForced && confidence < confidenceThreshold && contentType !== "text") {
     return (
       <div className="whitespace-pre-wrap p-2">{textContent || content}</div>
     );
@@ -62,7 +65,11 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({ content, outputFormat }
         />
       );
     case "html":
-      return <HtmlPreview content={sanitizedContent || content} />;
+      return (
+        <HtmlPreview 
+          content={sanitizedContent || content}
+        />
+      );
     case "json":
     case "xml":
     case "code":

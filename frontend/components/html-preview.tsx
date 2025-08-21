@@ -518,12 +518,6 @@ export function HtmlPreview({ content, className = "" }: HtmlPreviewProps) {
         </Card>
       )}
 
-      {/* HTML 정보 요약 */}
-      <div className="text-xs text-muted-foreground flex items-center space-x-4">
-        <span>신뢰도: {Math.round(detectionResult.confidence * 100)}%</span>
-        <span>크기: {content.length} 문자</span>
-        <span>태그 수: {(content.match(/<[^>]*>/g) || []).length}개</span>
-      </div>
     </div>
   );
 }

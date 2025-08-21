@@ -398,13 +398,6 @@ export function CodePreview({
         </CardContent>
       </Card>
 
-      {/* 코드 정보 요약 */}
-      <div className="text-xs text-muted-foreground flex items-center space-x-4">
-        <span>언어: {language}</span>
-        <span>라인 수: {lineCount}</span>
-        <span>문자 수: {code.length}</span>
-        <span>신뢰도: {Math.round(confidence * 100)}%</span>
-      </div>
     </div>
   );
 }

@@ -102,11 +102,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { chatAPI, categoryAPI, personaAPI, modelProfileAPI } from "@/lib/api";
+import { chatAPI, categoryAPI, personaAPI, modelProfileAPI, fileAPI } from "@/lib/api";
 import { CategorySelector } from "@/components/category-selector";
 import { ContentPreview } from "@/components/content-preview";
 import { FloatingNavigation } from "@/components/floating-navigation";
 import { MessageWithImages, hasImageReferences } from "@/components/message-with-images";
+import { ChatLayout, useChatLayout } from "@/components/chat/ChatLayout";
+import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { useAuthContext } from "@/context/auth-context";
 
 // --- 데이터 인터페이스 ---
@@ -133,196 +135,13 @@ interface ChatSession {
   title: string;
   lastMessage: string;
   timestamp: Date;
+  messageCount: number;
   messages?: Message[];
   categories?: string[];
   personaId?: string;
   topK?: number;
 }
 
-// ChatHistory: 좌측 채팅 히스토리 패널 (메모이제이션으로 최적화)
-const ChatHistory = memo(
-  ({
-    sessions,
-    onNewChat,
-    onSelectSession,
-    // 대화 주제 선택 관련 props 추가
-    selectedCategories,
-    onCategoryChange,
-    categories,
-    isEditingCategories,
-    setIsEditingCategories,
-    personas,
-    selectedPersonaId,
-    setSelectedPersonaId,
-    topK,
-    setTopK,
-    getCategoryName,
-    inputRef,
-  }: {
-    sessions: ChatSession[];
-    onNewChat: () => void;
-    onSelectSession: (id: string) => void;
-    selectedCategories: string[];
-    onCategoryChange: (categories: string[]) => void;
-    categories: any[];
-    isEditingCategories: boolean;
-    setIsEditingCategories: (editing: boolean) => void;
-    personas: any[];
-    selectedPersonaId: string | undefined;
-    setSelectedPersonaId: (id: string | undefined) => void;
-    topK: number;
-    setTopK: (k: number) => void;
-    getCategoryName: (id: string) => string;
-    inputRef: React.RefObject<HTMLTextAreaElement>;
-  }) => (
-    <aside className="w-80 h-full flex-col border-r bg-muted/80 p-4 flex overflow-hidden shadow-lg">
-      <Button onClick={onNewChat} className="mb-4 flex-shrink-0">
-        <Plus className="h-4 w-4 mr-2" />
-        새 대화
-      </Button>
-      
-      {/* 대화 주제 선택 섹션 */}
-      <div className="stat-card relative overflow-hidden mb-4 p-4 bg-background/50 rounded-xl border space-y-3 overflow-y-auto" style={{ maxHeight: isEditingCategories ? 'calc(70vh - 8rem)' : '240px' }}>
-        {isEditingCategories ? (
-          <>
-            <h3 className="text-sm font-medium flex items-center gap-2">
-              <div className="p-1 rounded-md bg-primary/20">
-                <Settings className="h-3 w-3 text-primary" />
-              </div>
-              대화 주제 선택
-            </h3>
-            <CategorySelector
-              selectedCategories={selectedCategories}
-              onCategoryChange={onCategoryChange}
-              categories={categories}
-              showDocumentCount={true}
-              compactMode={true}
-            />
-            
-            {/* 페르소나 선택 */}
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">페르소나</label>
-                <Select
-                  value={selectedPersonaId || ""}
-                  onValueChange={(value) => setSelectedPersonaId(value || undefined)}
-                >
-                  <SelectTrigger className="w-full mt-1">
-                    <SelectValue placeholder="페르소나 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {personas.map((p: any) => (
-                      <SelectItem key={p.persona_id} value={p.persona_id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* 검색 개수 설정 */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">검색 개수</label>
-                <Select
-                  value={topK.toString()}
-                  onValueChange={(value) => setTopK(parseInt(value))}
-                >
-                  <SelectTrigger className="w-full mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3">3개</SelectItem>
-                    <SelectItem value="5">5개</SelectItem>
-                    <SelectItem value="10">10개</SelectItem>
-                    <SelectItem value="15">15개</SelectItem>
-                    <SelectItem value="20">20개</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <Button
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                setIsEditingCategories(false);
-                setTimeout(() => {
-                  if (inputRef.current) {
-                    inputRef.current.focus();
-                  }
-                }, 100);
-              }}
-            >
-              완료
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <div className="p-1 rounded-md bg-primary/20">
-                  <Settings className="h-3 w-3 text-primary" />
-                </div>
-                대화 설정
-              </h3>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setIsEditingCategories(true)}
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-              >
-                <Settings className="h-3 w-3" />
-              </Button>
-            </div>
-            
-            {/* 선택된 주제 표시 */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">대화 주제</label>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {selectedCategories.length > 0 ? (
-                  selectedCategories.map((id) => (
-                    <Badge key={id} variant="secondary">
-                      {getCategoryName(id)}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground">주제를 선택해주세요</span>
-                )}
-              </div>
-            </div>
-            
-            {/* 선택된 페르소나 표시 */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">페르소나</label>
-              <div className="mt-1">
-                <Badge variant="secondary">
-                  {personas.find(p => p.persona_id === selectedPersonaId)?.name || "기본"}
-                </Badge>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="space-y-2 pb-4">
-          {sessions.map((session) => (
-            <button
-              key={session.id}
-              onClick={() => onSelectSession(session.id)}
-              className="w-full text-left p-3 rounded-lg hover:bg-accent border border-transparent transition-all duration-300"
-            >
-              <p className="text-sm font-medium truncate text-foreground">{session.title}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {session.lastMessage}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-    </aside>
-  )
-);
 
 // ChatMessage: 개별 채팅 메시지 컴포넌트 (메모이제이션으로 최적화)
 const ChatMessage = memo(
@@ -330,10 +149,12 @@ const ChatMessage = memo(
     message,
     toast,
     userName,
+    onDownloadFile,
   }: {
     message: Message;
     toast: any;
     userName: string;
+    onDownloadFile: (fileId: string, filename: string) => void;
   }) => {
     const isUser = message.role === "user";
 
@@ -347,7 +168,7 @@ const ChatMessage = memo(
 
     return (
       <div
-        className={`flex items-start gap-4 w-full ${
+        className={`flex items-start gap-4 w-full chat-message-container ${
           isUser ? "justify-end" : ""
         }`}
       >
@@ -359,10 +180,10 @@ const ChatMessage = memo(
           </Avatar>
         )}
         <div
-          className={`group relative rounded-lg px-4 py-3 ${
+          className={`group relative rounded-lg px-4 py-3 chat-message-content ${
             isUser
               ? "max-w-2xl bg-primary text-primary-foreground"
-              : "w-full bg-muted text-muted-foreground border"
+              : "max-w-4xl bg-muted text-muted-foreground border"
           }`}
         >
           {/* 이미지 미리보기 (사용자 메시지만) */}
@@ -384,7 +205,7 @@ const ChatMessage = memo(
             <div className="whitespace-pre-wrap text-sm">{message.content}</div>
           ) : (
             // Assistant 메시지에서 이미지 참조가 있으면 MessageWithImages 사용
-            <div className="text-sm w-full" style={{ width: '100%', maxWidth: 'none' }}>
+            <div className="text-sm max-w-full overflow-hidden content-wrapper">
               {hasImageReferences(message.content) ? (
                 <MessageWithImages content={message.content} />
               ) : (
@@ -426,11 +247,16 @@ const ChatMessage = memo(
                     {message.sourceDetails.map((source, index) => (
                       <div
                         key={index}
-                        className="stat-card relative overflow-hidden p-2 bg-background/50 rounded-md border text-xs w-full"
+                        className="stat-card relative overflow-hidden p-2 bg-background/50 rounded-md border text-xs max-w-full group hover:bg-background cursor-pointer transition-colors"
+                        onClick={() => onDownloadFile(source.file_id, source.filename)}
+                        title={`${source.filename} 다운로드`}
                       >
-                        <p className="font-medium truncate">
-                          {source.filename}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium truncate flex-1">
+                            {source.filename}
+                          </p>
+                          <FileText className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -585,18 +411,6 @@ export default function ChatPage() {
   const [modelProfiles, setModelProfiles] = useState<any[]>([]);
   const [activeModelProfile, setActiveModelProfile] = useState<any>(null);
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
-  const [isEditingCategories, setIsEditingCategories] = useState(() => {
-    const storedCategories = loadFromStorage(
-      STORAGE_KEYS.SELECTED_CATEGORIES,
-      []
-    );
-    const storedEditingState = loadFromStorage(
-      STORAGE_KEYS.IS_EDITING_CATEGORIES,
-      true
-    );
-    // 카테고리가 있으면 편집 모드를 false로, 없으면 true로
-    return storedCategories.length === 0 ? true : storedEditingState;
-  });
   const [topK, setTopK] = useState(() =>
     loadFromStorage(STORAGE_KEYS.TOP_K, 5)
   );
@@ -610,10 +424,8 @@ export default function ChatPage() {
     loadFromStorage("chat_user_name", "사용자")
   );
 
-  // 사이드바 표시/숨김 상태 추가
-  const [sidebarVisible, setSidebarVisible] = useState(() =>
-    loadFromStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, true)
-  );
+  // 새로운 레이아웃 hook 사용
+  const { sidebarVisible, toggleSidebar } = useChatLayout();
 
   // 음성입력 관련 상태
   const [isListening, setIsListening] = useState(false);
@@ -700,22 +512,21 @@ export default function ChatPage() {
 
   useEffect(scrollToBottom, [messages, isLoading]);
 
-  // 카테고리 편집 완료 후 또는 페이지 로드 후 입력창에 포커스
+  // 카테고리 선택 완료 후 입력창에 포커스
   useEffect(() => {
-    if (!isEditingCategories && selectedCategories.length > 0 && !isLoading) {
+    if (selectedCategories.length > 0 && !isLoading) {
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
         }
       }, 200);
     }
-  }, [isEditingCategories, selectedCategories.length, isLoading]);
+  }, [selectedCategories.length, isLoading]);
 
   // 페이지 초기 로드 시 포커스 설정 (카테고리가 있는 경우)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (
-        !isEditingCategories &&
         selectedCategories.length > 0 &&
         inputRef.current
       ) {
@@ -734,10 +545,8 @@ export default function ChatPage() {
       saveToStorage(STORAGE_KEYS.INPUT_VALUE, inputValue);
       saveToStorage(STORAGE_KEYS.SELECTED_CATEGORIES, selectedCategories);
       saveToStorage(STORAGE_KEYS.SELECTED_PERSONA_ID, selectedPersonaId);
-      saveToStorage(STORAGE_KEYS.IS_EDITING_CATEGORIES, isEditingCategories);
       saveToStorage(STORAGE_KEYS.TOP_K, topK);
       saveToStorage("chat_user_name", userName);
-      saveToStorage(STORAGE_KEYS.SIDEBAR_VISIBLE, sidebarVisible);
       saveToStorage("chat_output_format", outputFormat);
       saveToStorage("chat_sessions", chatSessions);
       saveToStorage("current_session_id", currentSessionId);
@@ -749,10 +558,8 @@ export default function ChatPage() {
     inputValue,
     selectedCategories,
     selectedPersonaId,
-    isEditingCategories,
     topK,
     userName,
-    sidebarVisible,
     outputFormat,
     chatSessions,
     currentSessionId,
@@ -812,6 +619,7 @@ export default function ChatPage() {
         title: messages[1]?.content.slice(0, 50) + "..." || "새 대화",
         lastMessage: messages[messages.length - 1]?.content.slice(0, 100) || "",
         timestamp: new Date(),
+        messageCount: messages.length,
         messages: messages,
         categories: selectedCategories,
         personaId: selectedPersonaId,
@@ -835,7 +643,6 @@ export default function ChatPage() {
     // 상태 초기화
     setMessages([initialMessage]);
     setSelectedCategories([]);
-    setIsEditingCategories(true);
     setInputValue("");
     clearImages();
     setIsLoading(false);
@@ -858,6 +665,7 @@ export default function ChatPage() {
           title: messages[1]?.content.slice(0, 50) + "..." || "새 대화",
           lastMessage: messages[messages.length - 1]?.content.slice(0, 100) || "",
           timestamp: new Date(),
+          messageCount: messages.length,
           messages: messages,
           categories: selectedCategories,
           personaId: selectedPersonaId,
@@ -883,7 +691,6 @@ export default function ChatPage() {
       setInputValue("");
       clearImages();
       setIsLoading(false);
-      setIsEditingCategories(false);
     }
   }, [chatSessions, currentSessionId, messages, selectedCategories, selectedPersonaId, topK]);
 
@@ -968,7 +775,6 @@ export default function ChatPage() {
     const currentImages = [...selectedImages];
     setInputValue("");
     setIsLoading(true);
-    setIsEditingCategories(false);
 
     try {
       // Base64로 이미지 인코딩
@@ -1141,6 +947,44 @@ export default function ChatPage() {
     }
   };
 
+  const handleDownloadFile = async (fileId: string, filename: string) => {
+    if (!fileId) {
+      toast({
+        title: "다운로드 오류",
+        description: "파일 ID가 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fileAPI.downloadFile(fileId);
+      
+      // Blob을 이용한 파일 다운로드
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'download';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "다운로드 완료",
+        description: `${filename} 파일이 다운로드되었습니다.`,
+      });
+    } catch (error) {
+      console.error("파일 다운로드 실패:", error);
+      toast({
+        title: "다운로드 실패",
+        description: "파일 다운로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getCategoryName = (id: string) =>
     categories.find((c) => c.category_id === id)?.name || id;
 
@@ -1189,55 +1033,25 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden" style={{height: 'calc(100vh - 64px)'}}>
-      {/* 사이드바 - 조건부 렌더링 */}
+      {/* 사이드바 - 새로운 ChatSidebar 사용 */}
       {sidebarVisible && (
-        <ChatHistory
+        <ChatSidebar
           sessions={chatSessions}
-          onNewChat={handleNewChat}
+          currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
-          selectedCategories={selectedCategories}
-          onCategoryChange={setSelectedCategories}
+          onNewChat={handleNewChat}
           categories={categories}
-          isEditingCategories={isEditingCategories}
-          setIsEditingCategories={setIsEditingCategories}
           personas={personas}
+          selectedCategories={selectedCategories}
           selectedPersonaId={selectedPersonaId}
-          setSelectedPersonaId={setSelectedPersonaId}
           topK={topK}
-          setTopK={setTopK}
-          getCategoryName={getCategoryName}
-          inputRef={inputRef}
+          onCategoryChange={setSelectedCategories}
+          onPersonaChange={setSelectedPersonaId}
+          onTopKChange={setTopK}
+          className="w-80 min-w-80 h-full"
         />
       )}
       <main className="flex flex-1 flex-col h-full overflow-hidden relative">
-        {/* 사이드바 숨김 상태에서 복원 버튼 */}
-        {!sidebarVisible && (
-          <div className="fixed top-4 left-4 z-50 flex flex-col gap-2">
-            <Button
-              variant="default"
-              size="icon"
-              className="shadow-lg hover:shadow-xl transition-shadow"
-              onClick={() => setSidebarVisible(true)}
-              title="사이드바 열기"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            {selectedCategories.length === 0 && (
-              <Button
-                variant="secondary"
-                size="icon"
-                className="shadow-lg hover:shadow-xl transition-shadow"
-                onClick={() => {
-                  setSidebarVisible(true);
-                  setIsEditingCategories(true);
-                }}
-                title="대화 주제 선택"
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
-        )}
         
         <header className="flex-shrink-0 flex items-center justify-between border-b bg-muted/80 p-4">
           <div className="flex items-center">
@@ -1246,7 +1060,7 @@ export default function ChatPage() {
               variant="ghost"
               size="icon"
               className="mr-3"
-              onClick={() => setSidebarVisible(!sidebarVisible)}
+              onClick={toggleSidebar}
             >
               {sidebarVisible ? (
                 <ChevronLeft className="h-5 w-5" />
@@ -1329,13 +1143,14 @@ export default function ChatPage() {
             className="h-full overflow-y-auto overflow-x-hidden"
             ref={scrollAreaRef}
           >
-            <div className="p-6 space-y-6 min-h-full">
+            <div className="p-6 space-y-6 min-h-full max-w-full">
               {messages.map((msg) => (
                 <ChatMessage
                   key={msg.id}
                   message={msg}
                   toast={toast}
                   userName={userName}
+                  onDownloadFile={handleDownloadFile}
                 />
               ))}
               {isLoading && (
@@ -1345,7 +1160,7 @@ export default function ChatPage() {
                       <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="stat-card relative overflow-hidden max-w-full rounded-lg px-4 py-3 bg-muted border">
+                  <div className="stat-card relative overflow-hidden max-w-4xl rounded-lg px-4 py-3 bg-muted border">
                     <div className="flex items-center gap-2 text-sm">
                       <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
                       <div
