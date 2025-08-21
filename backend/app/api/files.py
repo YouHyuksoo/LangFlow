@@ -572,12 +572,9 @@ async def preview_file(file_id: str):
             media_type = 'text/html; charset=utf-8'
         elif filename_lower.endswith('.csv'):
             media_type = 'text/csv; charset=utf-8'
-        elif filename_lower.endswith('.docx'):
-            media_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        elif filename_lower.endswith('.xlsx'):
-            media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        elif filename_lower.endswith('.pptx'):
-            media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        elif filename_lower.endswith(('.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt')):
+            # Office 파일 (신구 버전 모두)을 PDF로 강제 처리 (브라우저 inline 표시용)
+            media_type = 'application/pdf'
         else:
             media_type = 'application/octet-stream'
         

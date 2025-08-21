@@ -140,51 +140,80 @@ export default function AdminLayout({
   const isPreprocessingEditorPage = pathname?.startsWith('/admin/preprocessing/') && pathname !== '/admin/preprocessing'
 
   return (
-    <div className="flex bg-muted min-h-screen">
-      {/* 사이드바 - 전처리 에디터에서는 숨김 */}
+    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
+      {/* 1. 상단 네비게이션 - 고정 */}
       {!isPreprocessingEditorPage && (
-        <div className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-background border-r transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-64",
-          "w-64" // 모바일에서는 항상 전체 너비
-        )}>
-          {/* 사이드바 헤더 */}
-        <div className={cn("flex-shrink-0 h-16 border-b", sidebarCollapsed ? "px-2" : "px-6")}>
-          <div className="flex items-center justify-between h-full">
-            <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
+        <div className="flex-shrink-0 z-50 h-16 bg-background border-b">
+          <div className="flex items-center justify-between h-full px-4">
+            {/* 모바일 메뉴 버튼 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden text-muted-foreground hover:text-accent-foreground hover:bg-accent"
+            >
+              <MenuIcon className="h-5 w-5 text-purple-500" />
+            </Button>
+            
+            {/* 로고 및 타이틀 */}
+            <div className="flex items-center space-x-3">
               <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
                 <ShieldIcon className="h-5 w-5 text-purple-500" />
               </div>
-              {!sidebarCollapsed && <h1 className="text-xl font-bold text-foreground">관리자</h1>}
+              <h1 className="text-xl font-bold text-foreground">관리자 대시보드</h1>
             </div>
-            <div className="flex items-center space-x-1">
-              {/* 데스크톱 접기/펼치기 버튼 */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="hidden lg:flex text-muted-foreground hover:text-accent-foreground hover:bg-accent"
-                title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronRightIcon className="h-4 w-4 text-purple-500" />
-                ) : (
-                  <ChevronLeftIcon className="h-4 w-4 text-purple-500" />
-                )}
-              </Button>
-              {/* 모바일 닫기 버튼 */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden text-muted-foreground hover:text-accent-foreground hover:bg-accent"
-              >
-                <ChevronLeftIcon className="h-4 w-4 text-orange-500" />
-              </Button>
-            </div>
+            
+            <div /> {/* 스페이서 */}
           </div>
         </div>
+      )}
+      
+      {/* 2. 메인 영역 - 사이드바 + 콘텐츠 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 2-1. 좌측 사이드바 - 독립 스크롤 */}
+        {!isPreprocessingEditorPage && (
+          <div className={cn(
+            "fixed inset-y-16 left-0 z-40 bg-background border-r transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full",
+            sidebarCollapsed ? "lg:w-16" : "lg:w-64",
+            "w-64" // 모바일에서는 항상 전체 너비
+          )}>
+            {/* 사이드바 헤더 */}
+            <div className={cn("flex-shrink-0 h-16 border-b", sidebarCollapsed ? "px-2" : "px-6")}>
+              <div className="flex items-center justify-between h-full">
+                <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
+                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                    <ShieldIcon className="h-5 w-5 text-purple-500" />
+                  </div>
+                  {!sidebarCollapsed && <h1 className="text-xl font-bold text-foreground">관리자</h1>}
+                </div>
+                <div className="flex items-center space-x-1">
+                  {/* 데스크톱 접기/펼치기 버튼 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    className="hidden lg:flex text-muted-foreground hover:text-accent-foreground hover:bg-accent"
+                    title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+                  >
+                    {sidebarCollapsed ? (
+                      <ChevronRightIcon className="h-4 w-4 text-purple-500" />
+                    ) : (
+                      <ChevronLeftIcon className="h-4 w-4 text-purple-500" />
+                    )}
+                  </Button>
+                  {/* 모바일 닫기 버튼 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSidebarOpen(false)}
+                    className="lg:hidden text-muted-foreground hover:text-accent-foreground hover:bg-accent"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4 text-orange-500" />
+                  </Button>
+                </div>
+              </div>
+            </div>
 
         {/* 네비게이션 메뉴 - 스크롤 개선 */}
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4rem)', minHeight: '0' }}>
@@ -320,39 +349,24 @@ export default function AdminLayout({
         />
       )}
 
-      {/* 메인 컨텐츠 */}
-      <div className="flex-1 flex flex-col">
-        {/* 상단 헤더 (모바일) - 전처리 에디터에서는 숨김 */}
-        {!isPreprocessingEditorPage && (
-          <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-background border-b">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSidebarOpen(true)}
-              className="text-muted-foreground hover:text-accent-foreground hover:bg-accent"
-            >
-              <MenuIcon className="h-5 w-5 text-purple-500" />
-            </Button>
-            <h1 className="text-lg font-semibold text-foreground">관리자 대시보드</h1>
-            <div /> {/* 스페이서 */}
-          </div>
-        )}
-
-        {/* 메인 컨텐츠 영역 */}
-        <main className={cn(
-          "flex-1 bg-background",
-          pathname.startsWith('/admin/preprocessing/') 
-            ? "overflow-hidden p-0" // preprocessing 에디터는 스크롤 없음, 패딩 없음
-            : "p-6" // 다른 페이지는 스크롤 제거, 패딩만 유지
-        )}>
-          <div className={cn(
+        {/* 2-2. 중앙 콘텐츠 - 독립 스크롤 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <main className={cn(
+            "flex-1 bg-background overflow-y-auto",
             pathname.startsWith('/admin/preprocessing/') 
-              ? "" // preprocessing 에디터는 패딩 없음
-              : "pb-12" // 다른 페이지는 내부 컨텐츠에만 하단 여백
+              ? "overflow-hidden p-0" // preprocessing 에디터는 스크롤 없음, 패딩 없음
+              : "p-6" // 다른 페이지는 패딩 유지
           )}>
-            {children}
-          </div>
-        </main>
+            <div className={cn(
+              pathname.startsWith('/admin/preprocessing/') 
+                ? "" // preprocessing 에디터는 패딩 없음
+                : "pb-12" // 다른 페이지는 내부 컨텐츠에만 하단 여백
+            )}>
+              {children}
+            </div>
+          </main>
+        </div>
+        
       </div>
     </div>
   )
