@@ -11,6 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { FileSearch, Save, TestTube, Settings, Eye, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { unstructuredAPI } from "@/lib/api";
@@ -276,19 +283,23 @@ export default function UnstructuredSettingsPage() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium">전략</label>
-              <select
-                className="mt-1 w-full border rounded-md p-2 text-sm"
+              <Select
                 value={settings.strategy}
-                onChange={(e) =>
-                  setSettings({ ...settings, strategy: e.target.value })
+                onValueChange={(value) =>
+                  setSettings({ ...settings, strategy: value })
                 }
               >
-                {strategies.map((strategy) => (
-                  <option key={strategy.value} value={strategy.value}>
-                    {strategy.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {strategies.map((strategy) => (
+                    <SelectItem key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {settings.strategy === "hi_res" && (
               <div>
@@ -316,19 +327,23 @@ export default function UnstructuredSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <select
-              className="w-full border rounded-md p-2 text-sm"
+            <Select
               value={settings.chunking_strategy}
-              onChange={(e) =>
-                setSettings({ ...settings, chunking_strategy: e.target.value })
+              onValueChange={(value) =>
+                setSettings({ ...settings, chunking_strategy: value })
               }
             >
-              {chunkingStrategies.map((strategy) => (
-                <option key={strategy.value} value={strategy.value}>
-                  {strategy.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {chunkingStrategies.map((strategy) => (
+                  <SelectItem key={strategy.value} value={strategy.value}>
+                    {strategy.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
       </div>

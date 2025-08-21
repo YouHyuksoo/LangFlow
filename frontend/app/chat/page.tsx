@@ -88,6 +88,13 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -196,35 +203,41 @@ const ChatHistory = memo(
             <div className="space-y-2">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">페르소나</label>
-                <select
-                  className="w-full bg-transparent border-border border rounded-lg p-2 text-sm mt-1 focus:border-primary focus:ring-primary"
+                <Select
                   value={selectedPersonaId || ""}
-                  onChange={(e) =>
-                    setSelectedPersonaId(e.target.value || undefined)
-                  }
+                  onValueChange={(value) => setSelectedPersonaId(value || undefined)}
                 >
-                  {personas.map((p: any) => (
-                    <option key={p.persona_id} value={p.persona_id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="페르소나 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {personas.map((p: any) => (
+                      <SelectItem key={p.persona_id} value={p.persona_id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               {/* 검색 개수 설정 */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground">검색 개수</label>
-                <select
-                  className="w-full bg-transparent border-border border rounded-lg p-2 text-sm mt-1 focus:border-primary focus:ring-primary"
-                  value={topK}
-                  onChange={(e) => setTopK(parseInt(e.target.value))}
+                <Select
+                  value={topK.toString()}
+                  onValueChange={(value) => setTopK(parseInt(value))}
                 >
-                  <option value={3}>3개</option>
-                  <option value={5}>5개</option>
-                  <option value={10}>10개</option>
-                  <option value={15}>15개</option>
-                  <option value={20}>20개</option>
-                </select>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3">3개</SelectItem>
+                    <SelectItem value="5">5개</SelectItem>
+                    <SelectItem value="10">10개</SelectItem>
+                    <SelectItem value="15">15개</SelectItem>
+                    <SelectItem value="20">20개</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             

@@ -117,16 +117,10 @@ async def process(file_path: str, file_extension: str) -> str:
         
         elements = partition(**partition_kwargs)
         
-        try:
-            chunking_strategy = settings.get("chunking_strategy", "by_title")
-            max_chars = settings.get("max_characters", 800)
-            combine_under_n_chars = settings.get("combine_text_under_n_chars", 120)
-            new_after_n_chars = settings.get("new_after_n_chars", 600)
-        except:
-            chunking_strategy = settings.get("chunking_strategy", "by_title")
-            max_chars = settings.get("max_characters", 800)
-            combine_under_n_chars = settings.get("combine_text_under_n_chars", 120)
-            new_after_n_chars = settings.get("new_after_n_chars", 600)
+        chunking_strategy = settings.get("chunking_strategy", "by_title")
+        max_chars = settings.get("max_characters", 800)
+        combine_under_n_chars = settings.get("combine_text_under_n_chars", 120)
+        new_after_n_chars = settings.get("new_after_n_chars", 600)
         
         if chunking_strategy == "by_title":
             extracted_text = _group_elements_by_title(elements, max_chars, combine_under_n_chars)

@@ -11,6 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Bot, Plus, Edit, Trash2, TestTube, Check, Star, Settings, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -322,34 +329,42 @@ function ModelProfileForm({
             </div>
             <div>
               <label className="text-sm font-medium">제공업체</label>
-              <select
-                className="mt-1 w-full border rounded-md p-2 text-sm"
+              <Select
                 value={formData.provider}
-                onChange={(e) => handleProviderChange(e.target.value)}
+                onValueChange={handleProviderChange}
               >
-                {Object.entries(LLM_PROVIDERS).map(([key, provider]) => (
-                  <option key={key} value={key}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="제공업체 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(LLM_PROVIDERS).map(([key, provider]) => (
+                    <SelectItem key={key} value={key}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">모델</label>
-              <select
-                className="mt-1 w-full border rounded-md p-2 text-sm"
+              <Select
                 value={formData.model}
-                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                onValueChange={(value) => setFormData({ ...formData, model: value })}
               >
-                {currentProvider?.models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentProvider?.models.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium">API 키</label>
@@ -725,31 +740,39 @@ export default function ModelsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">제공업체</label>
-              <select
-                className="mt-1 w-full border rounded-md p-2 text-sm"
+              <Select
                 value={embeddingSettings.provider}
-                onChange={(e) => handleEmbeddingProviderChange(e.target.value)}
+                onValueChange={handleEmbeddingProviderChange}
               >
-                {Object.entries(EMBEDDING_PROVIDERS).map(([key, provider]) => (
-                  <option key={key} value={key}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="제공업체 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(EMBEDDING_PROVIDERS).map(([key, provider]) => (
+                    <SelectItem key={key} value={key}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium">모델</label>
-              <select
-                className="mt-1 w-full border rounded-md p-2 text-sm"
+              <Select
                 value={embeddingSettings.model}
-                onChange={(e) => handleEmbeddingModelChange(e.target.value)}
+                onValueChange={handleEmbeddingModelChange}
               >
-                {EMBEDDING_PROVIDERS[embeddingSettings.provider as keyof typeof EMBEDDING_PROVIDERS]?.models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name} ({model.dimension}차원)
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EMBEDDING_PROVIDERS[embeddingSettings.provider as keyof typeof EMBEDDING_PROVIDERS]?.models.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name} ({model.dimension}차원)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
