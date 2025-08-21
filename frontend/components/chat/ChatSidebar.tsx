@@ -16,6 +16,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ChatSession {
   id: string;
@@ -32,6 +42,7 @@ interface ChatSidebarProps {
   currentSessionId?: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
+  onDeleteAllChats?: () => void;
   
   // Settings
   categories: any[];
@@ -52,6 +63,7 @@ export function ChatSidebar({
   currentSessionId,
   onSelectSession,
   onNewChat,
+  onDeleteAllChats,
   categories,
   personas,
   selectedCategories,
@@ -65,6 +77,7 @@ export function ChatSidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [settingsMode, setSettingsMode] = useState<"compact" | "expanded">("compact");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Filter sessions based on search query
   const filteredSessions = useMemo(() => {
@@ -119,6 +132,13 @@ export function ChatSidebar({
     return category?.name || id;
   };
 
+  const handleDeleteAllChats = () => {
+    if (onDeleteAllChats) {
+      onDeleteAllChats();
+    }
+    setShowDeleteConfirm(false);
+  };
+
   return (
     <div className={cn("h-full flex flex-col bg-background border-r overflow-hidden sidebar-container", className)}>
       
@@ -140,7 +160,12 @@ export function ChatSidebar({
                 {showFilters ? "필터 숨기기" : "필터 보기"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>모든 대화 삭제</DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-red-600 focus:text-red-600"
+              >
+                모든 대화 삭제
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -313,6 +338,27 @@ export function ChatSidebar({
           </div>
         </div>
       </ScrollArea>
+
+      {/* 모든 대화 삭제 확인 다이얼로그 */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>모든 대화를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 작업은 되돌릴 수 없습니다. 모든 채팅 기록이 영구적으로 삭제됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteAllChats}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

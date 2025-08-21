@@ -664,7 +664,7 @@ export function CategorySelector({
                     >
                       {category.name}
                     </div>
-                    {showDocumentCount && (
+                    {showDocumentCount && !compactMode && (
                       <div className="flex items-center mt-0.5">
                         <Badge
                           variant={isSelected ? "default" : "secondary"}

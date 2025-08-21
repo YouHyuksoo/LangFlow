@@ -140,7 +140,7 @@ export default function AdminLayout({
   const isPreprocessingEditorPage = pathname?.startsWith('/admin/preprocessing/') && pathname !== '/admin/preprocessing'
 
   return (
-    <div className="flex h-screen bg-muted">
+    <div className="flex bg-muted min-h-screen">
       {/* 사이드바 - 전처리 에디터에서는 숨김 */}
       {!isPreprocessingEditorPage && (
         <div className={cn(
@@ -321,7 +321,7 @@ export default function AdminLayout({
       )}
 
       {/* 메인 컨텐츠 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col">
         {/* 상단 헤더 (모바일) - 전처리 에디터에서는 숨김 */}
         {!isPreprocessingEditorPage && (
           <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-background border-b">
@@ -343,7 +343,7 @@ export default function AdminLayout({
           "flex-1 bg-background",
           pathname.startsWith('/admin/preprocessing/') 
             ? "overflow-hidden p-0" // preprocessing 에디터는 스크롤 없음, 패딩 없음
-            : "overflow-y-auto p-6" // 다른 페이지는 기존대로
+            : "p-6" // 다른 페이지는 스크롤 제거, 패딩만 유지
         )}>
           <div className={cn(
             pathname.startsWith('/admin/preprocessing/') 

@@ -54,13 +54,13 @@
     @apply border-border;
   }
   
-  html, body {
+  html {
     height: 100%;
   }
   
   body {
+    min-height: 100vh;
     @apply bg-background text-foreground;
-    overflow: hidden !important;
   }
 }
 

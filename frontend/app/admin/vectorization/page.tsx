@@ -28,6 +28,8 @@ import {
   FileText,
   RotateCcw,
   Trash2,
+  Settings,
+  HardDrive,
 } from "lucide-react";
 import { fileAPI, doclingAPI, settingsAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -900,96 +902,120 @@ export default function VectorizationPage() {
       </div>
 
       {/* 문서 처리 설정 정보 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">문서 처리 설정</CardTitle>
-          <CardDescription>
-            현재 적용 중인 전처리 방식과 문서 처리 설정을 확인할 수 있습니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">전처리 방식</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">{systemSettings?.preprocessing_method || "N/A"}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">임베딩 모델</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold truncate">{vectorizationSettings?.embedding_model?.name || "N/A"}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">벡터 DB</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">{vectorDbInfo?.collections?.[0] || "N/A"}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">파일 업로드 설정</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">{systemSettings?.maxFileSize || 10}MB</div>
-              </CardContent>
-            </Card>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="stat-card relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">전처리 방식</CardTitle>
+            <Settings className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{systemSettings?.preprocessing_method || "N/A"}</div>
+            <p className="text-xs text-muted-foreground">
+              현재 사용 중인 전처리 방법
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="stat-card relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">임베딩 모델</CardTitle>
+            <Database className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold truncate">{vectorizationSettings?.embedding_model?.name || "N/A"}</div>
+            <p className="text-xs text-muted-foreground">
+              벡터화에 사용되는 모델
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="stat-card relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">벡터 DB</CardTitle>
+            <HardDrive className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{vectorDbInfo?.collections?.[0] || "N/A"}</div>
+            <p className="text-xs text-muted-foreground">
+              벡터 데이터 저장소
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="stat-card relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">파일 업로드 제한</CardTitle>
+            <FileText className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{systemSettings?.maxFileSize || 10}MB</div>
+            <p className="text-xs text-muted-foreground">
+              최대 파일 크기 제한
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* 통계 카드들 */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card>
+        <Card className="stat-card relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">전체 파일</CardTitle>
             <FileText className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalFiles}</div>
+            <p className="text-xs text-muted-foreground">
+              업로드된 총 파일 수
+            </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="stat-card relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">벡터화 완료</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.vectorizedFiles}</div>
+            <p className="text-xs text-muted-foreground">
+              벡터화 완료된 파일 수
+            </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="stat-card relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">처리 대기</CardTitle>
             <Clock className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pendingFiles}</div>
+            <p className="text-xs text-muted-foreground">
+              벡터화 대기 중인 파일 수
+            </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="stat-card relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">실패</CardTitle>
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.failedFiles}</div>
+            <p className="text-xs text-muted-foreground">
+              벡터화 실패한 파일 수
+            </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="stat-card relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">총 청크</CardTitle>
             <Database className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalChunks.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">
+              생성된 벡터 청크 수
+            </p>
           </CardContent>
         </Card>
       </div>

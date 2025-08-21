@@ -88,6 +88,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ChatNavigation } from "@/components/chat-navigation";
 import { 
   Select, 
   SelectContent, 
@@ -654,6 +655,19 @@ export default function ChatPage() {
     createNewSession();
   }, [createNewSession]);
 
+  // 모든 대화 삭제
+  const handleDeleteAllChats = useCallback(() => {
+    setChatSessions([]);
+    setCurrentSessionId(null);
+    setMessages([]);
+    
+    // 로컬 스토리지에서도 삭제
+    clearChatStorage();
+    
+    // 새 세션 생성
+    createNewSession();
+  }, [createNewSession]);
+
   // 채팅 세션 선택
   const handleSelectSession = useCallback((sessionId: string) => {
     const session = chatSessions.find(s => s.id === sessionId);
@@ -1032,7 +1046,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden" style={{height: 'calc(100vh - 64px)'}}>
+    <div className="min-h-screen bg-background">
+      <ChatNavigation />
+      <div className="flex w-full bg-background" style={{height: 'calc(100vh - 64px)'}}>
       {/* 사이드바 - 새로운 ChatSidebar 사용 */}
       {sidebarVisible && (
         <ChatSidebar
@@ -1040,6 +1056,7 @@ export default function ChatPage() {
           currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
           onNewChat={handleNewChat}
+          onDeleteAllChats={handleDeleteAllChats}
           categories={categories}
           personas={personas}
           selectedCategories={selectedCategories}
@@ -1342,6 +1359,7 @@ export default function ChatPage() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }

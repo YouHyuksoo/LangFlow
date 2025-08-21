@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import { MainNavigation } from "@/components/main-navigation";
 import { AuthProvider } from "@/context/auth-context";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "ThinkFlow - AI 문서 챗봇",
-  description: "사내 지식관리 RAG 시스템 by Jisung Solution Works",
+  title: "채팅 - ThinkFlow",
+  description: "AI 문서 검색 채팅",
 };
 
-export default function RootLayout({
+export default function ChatLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
     <html lang="ko" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -28,8 +23,8 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <MainNavigation />
-            <main>
+            {/* 채팅 페이지는 네비게이션 없이 전체 화면 사용 */}
+            <main className="h-screen">
               {children}
             </main>
             <Toaster />
