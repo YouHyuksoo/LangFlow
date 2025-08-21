@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { 
   FileTextIcon, 
   EditIcon, 
@@ -45,6 +46,7 @@ interface PreprocessingStats {
 }
 
 export default function PreprocessingWorkspacePage() {
+  const router = useRouter()
   const [files, setFiles] = useState<PreprocessingFile[]>([])
   const [stats, setStats] = useState<PreprocessingStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -319,7 +321,7 @@ export default function PreprocessingWorkspacePage() {
                       <Button
                         size="sm"
                         variant="default"
-                        onClick={() => window.location.href = `/admin/preprocessing/${file.file_id}`}
+                        onClick={() => router.push(`/admin/preprocessing/${file.file_id}`)}
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                       >
                         <EditIcon className="h-3 w-3 mr-1" />
@@ -329,7 +331,7 @@ export default function PreprocessingWorkspacePage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => window.location.href = `/admin/preprocessing/${file.file_id}`}
+                        onClick={() => router.push(`/admin/preprocessing/${file.file_id}`)}
                       >
                         <EditIcon className="h-3 w-3 mr-1" />
                         수정
