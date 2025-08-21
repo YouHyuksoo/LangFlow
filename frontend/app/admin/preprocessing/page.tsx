@@ -321,7 +321,7 @@ export default function PreprocessingWorkspacePage() {
                       <Button
                         size="sm"
                         variant="default"
-                        onClick={() => router.push(`/admin/preprocessing/${file.file_id}`)}
+                        onClick={() => router.push(`/admin/preprocessing/editor?fileId=${file.file_id}`)}
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                       >
                         <EditIcon className="h-3 w-3 mr-1" />
@@ -331,7 +331,7 @@ export default function PreprocessingWorkspacePage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => router.push(`/admin/preprocessing/${file.file_id}`)}
+                        onClick={() => router.push(`/admin/preprocessing/editor?fileId=${file.file_id}`)}
                       >
                         <EditIcon className="h-3 w-3 mr-1" />
                         수정
