@@ -248,9 +248,17 @@ const ChatMessage = memo(
                     {message.sourceDetails.map((source, index) => (
                       <div
                         key={index}
-                        className="stat-card relative overflow-hidden p-2 bg-background/50 rounded-md border text-xs max-w-full group hover:bg-background cursor-pointer transition-colors"
-                        onClick={() => onDownloadFile(source.file_id, source.filename)}
-                        title={`${source.filename} 다운로드`}
+                        className={`stat-card relative overflow-hidden p-2 bg-background/50 rounded-md border text-xs max-w-full group transition-colors ${
+                          source.file_id && source.filename 
+                            ? 'hover:bg-background cursor-pointer' 
+                            : 'opacity-50 cursor-not-allowed'
+                        }`}
+                        onClick={() => {
+                          if (source.file_id && source.filename) {
+                            onDownloadFile(source.file_id, source.filename);
+                          }
+                        }}
+                        title={source.file_id && source.filename ? `${source.filename} 다운로드` : '다운로드 불가'}
                       >
                         <div className="flex items-center gap-2">
                           <p className="font-medium truncate flex-1">

@@ -131,12 +131,22 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div>
             <Label className="mb-2 block">기본 시스템 메시지</Label>
-            <div data-color-mode={theme}>
+            <div data-color-mode={theme === 'dark' ? 'dark' : 'light'} className="w-md-editor-text">
               <MDEditor
                 value={settings.default_system_message || ""}
                 onChange={(value) => setSettings({ ...settings, default_system_message: value || "" })}
                 height={450}
-                textareaProps={{ placeholder: "AI의 기본 동작을 정의하는 시스템 메시지를 입력하세요." }}
+                textareaProps={{ 
+                  placeholder: "AI의 기본 동작을 정의하는 시스템 메시지를 입력하세요.",
+                  style: {
+                    color: theme === 'dark' ? '#ffffff' : '#000000',
+                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff'
+                  }
+                }}
+                data-color-mode={theme === 'dark' ? 'dark' : 'light'}
+                style={{
+                  backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff'
+                }}
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2">시스템 메시지는 AI의 기본 성격과 응답 방식을 정의합니다. <strong>마크다운</strong>을 사용할 수 있습니다.</p>

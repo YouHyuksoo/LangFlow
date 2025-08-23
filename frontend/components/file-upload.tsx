@@ -193,7 +193,7 @@ export function FileUpload({
             <Checkbox
               id="convert-to-pdf"
               checked={convertToPdf}
-              onCheckedChange={setConvertToPdf}
+              onCheckedChange={(checked) => setConvertToPdf(checked === true)}
             />
             <label
               htmlFor="convert-to-pdf"

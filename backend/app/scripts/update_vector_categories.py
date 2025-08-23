@@ -36,9 +36,8 @@ async def update_vector_categories():
     logger.info("벡터 메타데이터 카테고리명 업데이트 시작")
     
     try:
-        # 서비스 인스턴스 생성
-        vector_metadata_service = VectorMetadataService()
-        file_metadata_service = FileMetadataService()
+        # 서비스 인스턴스 사용
+        from ..models.vector_models import vector_metadata_service, file_metadata_service
         category_service = CategoryService()
         
         # 모든 벡터 메타데이터 조회

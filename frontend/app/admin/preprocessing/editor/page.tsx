@@ -346,10 +346,16 @@ export default function PreprocessingEditorPage() {
     }
   }
 
-  // 자동 청킹 제안 (PRD 핵심 기능)
+  // 자동 청킹 제안 (PRD 핵심 기능) - PDF 전용
   const handleProposeChunks = async () => {
+    // PDF 파일만 처리 가능
+    if (!fileInfo?.file_path?.endsWith('.pdf')) {
+      setError('빠른 청킹은 PDF 파일에서만 지원됩니다.')
+      return
+    }
+
     try {
-      console.log("🚀 빠른 청킹 작업 시작")
+      console.log("🚀 빠른 청킹 작업 시작 (PDF 전용)")
       console.log("📤 전송할 청킹 규칙:", chunkingRules)
       console.log("📋 문장분할방법:", chunkingRules.sentence_splitter)
       setProposing(true)
@@ -367,7 +373,14 @@ export default function PreprocessingEditorPage() {
       })
 
       if (!response.ok) {
-        throw new Error(`청킹 제안 실패: ${response.status} ${response.statusText}`)
+        const errorText = await response.text()
+        console.error('🔥 청킹 API 오류 상세:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText: errorText,
+          url: response.url
+        })
+        throw new Error(`청킹 제안 실패: ${response.status} ${response.statusText}\n${errorText}`)
       }
 
       const data = await response.json()
@@ -391,14 +404,20 @@ export default function PreprocessingEditorPage() {
     }
   }
   
-  // PRD3: AI 청킹 제안
+  // PRD3: AI 청킹 제안 - PDF 전용
   const handleAIChunking = async () => {
+    // PDF 파일만 처리 가능
+    if (!fileInfo?.file_path?.endsWith('.pdf')) {
+      setError('AI 청킹은 PDF 파일에서만 지원됩니다.')
+      return
+    }
+
     try {
       setAiProposing(true)
       setError(null)
       
-      // 파일 텍스트 가져오기
-      console.log(`🔍 파일 내용 요청 시작: fileId=${fileId}`)
+      // PDF 파일 텍스트 가져오기
+      console.log(`🔍 PDF 파일 내용 요청 시작: fileId=${fileId}`)
       const fileContentResponse = await api.get(`/api/v1/files/${fileId}/content`)
       
       console.log(`📡 API 응답 상태: 200 OK`)
@@ -1021,9 +1040,10 @@ export default function PreprocessingEditorPage() {
 
   // ==================== PRD 방식 3-Panel 레이아웃 ====================
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-full flex flex-col">
       {/* 네비게이션 바 */}
-      <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background">
+      <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background" style={{minHeight: '80px'}}>
+        {/* 왼쪽: 뒤로가기 + 파일 이름 */}
         <div className="flex items-center gap-4">
           <Button 
             variant="ghost" 
@@ -1038,16 +1058,17 @@ export default function PreprocessingEditorPage() {
               {fileInfo?.filename || '파일 에디터'}
             </h1>
             <p className="text-sm text-muted-foreground">
-              PRD 방식 사용자 개입형 청킹 - 자동 제안 → 편집 → 저장
+              PRD 방식 사용자 개입형 청킹
             </p>
           </div>
         </div>
         
+        {/* 오른쪽: 버튼들 */}
         <div className="flex items-center gap-2">
           {/* 청킹 실행 버튼들 */}
           <Button 
             onClick={handleProposeChunks}
-            disabled={proposing}
+            disabled={proposing || !fileInfo?.file_path?.endsWith('.pdf')}
             size="sm"
           >
             {proposing ? (
@@ -1065,7 +1086,7 @@ export default function PreprocessingEditorPage() {
           
           <Button 
             onClick={() => setAiDialogOpen(true)}
-            disabled={aiProposing}
+            disabled={aiProposing || !fileInfo?.file_path?.endsWith('.pdf')}
             variant="outline"
             size="sm"
             className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 border-blue-200 dark:border-blue-800 hover:from-blue-100 hover:to-purple-100 dark:hover:from-blue-900 dark:hover:to-purple-900"

@@ -169,8 +169,7 @@ class CategoryService:
             
             # SQLite에서 파일 메타데이터 읽어서 문서 수 계산
             try:
-                from ..models.vector_models import FileMetadataService
-                file_metadata_service = FileMetadataService()
+                from ..models.vector_models import file_metadata_service
                 all_files = file_metadata_service.list_files(include_deleted=False)
                 
                 category_document_counts = {}
@@ -281,8 +280,7 @@ class CategoryService:
         try:
             # SQLite에서 파일 메타데이터 읽어서 문서 수 계산
             try:
-                from ..models.vector_models import FileMetadataService
-                file_metadata_service = FileMetadataService()
+                from ..models.vector_models import file_metadata_service
                 all_files = file_metadata_service.list_files(include_deleted=False)
                 
                 category_document_counts = {}

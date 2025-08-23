@@ -141,10 +141,24 @@ export default function UsersPage() {
 
   // Load data
   useEffect(() => {
-    loadUsers();
-    loadPersonas();
-    loadInterestAreas();
-    loadCategories();
+    let mounted = true;
+    
+    const initData = async () => {
+      if (!mounted) return;
+      await loadUsers();
+      if (!mounted) return;
+      await loadPersonas();
+      if (!mounted) return;
+      await loadInterestAreas();
+      if (!mounted) return;
+      await loadCategories();
+    };
+    
+    initData();
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const loadUsers = async () => {
@@ -182,6 +196,9 @@ export default function UsersPage() {
   };
 
   const loadCategories = async () => {
+    // 이미 로딩 중이거나 로딩 완료된 경우 중복 호출 방지
+    if (categories.length > 0) return;
+    
     try {
       const categoriesData = await categoryAPI.getCategories();
       setCategories(categoriesData);
@@ -616,7 +633,7 @@ export default function UsersPage() {
               <CardDescription>회원가입 신청을 한 사용자들의 승인 대기 목록입니다.</CardDescription>
             </CardHeader>
             <CardContent>
-              <PendingUsersSection />
+              <PendingUsersSection categories={categories} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -989,9 +1006,8 @@ export default function UsersPage() {
 }
 
 // 승인 대기 사용자 관리 컴포넌트
-function PendingUsersSection() {
+function PendingUsersSection({ categories }: { categories: Category[] }) {
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
@@ -1009,15 +1025,6 @@ function PendingUsersSection() {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadCategories = async () => {
-    try {
-      const categoriesData = await categoryAPI.getCategories();
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error("카테고리 목록 로딩 실패:", error);
     }
   };
 
@@ -1066,7 +1073,6 @@ function PendingUsersSection() {
 
   useEffect(() => {
     fetchPendingUsers();
-    loadCategories();
   }, []);
 
   if (loading) {

@@ -86,7 +86,7 @@ def initialize_database():
         )
         """)
         
-        print("Database initialized with chat_history and manual preprocessing tables ready.")
+        print("✅ 사용자 데이터베이스 초기화 완료 (채팅 히스토리 및 수동 전처리 테이블 준비)")
         conn.commit()
         
     except sqlite3.Error as e:

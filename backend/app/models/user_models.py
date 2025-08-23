@@ -139,7 +139,7 @@ class UserDatabase:
                 conn.commit()
                 print("Avatar_url column added.")
                 
-            print("Database migration completed.")
+            print("✅ 사용자 모델 데이터베이스 마이그레이션 완료")
     
     def _populate_default_data(self):
         """Populate default personas and interest areas"""

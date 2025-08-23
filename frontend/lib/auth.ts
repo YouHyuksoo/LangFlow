@@ -67,6 +67,11 @@ export const isAdmin = (user: User | null): boolean => {
   return user?.role === 'admin';
 };
 
+// 전역 인증 상태 (싱글톤 패턴으로 중복 호출 방지)
+let authCheckPromise: Promise<User | null> | null = null;
+let authCheckResult: { user: User | null; timestamp: number } | null = null;
+const AUTH_CACHE_DURATION = 5000; // 5초
+
 // 인증 상태 훅
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -91,7 +96,31 @@ export const useAuth = () => {
         return;
       }
       
-      const currentUser = await getCurrentUser();
+      // 캐시된 결과 확인
+      if (authCheckResult && Date.now() - authCheckResult.timestamp < AUTH_CACHE_DURATION) {
+        const cachedUser = authCheckResult.user;
+        setUser(cachedUser);
+        setIsAuthenticated(!!cachedUser);
+        setIsAdminUser(cachedUser ? isAdmin(cachedUser) : false);
+        return;
+      }
+
+      // 진행 중인 인증 체크가 있으면 대기
+      if (authCheckPromise) {
+        const currentUser = await authCheckPromise;
+        setUser(currentUser);
+        setIsAuthenticated(!!currentUser);
+        setIsAdminUser(currentUser ? isAdmin(currentUser) : false);
+        return;
+      }
+
+      // 새로운 인증 체크 시작
+      authCheckPromise = getCurrentUser();
+      const currentUser = await authCheckPromise;
+      
+      // 결과 캐싱
+      authCheckResult = { user: currentUser, timestamp: Date.now() };
+      authCheckPromise = null;
       
       if (currentUser) {
         setUser(currentUser);
@@ -104,6 +133,8 @@ export const useAuth = () => {
       }
     } catch (error) {
       console.error('인증 확인 실패:', error);
+      authCheckPromise = null;
+      authCheckResult = null;
       setUser(null);
       setIsAuthenticated(false);
       setIsAdminUser(false);
@@ -118,6 +149,11 @@ export const useAuth = () => {
 
       if (data.success && data.session_id && data.user) {
         setSessionId(data.session_id);
+        
+        // 인증 캐시 업데이트
+        authCheckResult = { user: data.user, timestamp: Date.now() };
+        authCheckPromise = null;
+        
         setUser(data.user);
         setIsAuthenticated(true);
         setIsAdminUser(isAdmin(data.user));
@@ -136,6 +172,8 @@ export const useAuth = () => {
   const logout = async (): Promise<void> => {
     // 먼저 클라이언트 상태를 정리
     removeSessionId();
+    authCheckPromise = null;
+    authCheckResult = null;
     setUser(null);
     setIsAuthenticated(false);
     setIsAdminUser(false);

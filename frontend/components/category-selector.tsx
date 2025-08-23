@@ -385,12 +385,11 @@ export function CategorySelector({
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedCategories, setHasLoadedCategories] = useState(false);
 
-  // 카테고리 데이터 로드 (강화된 중복 호출 방지)
+  // 카테고리 데이터 로드
   useEffect(() => {
     const loadCategories = async () => {
-      // 중복 호출 방지
+      // 이미 로드된 경우 스킵
       if (hasLoadedCategories) {
-        console.log("CategorySelector - 이미 로드됨, 중복 호출 방지");
         return;
       }
 
@@ -402,40 +401,35 @@ export function CategorySelector({
         if (externalCategories && externalCategoryStats) {
           setCategories(externalCategories);
           setCategoryStats(externalCategoryStats);
-          setIsLoading(false);
           setHasLoadedCategories(true);
+          setIsLoading(false);
           return;
         }
 
-        // 카테고리 목록 로드
-        const categoriesData = await categoryAPI.getCategories();
-
-        // 통계 정보는 showDocumentCount가 true일 때만 로드
-        let statsData = {};
+        // 카테고리 목록과 통계를 한 번에 병렬로 로드
+        const promises = [categoryAPI.getCategories()];
+        
         if (showDocumentCount) {
-          try {
-            statsData = await categoryAPI.getCategoryDocumentCounts();
-          } catch (error) {
-            console.warn("카테고리 통계 로드 실패:", error);
-            statsData = {};
-          }
+          promises.push(categoryAPI.getCategoryDocumentCounts());
         }
 
-        console.log("로드된 카테고리 데이터:", categoriesData);
+        const results = await Promise.all(promises);
+        const categoriesData = results[0];
+        const statsData = results[1] || {};
+
         setCategories(categoriesData);
         setCategoryStats(statsData);
         setHasLoadedCategories(true);
       } catch (err) {
         console.error("카테고리 로드 실패:", err);
         setError("카테고리를 불러오는데 실패했습니다.");
-        // 에러가 발생해도 다시 시도할 수 있도록 hasLoadedCategories는 설정하지 않음
       } finally {
         setIsLoading(false);
       }
     };
 
     loadCategories();
-  }, []); // 빈 의존성 배열 - 컴포넌트 마운트 시 한 번만 실행
+  }, [externalCategories, externalCategoryStats, showDocumentCount]); // 의존성 추가
 
   const handleCategoryToggle = (categoryId: string) => {
     if (multiSelect) {
@@ -460,40 +454,31 @@ export function CategorySelector({
   };
 
   const refreshCategories = async () => {
-    setHasLoadedCategories(false);
     try {
+      setHasLoadedCategories(false);
       setIsLoading(true);
       setError(null);
 
-      console.log("카테고리 새로고침 시작...");
-
       // 카테고리 목록 가져오기
-      console.log("카테고리 목록 요청 중...");
       const categoriesData = await categoryAPI.getCategories();
-      console.log("카테고리 목록 응답:", categoriesData);
       setCategories(categoriesData);
 
       // 카테고리 통계 가져오기 (실패해도 목록은 표시)
-      try {
-        console.log("카테고리 통계 요청 중...");
-        const statsData = await categoryAPI.getCategoryStats();
-        console.log("카테고리 통계 응답:", statsData);
-        setCategoryStats(statsData);
-      } catch (statsError) {
-        console.warn("카테고리 통계 로드 실패, 기본값 사용:", statsError);
-        setCategoryStats({});
+      if (showDocumentCount) {
+        try {
+          const statsData = await categoryAPI.getCategoryStats();
+          setCategoryStats(statsData);
+        } catch (statsError) {
+          console.warn("카테고리 통계 로드 실패:", statsError);
+          setCategoryStats({});
+        }
       }
+      
       setHasLoadedCategories(true);
-      console.log("카테고리 새로고침 완료!");
     } catch (error) {
-      console.error("카테고리 새로고침 실패 - 상세 정보:", error);
-      console.error("에러 타입:", typeof error);
-
+      console.error("카테고리 새로고침 실패:", error);
+      
       const errorObj = error as any;
-      console.error("에러 메시지:", errorObj?.message);
-      console.error("에러 응답:", errorObj?.response);
-      console.error("에러 스택:", errorObj?.stack);
-
       let errorMessage = "카테고리 데이터를 새로고침하는데 실패했습니다.";
       if (errorObj?.response?.status) {
         errorMessage += ` (HTTP ${errorObj.response.status})`;

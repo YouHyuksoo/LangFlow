@@ -136,8 +136,8 @@ export default function AdminLayout({
     )
   }
 
-  // 전처리 에디터 페이지인지 확인
-  const isPreprocessingEditorPage = pathname?.startsWith('/admin/preprocessing/') && pathname !== '/admin/preprocessing'
+  // 전처리 에디터 페이지인지 확인 (동적 라우팅만)
+  const isPreprocessingEditorPage = pathname?.startsWith('/admin/preprocessing/') && pathname !== '/admin/preprocessing' && pathname !== '/admin/preprocessing/editor'
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
@@ -353,12 +353,12 @@ export default function AdminLayout({
         <div className="flex-1 flex flex-col overflow-hidden">
           <main className={cn(
             "flex-1 bg-background overflow-y-auto",
-            pathname.startsWith('/admin/preprocessing/') 
+            isPreprocessingEditorPage 
               ? "overflow-hidden p-0" // preprocessing 에디터는 스크롤 없음, 패딩 없음
               : "p-6" // 다른 페이지는 패딩 유지
           )}>
             <div className={cn(
-              pathname.startsWith('/admin/preprocessing/') 
+              isPreprocessingEditorPage 
                 ? "" // preprocessing 에디터는 패딩 없음
                 : "pb-12" // 다른 페이지는 내부 컨텐츠에만 하단 여백
             )}>

@@ -307,7 +307,7 @@ class VectorService:
                 "sequential_operations": 0
             }
             
-            print(f"VectorService 초기화 완료 - 병렬 처리: {self.enable_parallel}")
+            print(f"✅ Vector 서비스 초기화 완료 - 병렬 처리: {self.enable_parallel}")
             VectorService._initialized = True
 
     # --- 핵심적인 새 파이프라인 함수 ---

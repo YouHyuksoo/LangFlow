@@ -418,7 +418,11 @@ class FileService:
             error_message=file_metadata.error_message,
             chunk_count=file_metadata.chunk_count,
             preprocessing_method=file_metadata.preprocessing_method,
-            vectorized=file_metadata.vectorized  # 추가된 필드
+            vectorized=file_metadata.vectorized,  # 추가된 필드
+            # PDF 변환 정보 필드 추가
+            is_converted_to_pdf=file_metadata.is_converted_to_pdf,
+            original_extension=file_metadata.original_extension,
+            conversion_method=file_metadata.conversion_method
         )
 
     def _ensure_data_dir(self):
@@ -469,9 +473,14 @@ class FileService:
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
-            # PDF 변환 처리
+            # PDF 변환 처리 및 변환 정보 저장
+            original_extension = None
+            is_converted = False
+            conversion_method = None
+            
             if convert_to_pdf and file_extension.lower() != '.pdf':
                 self.logger.info(f"PDF 변환 시작: {file.filename} -> PDF")
+                original_extension = file_extension  # 원본 확장자 저장
                 try:
                     pdf_path = await self._convert_to_pdf(file_path, file_id)
                     if pdf_path and os.path.exists(pdf_path):
@@ -482,6 +491,9 @@ class FileService:
                         file_extension = '.pdf'
                         # 변환된 PDF 파일 크기 재계산
                         file_size = os.path.getsize(file_path)
+                        # 변환 성공 정보 저장
+                        is_converted = True
+                        conversion_method = "python_lib"
                         self.logger.info(f"PDF 변환 완료: {saved_filename}")
                     else:
                         self.logger.error(f"PDF 변환 실패: {file.filename}")
@@ -490,6 +502,10 @@ class FileService:
                     self.logger.error(f"PDF 변환 중 오류: {convert_error}")
                     # 변환 실패 시 원본 파일 유지하고 경고만 로그
                     self.logger.warning(f"PDF 변환 실패로 원본 파일 유지: {file.filename}")
+                    # 변환 실패 시 변환 정보 초기화
+                    original_extension = None
+                    is_converted = False
+                    conversion_method = None
             
             # 기본 전처리 방법을 설정에서 가져오기
             system_settings = settings_service.get_section_settings("system")
@@ -507,7 +523,11 @@ class FileService:
                 category_name=category_name,
                 status=FileStatus.UPLOADED,
                 upload_time=datetime.now(),
-                preprocessing_method=default_preprocessing_method  # 설정에서 가져온 기본값
+                preprocessing_method=default_preprocessing_method,  # 설정에서 가져온 기본값
+                # PDF 변환 정보 저장
+                is_converted_to_pdf=is_converted,
+                original_extension=original_extension,
+                conversion_method=conversion_method
             )
             
             success = self.file_metadata_service.create_file(file_metadata)
@@ -579,10 +599,11 @@ class FileService:
             if not os.path.exists(original_path):
                 return {"success": False, "error": "원본 파일을 찾을 수 없습니다"}
             
-            filename_lower = file_metadata.filename.lower()
+            # 실제 파일 경로의 확장자로 처리 방식 결정 (변환된 파일 지원)
+            file_path_lower = original_path.lower()
             
             # 텍스트 파일인 경우 직접 읽기
-            if filename_lower.endswith(('.txt', '.md', '.html', '.json', '.xml', '.csv')):
+            if file_path_lower.endswith(('.txt', '.md', '.html', '.json', '.xml', '.csv')):
                 try:
                     with open(original_path, 'r', encoding='utf-8') as f:
                         content = f.read()
@@ -596,7 +617,7 @@ class FileService:
                         return {"success": False, "error": f"텍스트 파일 읽기 실패: {str(e)}"}
             
             # PPTX 파일인 경우 - 텍스트 추출 (빠른청킹용)
-            elif filename_lower.endswith('.pptx'):
+            elif file_path_lower.endswith('.pptx'):
                 try:
                     from pptx import Presentation
                     
@@ -622,7 +643,7 @@ class FileService:
                     return {"success": False, "error": f"PPTX 텍스트 추출 중 오류 발생: {str(e)}"}
             
             # DOCX 파일인 경우 - 텍스트 추출 (빠른청킹용)
-            elif filename_lower.endswith('.docx'):
+            elif file_path_lower.endswith('.docx'):
                 try:
                     from docx import Document
                     
@@ -642,7 +663,7 @@ class FileService:
                     return {"success": False, "error": f"DOCX 텍스트 추출 중 오류 발생: {str(e)}"}
             
             # PDF 파일인 경우 - 텍스트 추출 (빠른청킹용)
-            elif filename_lower.endswith('.pdf'):
+            elif file_path_lower.endswith('.pdf'):
                 try:
                     import fitz  # PyMuPDF
                     

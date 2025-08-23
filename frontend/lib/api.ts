@@ -5,6 +5,25 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // API 연결 상태 확인
 console.log("API Base URL:", API_BASE_URL);
 
+// 캐시 및 중복 호출 방지를 위한 저장소
+const apiCache = new Map<string, { data: any; timestamp: number; promise?: Promise<any> }>();
+const CACHE_DURATION = 5000; // 5초 캐시
+
+// 캐시된 데이터 가져오기
+const getCachedData = (key: string) => {
+  const cached = apiCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+  return null;
+};
+
+// 진행 중인 요청 확인
+const getPendingRequest = (key: string) => {
+  const cached = apiCache.get(key);
+  return cached?.promise || null;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -32,16 +51,10 @@ api.interceptors.request.use(
 // 응답 인터셉터 - 에러 처리
 api.interceptors.response.use(
   (response) => {
-    // 성공 응답 로깅
-    console.log(
-      `API 응답 성공: ${response.config.method?.toUpperCase()} ${
-        response.config.url
-      }`,
-      {
-        status: response.status,
-        data: response.data,
-      }
-    );
+    // 성공 응답 (로깅 최소화)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+    }
     return response;
   },
   (error) => {
@@ -104,13 +117,37 @@ api.interceptors.response.use(
 // 설정 API
 export const settingsAPI = {
   getSettings: async () => {
+    const cacheKey = 'settings';
+    
+    // 캐시된 데이터 확인
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    // 진행 중인 요청 확인
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
     try {
-      const response = await api.get("/api/v1/settings/");
-      return response.data;
+      const requestPromise = api.get("/api/v1/settings/").then(response => response.data);
+      
+      // 진행 중인 요청으로 저장
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      // 결과를 캐시에 저장
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
     } catch (error) {
+      // 에러 발생 시 캐시에서 제거하고 기본값 반환
+      apiCache.delete(cacheKey);
       console.error("설정 로드 실패, 기본값 사용:", error);
-      // 에러 시 기본값 반환
-      return {
+      const defaultSettings = {
         maxFileSize: 10, // MB
         allowedFileTypes: ["pdf"],
         uploadDirectory: "uploads/",
@@ -120,6 +157,10 @@ export const settingsAPI = {
         enableNotifications: true,
         debugMode: false,
       };
+      
+      // 기본값도 캐시에 저장
+      apiCache.set(cacheKey, { data: defaultSettings, timestamp: Date.now() });
+      return defaultSettings;
     }
   },
 
@@ -304,6 +345,16 @@ export const fileAPI = {
         "Content-Type": "multipart/form-data",
       },
     });
+    
+    // 파일 관련 캐시 무효화
+    const keysToDelete: string[] = [];
+    apiCache.forEach((value, key) => {
+      if (key.startsWith('files')) {
+        keysToDelete.push(key);
+      }
+    });
+    keysToDelete.forEach(key => apiCache.delete(key));
+    
     return response.data;
   },
 
@@ -326,14 +377,53 @@ export const fileAPI = {
   },
 
   getFiles: async (category?: string) => {
-    const response = await api.get("/api/v1/files/", {
-      params: { category },
-    });
-    return response.data;
+    const cacheKey = `files${category ? `-${category}` : ''}`;
+    
+    // 캐시된 데이터 확인
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    // 진행 중인 요청 확인
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
+    try {
+      const requestPromise = api.get("/api/v1/files/", {
+        params: { category },
+      }).then(response => response.data);
+      
+      // 진행 중인 요청으로 저장
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      // 결과를 캐시에 저장
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
+    } catch (error: any) {
+      // 에러 발생 시 캐시에서 제거
+      apiCache.delete(cacheKey);
+      throw error;
+    }
   },
 
   deleteFile: async (fileId: string) => {
     const response = await api.delete(`/api/v1/files/${fileId}`);
+    
+    // 파일 관련 캐시 무효화
+    const keysToDelete: string[] = [];
+    apiCache.forEach((value, key) => {
+      if (key.startsWith('files')) {
+        keysToDelete.push(key);
+      }
+    });
+    keysToDelete.forEach(key => apiCache.delete(key));
+    
     return response.data;
   },
 
@@ -788,24 +878,36 @@ export const adminAPI = {
 export const categoryAPI = {
   // 모든 카테고리 목록
   getCategories: async () => {
+    const cacheKey = 'categories';
+    
+    // 캐시된 데이터 확인
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    // 진행 중인 요청 확인
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
     try {
-      console.log("카테고리 API 호출 시작");
-      const response = await api.get("/api/v1/categories/");
-      console.log("카테고리 API 응답 상태:", response.status);
-      console.log("카테고리 API 응답 데이터:", response.data);
-      console.log("응답 데이터 타입:", typeof response.data);
-      console.log("응답 데이터가 배열인가?", Array.isArray(response.data));
-      return response.data;
+      const requestPromise = api.get("/api/v1/categories/").then(response => response.data);
+      
+      // 진행 중인 요청으로 저장
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      // 결과를 캐시에 저장
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
     } catch (error: any) {
+      // 에러 발생 시 캐시에서 제거
+      apiCache.delete(cacheKey);
       console.error("카테고리 API 호출 실패:", error);
-      console.error(
-        "오류 상세:",
-        error instanceof Error ? error.message : error
-      );
-      if (error.response) {
-        console.error("응답 상태:", error.response.status);
-        console.error("응답 데이터:", error.response.data);
-      }
       throw error;
     }
   },

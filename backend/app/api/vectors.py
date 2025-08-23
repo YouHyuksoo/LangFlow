@@ -1403,9 +1403,7 @@ async def get_documents_list(
     """문서 목록 조회 (관리자용)"""
     try:
         from ..services.file_service import FileService
-        from ..models.vector_models import FileMetadataService
-        
-        file_metadata_service = FileMetadataService()
+        from ..models.vector_models import file_metadata_service
         
         # 필터 조건에 따라 파일 조회
         if status == "deleted":

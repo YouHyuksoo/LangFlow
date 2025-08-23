@@ -94,6 +94,10 @@ class FileInfo(BaseModel):
     chunk_count: Optional[int] = None
     preprocessing_method: Optional[str] = None
     vectorized: bool = False  # 실제 벡터화 상태 필드 추가
+    # PDF 자동 변환 관련 필드
+    is_converted_to_pdf: bool = False  # PDF로 변환되었는지 여부
+    original_extension: Optional[str] = None  # 원본 파일 확장자 (.docx, .xlsx 등)
+    conversion_method: Optional[str] = None  # 변환 방법 (python_lib, external_tool 등)
     # 처리 옵션(존재할 수 있음). 런타임에 객체가 주입될 수 있어 Any 허용
     processing_options: Optional[Any] = None
     

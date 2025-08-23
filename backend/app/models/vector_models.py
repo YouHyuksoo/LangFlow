@@ -98,6 +98,11 @@ class FileMetadata(SQLModel, table=True):
     docling_options: Optional[str] = None  # JSON string
     processing_options: Optional[str] = None  # JSON string
     
+    # PDF 자동 변환 관련 필드
+    is_converted_to_pdf: bool = Field(default=False)  # PDF로 변환되었는지 여부
+    original_extension: Optional[str] = None  # 원본 파일 확장자 (.docx, .xlsx 등)
+    conversion_method: Optional[str] = None  # 변환 방법 (python_lib, external_tool 등)
+    
     # 에러 관리
     error_message: Optional[str] = None
     error_type: Optional[str] = None
@@ -134,9 +139,21 @@ class FileMetadata(SQLModel, table=True):
 
 
 class VectorMetadataService:
-    """벡터 메타데이터 SQLite 서비스"""
+    """벡터 메타데이터 SQLite 서비스 (싱글톤)"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
     
     def __init__(self):
+        # 이미 초기화된 경우 중복 실행 방지
+        if VectorMetadataService._initialized:
+            return
+            
         # SQLite 데이터베이스 파일 경로
         self.db_path = os.path.join(settings.DATA_DIR, 'db', 'chromadb', 'metadata.db')
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -160,7 +177,10 @@ class VectorMetadataService:
         
         # 테이블 생성
         SQLModel.metadata.create_all(self.engine)
-        print(f"Vector metadata database initialized: {self.db_path}")
+        print(f"✅ Vector 메타데이터 데이터베이스 초기화 완료: {self.db_path}")
+        
+        # 초기화 완료 플래그 설정
+        VectorMetadataService._initialized = True
     
     def create_metadata(self, metadata: VectorMetadata) -> bool:
         """메타데이터 생성"""
@@ -387,10 +407,43 @@ class FileMetadataService:
         
         # 테이블 생성
         SQLModel.metadata.create_all(self.engine)
-        print(f"File metadata database initialized: {self.db_path}")
+        print(f"✅ File 메타데이터 데이터베이스 초기화 완료: {self.db_path}")
+        
+        # 데이터베이스 마이그레이션 실행
+        self._run_migrations()
         
         # 초기화 완료 플래그 설정
         FileMetadataService._initialized = True
+
+    def _run_migrations(self):
+        """데이터베이스 마이그레이션 실행"""
+        try:
+            with self.engine.connect() as conn:
+                # PDF 변환 관련 컬럼이 없는 경우 추가
+                try:
+                    conn.execute(text("ALTER TABLE file_metadata ADD COLUMN is_converted_to_pdf BOOLEAN DEFAULT 0"))
+                    print("Added is_converted_to_pdf column")
+                except Exception:
+                    pass  # 컬럼이 이미 존재하는 경우
+                
+                try:
+                    conn.execute(text("ALTER TABLE file_metadata ADD COLUMN original_extension VARCHAR"))
+                    print("Added original_extension column")
+                except Exception:
+                    pass  # 컬럼이 이미 존재하는 경우
+                
+                try:
+                    conn.execute(text("ALTER TABLE file_metadata ADD COLUMN conversion_method VARCHAR"))
+                    print("Added conversion_method column")
+                except Exception:
+                    pass  # 컬럼이 이미 존재하는 경우
+                
+                conn.commit()
+                print("✅ 데이터베이스 마이그레이션 완료")
+                
+        except Exception as e:
+            print(f"Migration error (non-critical): {e}")
+            # 마이그레이션 실패는 치명적이지 않음 (SQLModel이 알아서 처리)
     
     def create_file(self, file_metadata: FileMetadata) -> bool:
         """파일 메타데이터 생성"""
@@ -770,7 +823,7 @@ class ManualPreprocessingService:
         
         # 기존 파일 메타데이터 서비스와 동일한 데이터베이스 사용
         self.file_service = FileMetadataService()
-        print("Manual preprocessing service initialized")
+        print("✅ 수동 전처리 서비스 초기화 완료")
     
     def get_files_for_preprocessing(self, limit: Optional[int] = None) -> list[Dict[str, Any]]:
         """전처리 가능한 파일 목록 조회 (상태 정보 포함)"""

@@ -165,19 +165,12 @@ export default function UploadPage() {
   // 파일 목록 로드 함수 (개선된 에러 처리)
   const loadUploadedFiles = useCallback(
     async (forceRefresh = false) => {
-      console.log(
-        "loadUploadedFiles 호출됨 - 개선된 files API 사용",
-        forceRefresh ? "(강제 새로고침)" : ""
-      );
-
       // 강화된 중복 호출 방지 (강제 새로고침 시에는 무시)
       if (isLoadingRef && !forceRefresh) {
-        console.log("파일 목록 로드 중복 호출 방지 - isLoadingRef");
         return;
       }
 
       if (hasLoadedOnce && !forceRefresh) {
-        console.log("파일 목록 로드 중복 호출 방지 - hasLoadedOnce");
         return;
       }
 
@@ -185,9 +178,7 @@ export default function UploadPage() {
         setIsLoadingRef(true);
         setLoading(true);
 
-        console.log("files API 호출 시작...");
         const response = await fileAPI.getFiles();
-        console.log("files API 호출 성공:", response.length, "개 파일");
 
         // API 응답을 UploadedFile 형태로 변환
         const serverFiles: UploadedFile[] = response.map((file: any) => {
@@ -264,7 +255,6 @@ export default function UploadPage() {
 
         // 로드 완료 플래그 설정
         setHasLoadedOnce(true);
-        console.log("파일 목록 로드 완료:", serverFiles.length, "개 파일");
       } catch (error) {
         console.error("업로드된 파일 목록 로드 실패:", error);
 
@@ -304,20 +294,8 @@ export default function UploadPage() {
     forceReplace: boolean = false
   ) => {
     try {
-      console.log(
-        "파일 업로드 시작:",
-        file.name,
-        "카테고리:",
-        category,
-        "PDF 변환:",
-        convertToPdf,
-        "강제 교체:",
-        forceReplace
-      );
-
       // 파일 업로드 API 호출
       const response = await fileAPI.uploadFile(file, category, forceReplace, convertToPdf);
-      console.log("파일 업로드 성공:", response);
 
       // 업로드 성공 토스트
       const successMessage = convertToPdf 
@@ -339,9 +317,8 @@ export default function UploadPage() {
         });
       }
 
-      // 파일 목록 즉시 갱신 🆕 (강제 새로고침)
-      console.log("업로드 완료 후 파일 목록 갱신 중...");
-      await loadUploadedFiles(true); // 강제 새로고침
+      // 파일 목록 즉시 갱신 (강제 새로고침)
+      await loadUploadedFiles(true);
 
       // 파일 이벤트 발송 (다른 컴포넌트 갱신용)
       emitFileUploaded({
@@ -356,7 +333,6 @@ export default function UploadPage() {
       if (error.response?.status === 409) {
         const duplicateInfo =
           error.response?.data?.detail || error.response?.data;
-        console.log("중복 파일 감지:", duplicateInfo);
 
         setDuplicateModal({
           isOpen: true,
@@ -374,7 +350,6 @@ export default function UploadPage() {
         error.message ||
         "파일 업로드 중 오류가 발생했습니다.";
 
-      console.error("업로드 에러 상세:", error.response?.data);
 
       toast({
         title: "업로드 실패",
@@ -558,13 +533,12 @@ export default function UploadPage() {
             onFileUpload={handleFileUpload}
             onLoadFiles={loadUploadedFiles}
             onUploadStart={(fileName) => {
-              console.log(`📤 업로드 시작: ${fileName}`);
+              // 업로드 시작
             }}
             onUploadComplete={(fileName) => {
-              console.log(`✅ 업로드 완료: ${fileName}`);
               // 추가 갱신 (보험)
               setTimeout(() => {
-                loadUploadedFiles(true); // 강제 새로고침
+                loadUploadedFiles(true);
               }, 200);
             }}
           />

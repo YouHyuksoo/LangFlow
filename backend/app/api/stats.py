@@ -301,8 +301,7 @@ def _get_category_stats(df: pd.DataFrame, categories: List[Any]) -> Dict[str, An
     
     try:
         # SQLite에서 파일 메타데이터 읽기
-        from ..models.vector_models import FileMetadataService
-        file_metadata_service = FileMetadataService()
+        from ..models.vector_models import file_metadata_service
         all_files = file_metadata_service.list_files(include_deleted=False)
         
         # 카테고리별 파일 수 계산

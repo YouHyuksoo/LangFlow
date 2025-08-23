@@ -20,6 +20,7 @@ if os.name == 'nt':  # Windows
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import setup_logging, get_console_logger
@@ -109,20 +110,39 @@ signal.signal(signal.SIGINT, signal_handler)
 if hasattr(signal, 'SIGTERM'):
     signal.signal(signal.SIGTERM, signal_handler)
 
-# 데이터베이스 초기화
-initialize_database()
 
-# unstructured 라이브러리 사전 로딩 테스트
-try:
-    import unstructured
-    print(f"✅ unstructured 라이브러리 사전 로딩 성공 - 버전: {getattr(unstructured, '__version__', 'unknown')}")
-except ImportError as e:
-    print(f"❌ unstructured 라이브러리 사전 로딩 실패: {e}")
-    import sys
-    print(f"Python 경로: {sys.executable}")
-    print(f"site-packages: {[p for p in sys.path if 'site-packages' in p]}")
-except Exception as e:
-    print(f"❌ unstructured 라이브러리 로딩 중 예상치 못한 오류: {e}")
+# 로깅 초기화
+setup_logging()
+_log = get_console_logger()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 생명주기 관리"""
+    # 서버 시작 시 초기화
+    print("🔧 서버 초기화를 시작합니다...")
+    
+    # 데이터베이스 초기화
+    initialize_database()
+
+    # unstructured 라이브러리 사전 로딩 테스트
+    try:
+        import unstructured
+        print(f"✅ unstructured 라이브러리 사전 로딩 성공 - 버전: {getattr(unstructured, '__version__', 'unknown')}")
+    except ImportError as e:
+        print(f"❌ unstructured 라이브러리 사전 로딩 실패: {e}")
+        import sys
+        print(f"Python 경로: {sys.executable}")
+        print(f"site-packages: {[p for p in sys.path if 'site-packages' in p]}")
+    except Exception as e:
+        print(f"❌ unstructured 라이브러리 로딩 중 예상치 못한 오류: {e}")
+    
+    # 서버 시작 완료 로그
+    _log.info("🚀 API 서버 초기화 완료", extra={"event": "server_start", "version": settings.VERSION})
+    
+    yield  # 애플리케이션 실행
+    
+    # 서버 종료 시 정리 작업
+    _log.info("🛑 API 서버 종료 중...", extra={"event": "server_shutdown"})
 
 # FastAPI 애플리케이션 생성
 app = FastAPI(
@@ -130,13 +150,9 @@ app = FastAPI(
     description="사내 지식관리 RAG 시스템 API",
     version=settings.VERSION,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
-
-# 로깅 초기화
-setup_logging()
-_log = get_console_logger()
-_log.info("API 서버 초기화 완료", extra={"event": "server_start", "version": settings.VERSION})
 
 # CORS 설정
 app.add_middleware(
@@ -191,6 +207,7 @@ async def root():
         "redoc": "/redoc"
     }
 
+
 @app.get("/health")
 async def health_check():
     """헬스 체크 엔드포인트"""
@@ -201,8 +218,8 @@ async def health_check():
 
 if __name__ == "__main__":
     # 서버 시작 전 포트 체크 및 기존 프로세스 종료
-    print(f"🚀 {settings.PROJECT_NAME} 서버 시작 준비 중...")
-    print(f"📍 호스트: {settings.HOST}, 포트: {settings.PORT}")
+    print(f"🚀 {settings.PROJECT_NAME} API 서버 시작 준비 중...")
+    print(f"📍 서버 주소: {settings.HOST}:{settings.PORT}")
     
     # 동일 포트 사용 프로세스 자동 종료
     kill_process_on_port(settings.PORT)
@@ -213,7 +230,7 @@ if __name__ == "__main__":
         print("📋 실행 중인 Python 프로세스 확인: tasklist /fi \"imagename eq python.exe\"")
         sys.exit(1)
     
-    print(f"✅ 포트 {settings.PORT} 사용 가능 확인완료!")
+    print(f"✅ 포트 {settings.PORT} 사용 가능 확인 완료!")
     print("🎯 FastAPI 서버를 시작합니다...\n")
     
     try:
