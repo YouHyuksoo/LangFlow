@@ -403,12 +403,20 @@ class VectorService:
                 # 3. SQLite DB에 벡터 메타데이터 저장
                 print(f"💾 SQLite DB에 벡터 메타데이터 저장 시작")
                 try:
+                    # 전처리 소스 감지 (수동 vs 자동)
+                    preprocessing_source = metadata.get("source", "auto")  # get_file_content에서 전달
+                    if preprocessing_source == "manual_preprocessing":
+                        preprocessing_source = "manual"
+                    else:
+                        preprocessing_source = "auto"
+                        
                     vector_metadata = VectorMetadata(
                         file_id=file_id,
                         filename=metadata.get("filename", "Unknown"),
                         category_id=metadata.get("category_id"),
                         category_name=metadata.get("category_name"),
                         processing_method=processing_method,
+                        preprocessing_source=preprocessing_source,
                         chunk_count=chunks_count,
                         file_size=metadata.get("file_size", 0),
                         page_count=metadata.get("page_count"),
@@ -712,16 +720,20 @@ class VectorService:
             # 각 청크에 메타데이터 추가 (이미지 연결 정보 포함)
             chunk_metadatas = []
             for i, chunk in enumerate(chunks):
-                # 기본 메타데이터만 복사 (ChromaDB 호환성을 위해)
+                # 기본 메타데이터만 복사 (ChromaDB 호환성을 위해 - None 값 제거)
                 chunk_metadata = {
                     "file_id": file_id,
                     "filename": metadata.get("filename", "Unknown"),
-                    "category_id": metadata.get("category_id"),
-                    "category_name": metadata.get("category_name"),
                     "preprocessing_method": metadata.get("preprocessing_method", "basic"),
                     "chunk_index": i,
                     "chunk_length": len(chunk)
                 }
+                
+                # None이 아닌 값만 추가 (ChromaDB MetadataValue 오류 방지)
+                if metadata.get("category_id"):
+                    chunk_metadata["category_id"] = metadata.get("category_id")
+                if metadata.get("category_name"):
+                    chunk_metadata["category_name"] = metadata.get("category_name")
                 
                 # 이미지 정보 추가 (관련 이미지만 필터링)
                 file_has_images = metadata.get("image_count", 0) > 0
@@ -748,7 +760,16 @@ class VectorService:
                     chunk_metadata["file_image_count"] = 0
                     chunk_metadata["chunk_image_count"] = 0
                 
-                chunk_metadatas.append(chunk_metadata)
+                # ChromaDB 호환성을 위한 메타데이터 정리 (None 값 제거)
+                cleaned_metadata = self._clean_metadata_for_chromadb(chunk_metadata)
+                chunk_metadatas.append(cleaned_metadata)
+            
+            # ChromaDB에 추가하기 전 디버깅 로그
+            print(f"🔍 ChromaDB 메타데이터 디버깅 - {len(chunk_metadatas)}개 청크")
+            for i, metadata in enumerate(chunk_metadatas[:3]):  # 처음 3개만 로그
+                print(f"   청크 {i+1} 메타데이터:")
+                for key, value in metadata.items():
+                    print(f"     {key}: {value} ({type(value).__name__})")
             
             # ChromaDB에 추가
             self._collection.add(
@@ -856,7 +877,9 @@ class VectorService:
                     chunk_metadata["has_images"] = False
                     chunk_metadata["chunk_image_count"] = 0
                 
-                chunk_metadatas.append(chunk_metadata)
+                # ChromaDB 호환성을 위한 메타데이터 정리 (None 값 제거)
+                cleaned_metadata = self._clean_metadata_for_chromadb(chunk_metadata)
+                chunk_metadatas.append(cleaned_metadata)
             
             # ChromaDB에 추가
             self._collection.add(
@@ -877,6 +900,20 @@ class VectorService:
         except Exception as e:
             print(f"❌ 헤더 포함 벡터화 실패: {e}")
             return False
+    
+    def _clean_metadata_for_chromadb(self, metadata: Dict) -> Dict:
+        """ChromaDB 호환을 위한 메타데이터 정리 (None 값 제거)"""
+        cleaned = {}
+        for key, value in metadata.items():
+            if value is not None:  # None 값 제외
+                if isinstance(value, (str, int, float, bool)):  # ChromaDB 허용 타입만
+                    cleaned[key] = value
+                elif isinstance(value, (list, dict)):  # 컬렉션은 JSON 문자열로 변환
+                    import json
+                    cleaned[key] = json.dumps(value, ensure_ascii=False)
+                else:  # 기타 타입은 문자열로 변환
+                    cleaned[key] = str(value)
+        return cleaned
     
     def _find_related_images_for_chunk(self, chunk_text: str, metadata: Dict) -> List[Dict]:
         """청크 텍스트와 관련된 이미지를 찾습니다."""
@@ -1346,10 +1383,13 @@ class VectorService:
                             chunk_metadata["has_images"] = False
                             chunk_metadata["file_image_count"] = 0
                         
+                        # ChromaDB 호환성을 위한 메타데이터 정리 (None 값 제거)
+                        cleaned_metadata = self._clean_metadata_for_chromadb(chunk_metadata)
+                        
                         all_chunk_data.append({
                             "id": chunk_id,
                             "document": chunk,
-                            "metadata": chunk_metadata,
+                            "metadata": cleaned_metadata,
                             "embedding": embedding
                         })
             

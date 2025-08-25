@@ -50,7 +50,7 @@ async def get_vector_metadata(
             base_query = """
                 SELECT 
                     id, file_id, filename, category_id, category_name,
-                    flow_id, processing_method, processing_time,
+                    flow_id, processing_method, preprocessing_source, processing_time,
                     chunk_count, file_size, page_count, table_count,
                     image_count, docling_options, created_at, updated_at
                 FROM vector_metadata
@@ -1432,6 +1432,15 @@ async def get_documents_list(
         # 응답 형식으로 변환
         documents = []
         for file_metadata in paginated_files:
+            # 벡터 메타데이터에서 전처리 소스 정보 가져오기
+            preprocessing_source = "auto"  # 기본값
+            try:
+                vector_metadata = metadata_service.get_metadata(file_metadata.file_id)
+                if vector_metadata:
+                    preprocessing_source = vector_metadata.preprocessing_source or "auto"
+            except:
+                pass
+            
             documents.append({
                 "file_id": file_metadata.file_id,
                 "filename": file_metadata.filename,
@@ -1443,6 +1452,7 @@ async def get_documents_list(
                 "chunk_count": file_metadata.chunk_count,
                 "upload_time": file_metadata.upload_time.isoformat() if file_metadata.upload_time else None,
                 "preprocessing_method": file_metadata.preprocessing_method,
+                "preprocessing_source": preprocessing_source,
                 "error_message": file_metadata.error_message
             })
         

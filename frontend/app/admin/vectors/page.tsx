@@ -128,6 +128,7 @@ interface FileMetadata {
   error_message?: string;
   chunk_count?: number;
   preprocessing_method?: string;
+  preprocessing_source?: string;
   vectorized: boolean;
   processing_options?: any;
 }
@@ -1201,9 +1202,16 @@ export default function VectorAnalysisPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={file.vectorized ? "default" : "outline"}>
-                          {file.vectorized ? "완료" : "미완료"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={file.vectorized ? "default" : "outline"}>
+                            {file.vectorized ? "완료" : "미완료"}
+                          </Badge>
+                          {file.preprocessing_source === 'manual' && (
+                            <Badge variant="secondary" className="text-xs">
+                              🎯 수동
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {file.chunk_count ? file.chunk_count.toLocaleString() : "-"}
@@ -1236,6 +1244,7 @@ export default function VectorAnalysisPage() {
                                   <p><strong>벡터화:</strong> {file.vectorized ? "완료" : "미완료"}</p>
                                   {file.chunk_count && <p><strong>청크 수:</strong> {file.chunk_count}</p>}
                                   {file.preprocessing_method && <p><strong>전처리 방법:</strong> {file.preprocessing_method}</p>}
+                                  {file.preprocessing_source && <p><strong>전처리 소스:</strong> {file.preprocessing_source === 'manual' ? '🎯 수동 전처리' : '⚙️ 자동 전처리'}</p>}
                                   <p><strong>업로드 시간:</strong> {new Date(file.upload_time).toLocaleString('ko-KR')}</p>
                                   {file.preprocessing_started_at && (
                                     <p><strong>전처리 시작:</strong> {new Date(file.preprocessing_started_at).toLocaleString('ko-KR')}</p>

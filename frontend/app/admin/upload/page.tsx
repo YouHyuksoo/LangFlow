@@ -178,7 +178,7 @@ export default function UploadPage() {
         setIsLoadingRef(true);
         setLoading(true);
 
-        const response = await fileAPI.getFiles();
+        const response = await fileAPI.getFiles(undefined, true); // excludeCompleted = true
 
         // API 응답을 UploadedFile 형태로 변환
         const serverFiles: UploadedFile[] = response.map((file: any) => {

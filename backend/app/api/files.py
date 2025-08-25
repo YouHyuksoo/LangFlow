@@ -88,11 +88,14 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"파일 업로드 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/", response_model=List[FileInfo])
-async def list_files(category_id: Optional[str] = Query(None)):
+async def list_files(
+    category_id: Optional[str] = Query(None),
+    exclude_completed: bool = Query(False, description="완료된 파일 제외 여부")
+):
     """업로드된 파일 목록 조회"""
     try:
-        _clog.debug(f"파일 목록 조회 - category_id: {category_id}")
-        files = await get_file_service_instance().list_files(category_id)
+        _clog.debug(f"파일 목록 조회 - category_id: {category_id}, exclude_completed: {exclude_completed}")
+        files = await get_file_service_instance().list_files(category_id, exclude_completed)
         _clog.debug(f"파일 목록 조회 완료 - {len(files)}개")
         return files
     except Exception as e:

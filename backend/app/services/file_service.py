@@ -108,27 +108,25 @@ class FileService:
                 self.logger.warning(f"파일이 벡터화 가능한 상태가 아닙니다: {file_id}, 현재 상태: {file_info.status}")
                 return {"success": False, "error": "File is not ready for vectorization"}
             
-            # PREPROCESSING 또는 FAILED 상태인 경우 강제 재처리 시작
-            if file_info.status in [FileStatus.PREPROCESSING, FileStatus.FAILED]:
-                self.logger.info(f"🔄 상태가 {file_info.status}인 파일을 강제 재처리합니다: {file_id}")
-                # 상태를 UPLOADED로 재설정하여 처음부터 다시 시작
-                await self._update_file_status(file_id, FileStatus.UPLOADED)
-
-            # UPLOADED 상태라면 전처리부터 시작
+            # 저장 및 임베딩 로직: 청킹 데이터 확인 후 벡터화만 수행
             if file_info.status == FileStatus.UPLOADED:
-                self.logger.info(f"UPLOADED 상태 파일 전처리 시작: {file_id}")
-                # 기본 설정에서 전처리 방법 가져오기 (설정에 따라 basic, docling, unstructured 중 선택)
-                from .settings_service import settings_service
-                system_settings = settings_service.get_section_settings("system")
-                preprocessing_method = system_settings.get("preprocessing_method", "basic")
-                self.logger.info(f"설정된 전처리 방식: {preprocessing_method}")
-                preprocess_result = await self.start_preprocessing(file_id, preprocessing_method)
-                if not preprocess_result.get("success"):
-                    self.logger.error(f"전처리 실패: {file_id}")
-                    return {"success": False, "error": "Preprocessing failed"}
+                # 청킹되지 않은 파일 → 벡터화 불가능
+                self.logger.error(f"❌ 청킹되지 않은 파일 - 벡터화 불가능: {file_id}")
+                await self._update_file_status(file_id, FileStatus.FAILED, error="청킹 데이터가 없습니다. 먼저 빠른청킹 또는 AI청킹을 수행해주세요.")
+                return {"success": False, "error": "청킹 데이터가 없습니다. 먼저 빠른청킹 또는 AI청킹을 수행해주세요."}
                 
-                # 전처리 완료 후 파일 정보 다시 로드
-                file_info = await self.get_file_info(file_id)
+            elif file_info.status == FileStatus.PREPROCESSED:
+                # 청킹 데이터가 있는 파일 → 바로 벡터화 수행
+                self.logger.info(f"💾 청킹 데이터 확인됨 - 벡터화 수행: {file_id}")
+                
+            elif file_info.status in [FileStatus.PREPROCESSING, FileStatus.FAILED]:
+                # 진행 중이거나 실패한 파일 → 오류 반환
+                self.logger.error(f"❌ 파일 상태 오류 ({file_info.status}) - 벡터화 불가능: {file_id}")
+                return {"success": False, "error": f"파일 상태가 벡터화에 적합하지 않습니다: {file_info.status}"}
+                
+            else:
+                # 기타 상태 (COMPLETED, VECTORIZING 등)
+                self.logger.info(f"🔄 파일 상태: {file_info.status} - 벡터화 진행: {file_id}")
 
             await self._update_file_status(file_id, FileStatus.VECTORIZING)
 
@@ -146,22 +144,58 @@ class FileService:
                 except Exception as sse_error:
                     self.logger.warning(f"SSE 시작 이벤트 전송 실패: {sse_error}")
 
-            # 전처리된 텍스트 로드
-            text_content = await self._load_preprocessed_content(file_id)
-            if not text_content:
-                self.logger.error(f"전처리된 텍스트를 찾을 수 없습니다: {file_id}")
-                await self._update_file_status(file_id, FileStatus.FAILED, error="Preprocessed content not found")
-                return {"success": False, "error": "Preprocessed content not found"}
+            # SQLite에서 청킹 데이터 로드
+            try:
+                from .preprocessing_service import manual_preprocessing_service
+                preprocessing_data = manual_preprocessing_service.get_preprocessing_data(file_id)
+                
+                if not preprocessing_data or not preprocessing_data.get("annotations"):
+                    self.logger.error(f"청킹 데이터를 찾을 수 없습니다: {file_id}")
+                    await self._update_file_status(file_id, FileStatus.FAILED, error="청킹 데이터가 없습니다. 먼저 빠른청킹 또는 AI청킹을 수행해주세요.")
+                    return {"success": False, "error": "청킹 데이터가 없습니다. 먼저 빠른청킹 또는 AI청킹을 수행해주세요."}
+                
+                # 청킹 데이터에서 텍스트 청크 목록 생성
+                annotations = sorted(preprocessing_data["annotations"], key=lambda x: x.get("order", 0))
+                text_chunks = []
+                
+                for annotation in annotations:
+                    chunk_text = annotation.get("extracted_text") or annotation.get("text", "")
+                    if chunk_text.strip():
+                        text_chunks.append(chunk_text.strip())
+                
+                if not text_chunks:
+                    self.logger.error(f"유효한 청크 텍스트가 없습니다: {file_id}")
+                    await self._update_file_status(file_id, FileStatus.FAILED, error="유효한 청크 텍스트가 없습니다.")
+                    return {"success": False, "error": "유효한 청크 텍스트가 없습니다."}
+                
+                self.logger.info(f"✅ SQLite에서 청킹 데이터 로드 완료: {len(text_chunks)}개 청크")
+                
+            except Exception as e:
+                self.logger.error(f"청킹 데이터 로드 실패: {e}")
+                await self._update_file_status(file_id, FileStatus.FAILED, error=f"청킹 데이터 로드 실패: {str(e)}")
+                return {"success": False, "error": f"청킹 데이터 로드 실패: {str(e)}"}
 
-            # 벡터화 실행
-            self.logger.info(f"청킹 및 임베딩 시작...")
+            # 벡터화 실행 - 청크 목록을 직접 벡터 서비스에 전달
+            self.logger.info(f"청크 임베딩 시작... ({len(text_chunks)}개 청크)")
             vector_metadata = { 
                 "filename": file_info.filename, 
                 "category_id": file_info.category_id,
                 "category_name": file_info.category_name,
-                "preprocessing_method": file_info.preprocessing_method
+                "preprocessing_method": "manual_chunking",  # SQLite 청킹 데이터 사용
+                "source": "manual_preprocessing"
             }
-            result = await self.vector_service.chunk_and_embed_text(file_id, text_content, vector_metadata)
+            
+            # VectorService의 add_document_chunks 메서드를 직접 호출 (청킹 생략)
+            if self.vector_service.enable_parallel and len(text_chunks) > 10:
+                result = await self.vector_service._add_document_chunks_parallel(file_id, text_chunks, vector_metadata)
+                success = result
+            else:
+                success = await self.vector_service.add_document_chunks(file_id, text_chunks, vector_metadata)
+            
+            if success:
+                result = {"success": True, "chunks_count": len(text_chunks)}
+            else:
+                result = {"success": False, "error": "청크 벡터화에 실패했습니다."}
 
             if result.get("success"):
                 self.logger.info(f"🔄 메타데이터 업데이트 시작 - 파일 상태를 COMPLETED로 변경")
@@ -242,6 +276,81 @@ class FileService:
                 except Exception as sse_error:
                     self.logger.warning(f"SSE 예외 오류 이벤트 전송 실패: {sse_error}")
             
+            return {"success": False, "error": str(e)}
+
+    async def start_vectorization_with_source(self, file_id: str, source: str = "auto"):
+        """소스 정보와 함께 벡터화를 시작합니다 (수동 전처리용)."""
+        self.logger.info(f"🚀 === 소스별 벡터화 시작: {file_id} (소스: {source}) ===")
+        
+        try:
+            file_info = await self.get_file_info(file_id)
+            if not file_info:
+                self.logger.error(f"파일 정보를 찾을 수 없습니다: {file_id}")
+                return {"success": False, "error": "File not found"}
+
+            await self._update_file_status(file_id, FileStatus.VECTORIZING)
+
+            # 소스에 따라 텍스트 로드 방식 결정
+            if source == "manual_preprocessing":
+                # 수동 전처리 데이터 우선 사용
+                content_response = await self.get_file_content(file_id)
+                if not content_response.get("success"):
+                    self.logger.error(f"수동 전처리 데이터 로드 실패: {file_id}")
+                    await self._update_file_status(file_id, FileStatus.FAILED, error="Manual preprocessing data not found")
+                    return {"success": False, "error": "Manual preprocessing data not found"}
+                    
+                text_content = content_response["content"]
+                actual_source = content_response.get("source", "manual_preprocessing")
+            else:
+                # 기존 자동 전처리 파일 사용
+                text_content = await self._load_preprocessed_content(file_id)
+                if not text_content:
+                    self.logger.error(f"자동 전처리 데이터 로드 실패: {file_id}")
+                    await self._update_file_status(file_id, FileStatus.FAILED, error="Auto preprocessing data not found")
+                    return {"success": False, "error": "Auto preprocessing data not found"}
+                actual_source = "auto_preprocessing"
+
+            # 벡터화 실행
+            self.logger.info(f"청킹 및 임베딩 시작... (소스: {actual_source})")
+            vector_metadata = { 
+                "filename": file_info.filename, 
+                "category_id": file_info.category_id,
+                "category_name": file_info.category_name,
+                "preprocessing_method": file_info.preprocessing_method,
+                "source": actual_source  # 소스 정보 추가
+            }
+            result = await self.vector_service.chunk_and_embed_text(file_id, text_content, vector_metadata)
+
+            if result.get("success"):
+                self.logger.info(f"🔄 메타데이터 업데이트 시작 - 파일 상태를 COMPLETED로 변경")
+                await self._update_file_status(file_id, FileStatus.COMPLETED, chunks_count=result.get('chunks_count'))
+                
+                # vectorized 필드도 별도로 업데이트
+                self.logger.info(f"🔄 vectorized 상태 업데이트 시작")
+                await self.update_file_vectorization_status(
+                    file_id=file_id,
+                    vectorized=True,
+                    chunk_count=result.get('chunks_count')
+                )
+                self.logger.info(f"✅ vectorized 상태 업데이트 완료")
+
+                elapsed = 0.0  # TODO: 실제 시작 시간 추적
+                self.logger.info(f"✅ 벡터화 완료 (소스: {actual_source}). 청크 수: {result.get('chunks_count')} (소요 시간: {elapsed:.2f}초)")
+                
+                return {
+                    "success": True,
+                    "total_chunks": result.get('chunks_count'),
+                    "processing_time": elapsed,
+                    "source": actual_source
+                }
+            else:
+                self.logger.error(f"벡터화 실패: {file_id}")
+                await self._update_file_status(file_id, FileStatus.FAILED, error=result.get('error'))
+                return {"success": False, "error": result.get('error')}
+
+        except Exception as e:
+            self.logger.error(f"💥 소스별 벡터화 오류: {e}", exc_info=True)
+            await self._update_file_status(file_id, FileStatus.FAILED, error=str(e))
             return {"success": False, "error": str(e)}
 
     # 하위 호환성을 위한 기존 메서드 (deprecated)
@@ -553,10 +662,11 @@ class FileService:
             self.logger.error(f"파일 업로드 중 오류: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"파일 업로드 중 오류가 발생했습니다: {str(e)}")
 
-    async def list_files(self, category_id: Optional[str] = None) -> List[FileInfo]:
+    async def list_files(self, category_id: Optional[str] = None, exclude_completed: bool = False) -> List[FileInfo]:
         file_metadatas = self.file_metadata_service.list_files(
             category_id=category_id,
-            include_deleted=False
+            include_deleted=False,
+            exclude_completed=exclude_completed
         )
         
         files = []
@@ -575,14 +685,41 @@ class FileService:
         return self._convert_to_file_info(file_metadata)
     
     async def get_file_content(self, file_id: str) -> Dict[str, Any]:
-        """파일 내용을 추출하여 반환 (청킹용)"""
+        """파일 내용을 추출하여 반환 (청킹용 - 수동 전처리 데이터 우선)"""
         try:
             # 파일 정보 조회
             file_metadata = self.file_metadata_service.get_file(file_id)
             if not file_metadata:
                 return {"success": False, "error": "파일을 찾을 수 없습니다"}
             
-            # 전처리된 텍스트 파일 경로
+            # 1. 수동 전처리 데이터가 있는지 먼저 확인
+            try:
+                from ..models.vector_models import manual_preprocessing_service
+                preprocessing_data = manual_preprocessing_service.get_preprocessing_data(file_id)
+                
+                if preprocessing_data and preprocessing_data.get("annotations"):
+                    # 수동 전처리 데이터에서 텍스트 추출
+                    self.logger.info(f"🎯 수동 전처리 데이터 발견: {file_id}, {len(preprocessing_data['annotations'])}개 주석")
+                    
+                    # 주석을 순서대로 정렬하여 텍스트 결합
+                    annotations = sorted(preprocessing_data["annotations"], key=lambda x: x.get("order", 0))
+                    text_parts = []
+                    
+                    for annotation in annotations:
+                        # extracted_text 우선, 없으면 ocr_text 사용
+                        text = annotation.get("extracted_text") or annotation.get("ocr_text", "")
+                        if text and text.strip():
+                            text_parts.append(text.strip())
+                    
+                    if text_parts:
+                        combined_text = "\n\n".join(text_parts)
+                        self.logger.info(f"✅ 수동 전처리 텍스트 결합 완료: {len(combined_text)} 문자")
+                        return {"success": True, "content": combined_text, "source": "manual_preprocessing"}
+                        
+            except Exception as e:
+                self.logger.warning(f"수동 전처리 데이터 조회 실패: {e}")
+            
+            # 2. 전처리된 텍스트 파일 경로
             preprocessed_path = os.path.join(settings.DATA_DIR, "preprocessed", f"{file_id}.txt")
             
             # 전처리된 파일이 있으면 해당 내용 사용
@@ -590,11 +727,12 @@ class FileService:
                 try:
                     with open(preprocessed_path, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    return {"success": True, "content": content}
+                    self.logger.info(f"📄 자동 전처리 파일 사용: {len(content)} 문자")
+                    return {"success": True, "content": content, "source": "auto_preprocessing"}
                 except Exception as e:
                     self.logger.error(f"전처리된 파일 읽기 실패 {file_id}: {e}")
             
-            # 전처리된 파일이 없으면 원본 파일에서 추출
+            # 3. 전처리된 파일이 없으면 원본 파일에서 추출
             original_path = file_metadata.file_path
             if not os.path.exists(original_path):
                 return {"success": False, "error": "원본 파일을 찾을 수 없습니다"}

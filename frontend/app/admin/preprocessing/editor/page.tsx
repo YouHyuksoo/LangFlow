@@ -301,18 +301,64 @@ export default function PreprocessingEditorPage() {
   const documentViewerRef = useRef<HTMLDivElement>(null)
 
   // ==================== PRD 방식 핵심 함수들 ====================
+  
+  // 중복 호출 방지를 위한 ref
+  const isLoadingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  // 초기 데이터 로드
+  // 초기 데이터 로드 (중복 호출 방지 적용)
   useEffect(() => {
-    loadEditorData()
-    loadAIProviders() // PRD3: AI 제공업체 목록 로드
+    console.log('🔄 [EDITOR] useEffect 실행됨 - fileId:', fileId)
+    
+    // 이미 로딩 중이면 중복 호출 방지
+    if (isLoadingRef.current) {
+      console.log('⚠️ [EDITOR] 이미 로딩 중이므로 중복 호출 방지')
+      return
+    }
+
+    // 이전 요청 취소
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    // 새 AbortController 생성
+    abortControllerRef.current = new AbortController()
+    isLoadingRef.current = true
+    
+    const loadData = async () => {
+      try {
+        await Promise.all([
+          loadEditorData(abortControllerRef.current?.signal),
+          loadAIProviders(abortControllerRef.current?.signal)
+        ])
+      } catch (error: any) {
+        if (error.name !== 'AbortError' && error.name !== 'CanceledError' && error.message !== 'canceled') {
+          console.error('데이터 로딩 중 오류:', error)
+        }
+      } finally {
+        isLoadingRef.current = false
+      }
+    }
+    
+    loadData()
+
+    // Cleanup 함수
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      isLoadingRef.current = false
+    }
   }, [fileId])
   
   // PRD3: AI 제공업체 목록 로드
-  const loadAIProviders = async () => {
+  const loadAIProviders = async (signal?: AbortSignal) => {
     try {
       console.log('🔍 AI 제공업체 목록 로드 시작...')
-      const response = await api.get('/api/v1/ai-chunking/providers', { timeout: 10000 }) // 10초로 단축
+      const response = await api.get('/api/v1/ai-chunking/providers', { 
+        timeout: 10000, // 10초로 단축
+        signal // AbortSignal 전달
+      })
       const data = response.data
       
       console.log('📡 AI 제공업체 API 응답:', data)
@@ -335,7 +381,13 @@ export default function PreprocessingEditorPage() {
       } else {
         console.warn('⚠️ 제공업체 목록이 비어있음')
       }
-    } catch (err) {
+    } catch (err: any) {
+      // AbortController에 의한 취소는 에러로 처리하지 않음
+      if (err.name === 'CanceledError' || err.message === 'canceled') {
+        console.log('📝 AI 제공업체 로드 요청이 취소됨 (정상 동작)')
+        return
+      }
+      
       console.error('❌ AI 제공업체 목록 로드 실패:', err)
       const { data, status } = getErrorResponse(err)
       console.error('❌ 오류 상세:', {
@@ -834,14 +886,15 @@ export default function PreprocessingEditorPage() {
     }
   }
 
-  const loadEditorData = async () => {
+  const loadEditorData = async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
 
       // 설정 페이지에서 기본 문장 분할기 설정을 불러와서 초기값으로 설정
       try {
-        console.log('🔍 수동 전처리 설정 로드 시작...')
+        if (signal?.aborted) return
+        console.log('🔍 [EDITOR] 수동 전처리 설정 로드 시작...')
         const settingsResponse = await vectorAPI.getManualPreprocessingSettings()
         if (settingsResponse && settingsResponse.manual_preprocessing) {
           const defaultSplitter = settingsResponse.manual_preprocessing.default_sentence_splitter
@@ -855,18 +908,23 @@ export default function PreprocessingEditorPage() {
           
           console.log('✅ 기본 문장 분할기 설정 적용:', defaultSplitter)
         }
-      } catch (err) {
-        console.warn('⚠️ 수동 전처리 설정 로드 실패:', err)
+      } catch (err: any) {
+        if (err.name !== 'CanceledError' && err.message !== 'canceled') {
+          console.warn('⚠️ 수동 전처리 설정 로드 실패:', err)
+        }
       }
       
       // 주석 타입 조회
       try {
+        if (signal?.aborted) return
         const annotationTypesResponse = await preprocessingAPI.getAnnotationTypes()
         if (annotationTypesResponse.success) {
           setAnnotationTypes(annotationTypesResponse.data || [])
         }
-      } catch (err) {
-        console.warn('주석 타입 조회 실패:', err)
+      } catch (err: any) {
+        if (err.name !== 'CanceledError' && err.message !== 'canceled') {
+          console.warn('주석 타입 조회 실패:', err)
+        }
       }
 
       // 파일 정보 조회
@@ -911,6 +969,7 @@ export default function PreprocessingEditorPage() {
 
       // 기존 전처리 데이터 조회 (PRD 방식으로 변환)
       try {
+        if (signal?.aborted) return
         const preprocessingDataResponse = await preprocessingAPI.getPreprocessingMetadata(fileId)
         if (preprocessingDataResponse.success && preprocessingDataResponse.data) {
           const data = preprocessingDataResponse.data

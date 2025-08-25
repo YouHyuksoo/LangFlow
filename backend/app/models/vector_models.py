@@ -26,6 +26,7 @@ class VectorMetadata(SQLModel, table=True):
     category_name: Optional[str] = None
     flow_id: Optional[str] = None
     processing_method: str = Field(default="basic_text")
+    preprocessing_source: str = Field(default="auto", description="전처리 소스: auto(자동) 또는 manual(수동)")
     processing_time: float = Field(default=0.0)
     chunk_count: int = Field(default=0)
     file_size: int = Field(default=0)
@@ -179,8 +180,29 @@ class VectorMetadataService:
         SQLModel.metadata.create_all(self.engine)
         print(f"✅ Vector 메타데이터 데이터베이스 초기화 완료: {self.db_path}")
         
+        # 데이터베이스 마이그레이션 실행
+        self._run_migrations()
+        
         # 초기화 완료 플래그 설정
         VectorMetadataService._initialized = True
+
+    def _run_migrations(self):
+        """데이터베이스 마이그레이션 실행"""
+        try:
+            with self.engine.connect() as conn:
+                # preprocessing_source 컬럼이 없는 경우 추가
+                try:
+                    conn.execute(text("ALTER TABLE vector_metadata ADD COLUMN preprocessing_source VARCHAR DEFAULT 'auto'"))
+                    print("Added preprocessing_source column to vector_metadata")
+                except Exception:
+                    pass  # 컬럼이 이미 존재하는 경우
+                
+                conn.commit()
+                print("✅ Vector 메타데이터 마이그레이션 완료")
+                
+        except Exception as e:
+            print(f"Vector metadata migration error (non-critical): {e}")
+            # 마이그레이션 실패는 치명적이지 않음 (SQLModel이 알아서 처리)
     
     def create_metadata(self, metadata: VectorMetadata) -> bool:
         """메타데이터 생성"""
@@ -403,6 +425,7 @@ class FileMetadataService:
             conn.execute(text("PRAGMA synchronous=NORMAL"))
             conn.execute(text("PRAGMA cache_size=-64000"))
             conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.execute(text("PRAGMA encoding='UTF-8'"))
             conn.commit()
         
         # 테이블 생성
@@ -558,6 +581,7 @@ class FileMetadataService:
                    status: Optional[FileStatus] = None,
                    category_id: Optional[str] = None,
                    include_deleted: bool = False,
+                   exclude_completed: bool = False,
                    limit: Optional[int] = None) -> list[FileMetadata]:
         """파일 목록 조회 (필터링 옵션)"""
         try:
@@ -567,6 +591,11 @@ class FileMetadataService:
                 # 삭제된 파일 제외 (기본값)
                 if not include_deleted:
                     query = query.filter(FileMetadata.status != FileStatus.DELETED)
+                
+                # 완료된 파일 제외 (파일 업로드 페이지용)
+                if exclude_completed:
+                    query = query.filter(FileMetadata.status != FileStatus.COMPLETED)
+                    query = query.filter(FileMetadata.vectorized != True)
                 
                 # 상태 필터
                 if status:
@@ -869,14 +898,56 @@ class ManualPreprocessingService:
                 except sqlite3.Error as e:
                     print(f"전처리 상태 조회 실패: {e}")
                 
-                # 3. 파일 목록과 전처리 상태 결합
+                # 3. file_metadata.db에서 실제 파일 상태 확인하여 정확한 상태 결정
                 for row in file_result:
                     file_id = row[0]
-                    preprocessing_info = preprocessing_status_map.get(file_id, {
-                        "status": "NOT_STARTED",
-                        "completed_at": None,
-                        "processing_time": 0.0
-                    })
+                    
+                    # file_metadata 테이블에서 실제 파일 상태 가져오기
+                    file_status_query = """
+                        SELECT status, vectorized, preprocessing_completed_at, vectorization_completed_at
+                        FROM file_metadata 
+                        WHERE file_id = :file_id
+                    """
+                    file_status_result = session.execute(text(file_status_query), {"file_id": file_id}).fetchone()
+                    
+                    if file_status_result:
+                        file_status = file_status_result[0]  # FileStatus enum 값
+                        vectorized = file_status_result[1]
+                        preprocessing_completed_at = file_status_result[2]
+                        vectorization_completed_at = file_status_result[3]
+                        
+                        # FileStatus를 preprocessing_status로 매핑
+                        if file_status == "uploaded":
+                            preprocessing_status = "NOT_STARTED"  # 업로드만 됨
+                        elif file_status == "preprocessing":
+                            preprocessing_status = "IN_PROGRESS"  # 전처리 중
+                        elif file_status == "preprocessed":
+                            preprocessing_status = "CHUNKED"  # 청킹 완료, 벡터화 대기
+                        elif file_status == "vectorizing":
+                            preprocessing_status = "VECTORIZING"  # 벡터화 중
+                        elif file_status == "completed" and vectorized:
+                            preprocessing_status = "COMPLETED"  # 모든 처리 완료
+                        elif file_status == "failed":
+                            preprocessing_status = "FAILED"  # 실패
+                        else:
+                            preprocessing_status = "NOT_STARTED"
+                            
+                        # 처리 시간 계산
+                        processing_time = 0.0
+                        if preprocessing_completed_at and vectorization_completed_at:
+                            try:
+                                from datetime import datetime
+                                if isinstance(preprocessing_completed_at, str):
+                                    preprocessing_completed_at = datetime.fromisoformat(preprocessing_completed_at.replace('Z', '+00:00'))
+                                if isinstance(vectorization_completed_at, str):
+                                    vectorization_completed_at = datetime.fromisoformat(vectorization_completed_at.replace('Z', '+00:00'))
+                                processing_time = (vectorization_completed_at - preprocessing_completed_at).total_seconds()
+                            except:
+                                processing_time = 0.0
+                    else:
+                        preprocessing_status = "NOT_STARTED"
+                        preprocessing_completed_at = None
+                        processing_time = 0.0
                     
                     files_data.append({
                         "file_id": file_id,
@@ -884,9 +955,9 @@ class ManualPreprocessingService:
                         "upload_time": row[2],
                         "file_size": row[3],
                         "category_name": row[4],
-                        "preprocessing_status": preprocessing_info["status"],
-                        "preprocessing_completed_at": preprocessing_info["completed_at"],
-                        "processing_time": preprocessing_info["processing_time"]
+                        "preprocessing_status": preprocessing_status,
+                        "preprocessing_completed_at": preprocessing_completed_at,
+                        "processing_time": processing_time
                     })
                 
             return files_data

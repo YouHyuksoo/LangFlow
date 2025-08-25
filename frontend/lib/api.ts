@@ -176,10 +176,30 @@ export const settingsAPI = {
 
   // 벡터화 설정 조회 (임베딩 모델, 성능 설정 등)
   getVectorizationSettings: async () => {
+    const cacheKey = 'vectorizationSettings';
+    
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
     try {
-      const response = await api.get("/api/v1/settings/vectorization");
-      return response.data;
+      const requestPromise = api.get("/api/v1/settings/vectorization").then(response => response.data);
+      
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
     } catch (error) {
+      apiCache.delete(cacheKey);
       console.error("벡터화 설정 로드 실패, 기본값 사용:", error);
       // 에러 시 기본값 반환
       return {
@@ -240,10 +260,30 @@ export const settingsAPI = {
 // 모델 설정 API (Docling 포함)
 export const modelSettingsAPI = {
   getSettings: async () => {
+    const cacheKey = 'modelSettings';
+    
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
     try {
-      const response = await api.get("/api/v1/settings/models");
-      return response.data;
+      const requestPromise = api.get("/api/v1/settings/models").then(response => response.data);
+      
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
     } catch (error) {
+      apiCache.delete(cacheKey);
       console.error("모델 설정 로드 실패:", error);
       throw error;
     }
@@ -308,8 +348,33 @@ export const modelSettingsAPI = {
 // Docling 관련 API
 export const doclingAPI = {
   getDoclingSettings: async () => {
-    const response = await api.get("/api/v1/settings/docling");
-    return response.data;
+    const cacheKey = 'doclingSettings';
+    
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
+    try {
+      const requestPromise = api.get("/api/v1/settings/docling").then(response => response.data);
+      
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
+    } catch (error) {
+      apiCache.delete(cacheKey);
+      console.error("Docling 설정 로드 실패:", error);
+      throw error;
+    }
   },
 
   updateDoclingSettings: async (settings: any) => {
@@ -376,8 +441,8 @@ export const fileAPI = {
     return responses.map((response) => response.data);
   },
 
-  getFiles: async (category?: string) => {
-    const cacheKey = `files${category ? `-${category}` : ''}`;
+  getFiles: async (category?: string, excludeCompleted?: boolean) => {
+    const cacheKey = `files${category ? `-${category}` : ''}${excludeCompleted ? '-no-completed' : ''}`;
     
     // 캐시된 데이터 확인
     const cachedData = getCachedData(cacheKey);
@@ -392,8 +457,12 @@ export const fileAPI = {
     }
 
     try {
+      const params: any = {};
+      if (category) params.category_id = category;
+      if (excludeCompleted) params.exclude_completed = true;
+      
       const requestPromise = api.get("/api/v1/files/", {
-        params: { category },
+        params,
       }).then(response => response.data);
       
       // 진행 중인 요청으로 저장
@@ -1498,8 +1567,38 @@ export const unstructuredAPI = {
 export const modelProfileAPI = {
   // 모든 모델 프로필 조회
   getProfiles: async () => {
-    const response = await api.get("/api/v1/model-profiles/");
-    return response.data;
+    const cacheKey = 'modelProfiles';
+    
+    // 캐시된 데이터 확인
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    // 진행 중인 요청 확인
+    const pendingRequest = getPendingRequest(cacheKey);
+    if (pendingRequest) {
+      return await pendingRequest;
+    }
+
+    try {
+      const requestPromise = api.get("/api/v1/model-profiles/").then(response => response.data);
+      
+      // 진행 중인 요청으로 저장
+      apiCache.set(cacheKey, { data: null, timestamp: Date.now(), promise: requestPromise });
+      
+      const data = await requestPromise;
+      
+      // 결과를 캐시에 저장
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      
+      return data;
+    } catch (error) {
+      // 에러 발생 시 캐시에서 제거
+      apiCache.delete(cacheKey);
+      console.error("모델 프로필 API 호출 실패:", error);
+      throw error;
+    }
   },
 
   // 특정 모델 프로필 조회

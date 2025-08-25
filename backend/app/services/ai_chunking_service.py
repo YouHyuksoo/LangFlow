@@ -18,8 +18,9 @@ from enum import Enum
 
 from .chunking_service import ChunkProposal, ChunkingRules, QualityWarning, ChunkQualityIssue
 from .settings_service import settings_service
+from ..core.logger import get_console_logger
 
-logger = logging.getLogger(__name__)
+logger = get_console_logger()
 
 
 class AIProvider(str, Enum):
@@ -60,7 +61,7 @@ class AIChunkingService:
     """AI 기반 청킹 서비스"""
     
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_console_logger()
         # 하드코딩된 시스템 프롬프트 제거 - 모델 프로필에서 관리
     
     def _convert_pdf_to_images(self, pdf_path: str, max_pages: int = 10) -> List[str]:
@@ -572,9 +573,13 @@ EXTRACTED TEXT:
     async def propose_chunks_with_ai(self, text: str, options: AIChunkingOptions, api_key: str = None, system_message: str = None) -> List[ChunkProposal]:
         """AI를 사용한 청킹 제안 (멀티모달 지원)"""
         mode = "멀티모달" if options.use_multimodal else "텍스트"
-        self.logger.info(f"AI 청킹 시작 ({mode}) - 제공업체: {options.provider}, 모델: {options.model}")
+        self.logger.info(f"🚀 AI 청킹 시작 ({mode}) - 제공업체: {options.provider}, 모델: {options.model}")
+        self.logger.info(f"📝 텍스트 길이: {len(text):,} 문자, 옵션: max_tokens={options.max_tokens}, min_tokens={options.min_tokens}")
+        
+        start_time = time.time()
         
         # 프롬프트 선택 (멀티모달 vs 텍스트)
+        self.logger.info(f"📋 프롬프트 생성 중... (모드: {mode})")
         if options.use_multimodal:
             user_prompt = self._get_multimodal_user_prompt(text, options)
         else:
@@ -584,25 +589,31 @@ EXTRACTED TEXT:
         images = None
         if options.use_multimodal and options.pdf_file_path:
             try:
-                self.logger.info(f"PDF 변환 시작: {options.pdf_file_path}")
+                self.logger.info(f"🖼️ PDF → 이미지 변환 시작: {options.pdf_file_path}")
                 images = self._convert_pdf_to_images(options.pdf_file_path)
-                self.logger.info(f"PDF 변환 완료: {len(images)}개 이미지")
+                self.logger.info(f"✅ PDF 변환 완료: {len(images)}개 이미지 생성됨")
             except Exception as img_error:
-                self.logger.error(f"PDF → 이미지 변환 실패: {img_error}")
+                self.logger.error(f"❌ PDF → 이미지 변환 실패: {img_error}")
                 # 멀티모달 실패 시 텍스트 모드로 폴백
-                self.logger.warning("멀티모달 실패, 텍스트 모드로 폴백")
+                self.logger.warning("⚠️ 멀티모달 실패, 텍스트 모드로 폴백")
                 user_prompt = self._get_user_prompt(text, options)
                 images = None
         
         # 재시도 로직
         last_error = None
+        self.logger.info(f"🔄 AI 청킹 재시도 설정: 최대 {options.max_retries + 1}회 시도")
+        
         for attempt in range(options.max_retries + 1):
             try:
+                self.logger.info(f"🤖 LLM 호출 시도 {attempt + 1}/{options.max_retries + 1}")
+                
                 # LLM 호출 (API 키, 시스템 메시지, 이미지 포함)
                 if not system_message:
                     raise RuntimeError("AI 청킹을 위한 시스템 메시지가 설정되지 않았습니다. 모델 프로필에서 'AI 청킹 시스템 메시지'를 설정하세요.")
                 
                 effective_system_prompt = system_message
+                self.logger.info(f"📡 LLM API 호출 중... (모델: {options.model}, 온도: {options.temperature})")
+                
                 response = await self._call_llm(
                     options.provider,
                     options.model,
@@ -613,37 +624,51 @@ EXTRACTED TEXT:
                     images  # 멀티모달 이미지 추가
                 )
                 
+                self.logger.info(f"✅ LLM 응답 받음 (길이: {len(response)} 문자)")
+                
                 # JSON 파싱
+                self.logger.info("🔍 JSON 응답 파싱 중...")
                 response_data = self._safe_json_parse(response)
                 chunks_data = response_data.get("chunks", [])
                 
                 if not chunks_data:
                     raise ValueError("AI가 청크를 생성하지 않았습니다")
                 
+                self.logger.info(f"📊 AI가 {len(chunks_data)}개 청크 제안함")
+                
                 # 청크 검증 및 변환
+                self.logger.info("✅ 청크 검증 및 수정 중...")
                 ai_chunks = self._validate_and_fix_chunks(chunks_data, options)
                 if not ai_chunks:
                     raise ValueError("유효한 청크가 없습니다")
                 
+                self.logger.info(f"📝 검증 후 {len(ai_chunks)}개 청크 유효함")
+                
                 # 오버랩 적용
-                ai_chunks = self._apply_overlap(ai_chunks, options.overlap_tokens)
+                if options.overlap_tokens > 0:
+                    self.logger.info(f"🔗 오버랩 적용 중... ({options.overlap_tokens} 토큰)")
+                    ai_chunks = self._apply_overlap(ai_chunks, options.overlap_tokens)
                 
                 # ChunkProposal로 변환
+                self.logger.info("🔄 ChunkProposal 형식으로 변환 중...")
                 proposals = self._convert_to_chunk_proposals(ai_chunks)
                 
-                self.logger.info(f"AI 청킹 성공 - {len(proposals)}개 청크 생성 (시도: {attempt + 1})")
+                elapsed = time.time() - start_time
+                self.logger.info(f"🎉 AI 청킹 성공! {len(proposals)}개 청크 생성 완료 (소요시간: {elapsed:.1f}초, 시도: {attempt + 1}/{options.max_retries + 1})")
                 return proposals
                 
             except Exception as e:
                 last_error = e
-                self.logger.warning(f"AI 청킹 시도 {attempt + 1} 실패: {e}")
+                self.logger.warning(f"⚠️ AI 청킹 시도 {attempt + 1}/{options.max_retries + 1} 실패: {e}")
                 
                 if attempt < options.max_retries:
+                    self.logger.info(f"⏰ {1.0}초 대기 후 재시도...")
                     await asyncio.sleep(1.0)  # 재시도 전 대기
                     continue
         
         # 모든 재시도 실패 시 폴백
-        self.logger.error(f"AI 청킹 완전 실패: {last_error}")
+        elapsed = time.time() - start_time
+        self.logger.error(f"❌ AI 청킹 완전 실패 (소요시간: {elapsed:.1f}초): {last_error}")
         raise RuntimeError(f"AI 청킹 실패: {last_error}")
 
     async def propose_chunks_with_fallback(self, text: str, options: AIChunkingOptions, api_key: str = None, system_message: str = None) -> Tuple[List[ChunkProposal], bool]:

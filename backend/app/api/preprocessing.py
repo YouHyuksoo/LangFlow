@@ -692,15 +692,44 @@ async def save_chunks(
         if not success:
             raise HTTPException(status_code=500, detail="청크 데이터 저장에 실패했습니다")
         
-        # 임베딩 작업 큐 추가 (옵션)
+        # 임베딩 작업 실행 (옵션)
         embed_job = None
         if save_request.embed_now:
-            embed_job = {
-                "file_id": save_request.file_id,
-                "chunk_count": len(normalized_chunks),
-                "status": "queued"
-            }
-            # TODO: 실제 임베딩 서비스 연동
+            try:
+                logger.info(f"🚀 임베딩 프로세스 시작 - file_id: {save_request.file_id}")
+                
+                # FileService를 통해 벡터화 실행 (수동 전처리 소스 표시)
+                vectorization_result = await file_service.start_vectorization_with_source(
+                    save_request.file_id, 
+                    source="manual_preprocessing"
+                )
+                
+                if vectorization_result.get("success"):
+                    logger.info(f"✅ 임베딩 완료 - {vectorization_result.get('total_chunks', 0)}개 청크")
+                    embed_job = {
+                        "file_id": save_request.file_id,
+                        "chunk_count": len(normalized_chunks),
+                        "status": "completed",
+                        "vector_chunks": vectorization_result.get('total_chunks', 0),
+                        "processing_time": vectorization_result.get('processing_time', 0)
+                    }
+                else:
+                    logger.error(f"❌ 임베딩 실패: {vectorization_result.get('error', 'Unknown error')}")
+                    embed_job = {
+                        "file_id": save_request.file_id,
+                        "chunk_count": len(normalized_chunks),
+                        "status": "failed",
+                        "error": vectorization_result.get('error', 'Unknown error')
+                    }
+                    
+            except Exception as e:
+                logger.error(f"💥 임베딩 프로세스 오류: {e}")
+                embed_job = {
+                    "file_id": save_request.file_id,
+                    "chunk_count": len(normalized_chunks),
+                    "status": "failed",
+                    "error": str(e)
+                }
         
         return {
             "success": True,
@@ -787,8 +816,11 @@ async def get_preprocessing_stats(
         # 전체 통계
         total_files = len(files_data)
         completed_files = status_counts.get("COMPLETED", 0)
-        in_progress_files = status_counts.get("IN_PROGRESS", 0)
-        not_started_files = status_counts.get("NOT_STARTED", 0)
+        vectorizing_files = status_counts.get("VECTORIZING", 0)
+        chunked_files = status_counts.get("CHUNKED", 0)  # 청킹 완료, 벡터화 대기
+        in_progress_files = status_counts.get("IN_PROGRESS", 0)  # 전처리 중
+        not_started_files = status_counts.get("NOT_STARTED", 0)  # 업로드만 완료
+        failed_files = status_counts.get("FAILED", 0)
         
         # 완료된 작업의 평균 처리 시간
         completed_processing_times = [
@@ -803,8 +835,11 @@ async def get_preprocessing_stats(
             "data": {
                 "total_files": total_files,
                 "completed_files": completed_files,
+                "vectorizing_files": vectorizing_files,
+                "chunked_files": chunked_files,
                 "in_progress_files": in_progress_files,
                 "not_started_files": not_started_files,
+                "failed_files": failed_files,
                 "completion_rate": completed_files / max(1, total_files),
                 "average_processing_time": average_processing_time,
                 "status_distribution": status_counts

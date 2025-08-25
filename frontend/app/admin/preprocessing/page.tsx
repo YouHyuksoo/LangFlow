@@ -31,7 +31,7 @@ interface PreprocessingFile {
   upload_time: string | null
   file_size: number
   category_name: string | null
-  preprocessing_status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'
+  preprocessing_status: 'NOT_STARTED' | 'IN_PROGRESS' | 'CHUNKED' | 'VECTORIZING' | 'COMPLETED' | 'FAILED'
   preprocessing_completed_at: string | null
   processing_time: number
 }
@@ -39,10 +39,14 @@ interface PreprocessingFile {
 interface PreprocessingStats {
   total_files: number
   completed_files: number
+  vectorizing_files: number
+  chunked_files: number
   in_progress_files: number
   not_started_files: number
+  failed_files: number
   completion_rate: number
   average_processing_time: number
+  status_distribution: Record<string, number>
 }
 
 export default function PreprocessingWorkspacePage() {
@@ -103,10 +107,10 @@ export default function PreprocessingWorkspacePage() {
       
       if (response.success) {
         console.log('✅ 전처리 작업 시작 성공:', response.data)
-        // 성공 후 데이터 새로고침
-        console.log('🔄 데이터 새로고침 시작')
-        await loadData()
-        console.log('✅ 데이터 새로고침 완료')
+        
+        // 전처리 작업 시작 후 바로 에디터로 이동
+        console.log('🔄 에디터 페이지로 이동')
+        router.push(`/admin/preprocessing/editor?fileId=${fileId}`)
       } else {
         console.error('❌ API 응답 실패:', response.message)
         throw new Error(response.message || '전처리 작업 시작 실패')
@@ -147,10 +151,16 @@ export default function PreprocessingWorkspacePage() {
       switch (status) {
         case 'COMPLETED':
           return { label: '완료', variant: 'default' as const, icon: CheckCircleIcon, color: 'text-green-500' }
+        case 'VECTORIZING':
+          return { label: '벡터화 중', variant: 'secondary' as const, icon: PlayIcon, color: 'text-purple-500' }
+        case 'CHUNKED':
+          return { label: '청킹 완료', variant: 'secondary' as const, icon: FileTextIcon, color: 'text-blue-500' }
         case 'IN_PROGRESS':
-          return { label: '진행중', variant: 'secondary' as const, icon: ClockIcon, color: 'text-blue-500' }
+          return { label: '전처리 중', variant: 'secondary' as const, icon: ClockIcon, color: 'text-yellow-500' }
         case 'NOT_STARTED':
-          return { label: '미시작', variant: 'outline' as const, icon: AlertCircleIcon, color: 'text-orange-500' }
+          return { label: '업로드만', variant: 'outline' as const, icon: AlertCircleIcon, color: 'text-orange-500' }
+        case 'FAILED':
+          return { label: '실패', variant: 'destructive' as const, icon: AlertCircleIcon, color: 'text-red-500' }
         default:
           return { label: '알 수 없음', variant: 'outline' as const, icon: AlertCircleIcon, color: 'text-gray-500' }
       }
@@ -327,6 +337,20 @@ export default function PreprocessingWorkspacePage() {
                         <EditIcon className="h-3 w-3 mr-1" />
                         에디터 열기
                       </Button>
+                    ) : file.preprocessing_status === 'CHUNKED' ? (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => router.push(`/admin/preprocessing/editor?fileId=${file.file_id}`)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <EditIcon className="h-3 w-3 mr-1" />
+                        청킹 편집
+                      </Button>
+                    ) : file.preprocessing_status === 'VECTORIZING' ? (
+                      <Badge variant="secondary" className="cursor-not-allowed">
+                        벡터화 진행중
+                      </Badge>
                     ) : file.preprocessing_status === 'COMPLETED' ? (
                       <Button
                         size="sm"
@@ -334,7 +358,16 @@ export default function PreprocessingWorkspacePage() {
                         onClick={() => router.push(`/admin/preprocessing/editor?fileId=${file.file_id}`)}
                       >
                         <EditIcon className="h-3 w-3 mr-1" />
-                        수정
+                        보기/수정
+                      </Button>
+                    ) : file.preprocessing_status === 'FAILED' ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleStartPreprocessing(file.file_id)}
+                      >
+                        <PlayIcon className="h-3 w-3 mr-1" />
+                        재시작
                       </Button>
                     ) : (
                       <Badge variant="secondary" className="cursor-not-allowed">
